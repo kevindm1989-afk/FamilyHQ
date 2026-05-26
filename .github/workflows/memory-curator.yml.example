@@ -1,0 +1,68 @@
+# Weekly memory-curator run (OPTIONAL — Layer 2 of the learning loop).
+#
+# This is the "always-on backstop": it runs the memory-curator on a schedule
+# even when you are not in a session, mines the last 7 days of git history and
+# merged PRs (the feedback log is gitignored and absent in a fresh checkout),
+# and opens a "Memory update: <date>" PR with proposed .context/ changes.
+#
+# SETUP (one time):
+#   1. Copy this file to .github/workflows/memory-curator.yml
+#   2. Add a repository secret named ANTHROPIC_API_KEY (Settings → Secrets and
+#      variables → Actions). A Claude Code OAuth token works too — adjust the
+#      action input accordingly.
+#   3. Adjust the cron below if you want a different cadence.
+#   4. Confirm the action version pin matches a release you trust.
+#
+# COST: one Claude run per week. Small, but non-zero. Skip this layer entirely
+# if the in-session loop (Layer 1, wired into CLAUDE.md) is enough for you.
+#
+# SAFETY: the curator only PROPOSES; the workflow opens a PR, it never pushes
+# to main. constraints.md is never modified by the loop.
+
+name: Memory curator
+
+on:
+  schedule:
+    - cron: '0 13 * * 1'   # Mondays 13:00 UTC — adjust to taste
+  workflow_dispatch: {}      # allow manual runs from the Actions tab
+
+permissions:
+  contents: write            # to push the proposal branch
+  pull-requests: write       # to open the memory PR
+
+concurrency:
+  group: memory-curator
+  cancel-in-progress: false
+
+jobs:
+  curate:
+    name: Propose memory updates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout (full history for mining)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run memory-curator
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # The curator reads .claude/agents/memory-curator.md for its full
+          # behaviour. This prompt scopes it to the persistent signal sources
+          # and tells it to open a PR rather than write directly.
+          prompt: |
+            Act as the memory-curator (see .claude/agents/memory-curator.md).
+            The feedback log is gitignored and not present here, so mine the
+            last 7 days of merged pull requests and commit history for signal
+            instead. Produce proposed .context/ updates following the curator's
+            rules: evidence-cited, two-data-point threshold, biased toward
+            pruning, contradictions surfaced not resolved.
+
+            Then open a pull request to main titled "Memory update: <today's
+            date>" on a branch named memory-update/<date>, containing only the
+            proposed .context/ edits. Do NOT modify .context/constraints.md.
+            Do NOT push directly to main. If there is no durable signal, do
+            nothing and exit cleanly.

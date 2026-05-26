@@ -1,0 +1,121 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+# Only one deploy per environment at a time
+concurrency:
+  group: deploy-${{ inputs.environment || 'staging' }}
+  cancel-in-progress: false  # don't kill a deploy mid-flight
+
+jobs:
+  # Always deploy to staging on main
+  staging:
+    name: Deploy to staging
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || inputs.environment == 'staging' }}
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.url }}
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify gates passed
+        run: |
+          # Should not be possible to reach here without verify passing,
+          # but double-check by re-running the gate stack.
+          chmod +x scripts/verify.sh
+          bash scripts/verify.sh
+
+      - name: Deploy
+        id: deploy
+        run: |
+          echo "Deploying to staging..."
+          # Your deploy command here. Examples:
+          # - fly deploy --config fly.staging.toml
+          # - vercel --prod --token ${{ secrets.VERCEL_TOKEN }}
+          # - cdk deploy --require-approval=never
+          echo "url=https://staging.example.com" >> $GITHUB_OUTPUT
+
+      - name: Smoke test
+        run: |
+          # Run a few critical-path checks against the staging URL
+          # Fail the job if smoke tests fail
+          echo "Running smoke tests..."
+
+      - name: Post-deploy verification
+        run: |
+          # Check error rate, health endpoints, etc.
+          echo "Verifying deployment health..."
+
+  # Production requires explicit approval via environments
+  production:
+    name: Deploy to production
+    runs-on: ubuntu-latest
+    if: ${{ inputs.environment == 'production' }}
+    # Note: not gated on staging job — humans evaluate staging health before
+    # manually triggering a production deploy via workflow_dispatch.
+
+    environment:
+      name: production
+      # Configure required reviewers in GitHub environment settings
+      # This is where the human-gate happens — production deploys require approval
+      url: ${{ steps.deploy.outputs.url }}
+
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Re-verify
+        run: |
+          chmod +x scripts/verify.sh
+          bash scripts/verify.sh
+
+      - name: Capture pre-deploy state
+        run: |
+          # Capture current production version for rollback
+          echo "Capturing pre-deploy state..."
+
+      - name: Deploy
+        id: deploy
+        run: |
+          echo "Deploying to production..."
+          # Your deploy command here
+
+      - name: Health check
+        run: |
+          # Verify production health post-deploy
+          # If unhealthy, the next job rolls back
+          echo "Checking production health..."
+
+      - name: Post-deploy verification
+        run: |
+          echo "Verifying production deployment..."
+
+  rollback-on-failure:
+    name: Auto-rollback on failure
+    runs-on: ubuntu-latest
+    needs: production
+    if: failure() && inputs.environment == 'production'
+    steps:
+      - name: Roll back production
+        run: |
+          echo "Production deploy failed — rolling back..."
+          # Your rollback command here
+          # This should be reliable; test it regularly

@@ -1,0 +1,7 @@
+# Agent OS self-protection.
+# The feedback log accumulates raw outcomes that may contain real ticket
+# excerpts, names, or incident specifics. It stays local; only the
+# curated, sanitized output (in lessons.md / patterns.md / decisions.md)
+# gets committed. See .gitignore.template for the same rule that ships
+# to projects adopting this pack.
+.context/feedback-log.md

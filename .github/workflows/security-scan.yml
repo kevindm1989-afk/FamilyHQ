@@ -1,0 +1,96 @@
+name: Security scan
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Monday 06:00 UTC weekly
+  workflow_dispatch:     # manual trigger
+  push:
+    branches: [main, master]
+    paths:
+      - 'package*.json'
+      - 'pnpm-lock.yaml'
+      - 'requirements*.txt'
+      - 'pyproject.toml'
+      - 'Cargo.lock'
+      - 'go.sum'
+
+jobs:
+  scan:
+    name: Security scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+      security-events: write  # for code scanning results
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # --- Secrets ---
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- SAST ---
+
+      - name: Run semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/owasp-top-ten
+            p/r2c-security-audit
+
+      # --- Dependency vulnerabilities ---
+
+      - name: Setup Node
+        if: ${{ hashFiles('package.json') != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: npm audit
+        if: ${{ hashFiles('package-lock.json') != '' }}
+        run: npm audit --audit-level=high
+
+      # --- CodeQL (GitHub's deeper SAST) ---
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript  # adjust to your stack
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+
+      # --- Container scan (if applicable) ---
+
+      # - name: Build image
+      #   if: ${{ hashFiles('Dockerfile') != '' }}
+      #   run: docker build -t scan:latest .
+
+      # - name: Scan image with Trivy
+      #   if: ${{ hashFiles('Dockerfile') != '' }}
+      #   uses: aquasecurity/trivy-action@master
+      #   with:
+      #     image-ref: scan:latest
+      #     severity: HIGH,CRITICAL
+      #     exit-code: 1
+
+  notify:
+    name: Notify on failure
+    runs-on: ubuntu-latest
+    needs: scan
+    if: failure()
+    steps:
+      - name: Flag failure
+        run: |
+          echo "::error::Security scan failed. Review findings in the Security tab."
+          # Add notification to Slack/email/etc. as needed
