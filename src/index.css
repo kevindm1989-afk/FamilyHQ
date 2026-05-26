@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Base layer notes for the implementer (Phase 2 primitives):
+
+  - All color/spacing/type values come from Tailwind theme classes generated
+    from design-tokens.json. Do NOT introduce raw hex / px literals in any
+    component (scripts/token-audit.sh enforces this against src/).
+
+  - ACCESSIBILITY OVERRIDE (approved): the Button primitive's `amber` and
+    `success`/`approve` variants use the `text-onAccent` class (dark ink),
+    NOT `text-white`. White-on-amber and white-on-green fail WCAG AA. See
+    tailwind.config.ts and design-tokens.json components.button.
+
+  - Dark mode is deferred to post-v1 (ADR-0007). No `dark:` variants in v1.
+*/
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    @apply bg-surface-bg text-ink font-sans;
+    -webkit-font-smoothing: antialiased;
+  }
+}

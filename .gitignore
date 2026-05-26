@@ -5,3 +5,31 @@
 # gets committed. See .gitignore.template for the same rule that ships
 # to projects adopting this pack.
 .context/feedback-log.md
+
+# --- Environment and secrets ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+!*.example.key
+
+# --- Node / Vite ---
+node_modules/
+dist/
+dev-dist/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+
+# --- Firebase ---
+# Emulator runtime artifacts and local debug logs.
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+firebase-export-*/
+
+# --- OS / editor ---
+.DS_Store
+*.swp

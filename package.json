@@ -1,0 +1,59 @@
+{
+  "name": "family-hq",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20 <21"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:rules": "vitest run --config vitest.rules.config.ts",
+    "a11y": "echo 'TODO(Phase 4 / Task 17): wire the real a11y gate (axe / playwright). Placeholder passes.' && exit 0"
+  },
+  "_overrides_rationale": "Transitive deps below are flagged by npm audit but reach us only via the dev-only firebase-tools CLI or non-browser code paths of the firebase SDK. Pinned to fixed releases so the high/critical audit gate passes without weakening the gate itself.",
+  "overrides": {
+    "tar": "7.5.15",
+    "undici": "6.26.0",
+    "uuid": "11.1.1"
+  },
+  "dependencies": {
+    "firebase": "10.14.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-router-dom": "6.30.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.5.0",
+    "@firebase/rules-unit-testing": "3.0.3",
+    "@testing-library/jest-dom": "6.4.6",
+    "@testing-library/react": "16.0.0",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "@vitejs/plugin-react": "4.3.1",
+    "autoprefixer": "10.4.19",
+    "eslint": "9.5.0",
+    "eslint-plugin-react-hooks": "5.0.0",
+    "eslint-plugin-react-refresh": "0.4.7",
+    "firebase-tools": "13.35.1",
+    "globals": "15.6.0",
+    "jsdom": "24.1.0",
+    "knip": "5.21.0",
+    "postcss": "8.4.38",
+    "prettier": "3.3.2",
+    "tailwindcss": "3.4.4",
+    "typescript": "5.4.5",
+    "typescript-eslint": "8.4.0",
+    "vite": "5.3.1",
+    "vite-plugin-pwa": "0.20.0",
+    "vitest": "1.6.1"
+  }
+}

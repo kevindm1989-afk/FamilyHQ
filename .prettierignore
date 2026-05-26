@@ -1,0 +1,14 @@
+dist
+dev-dist
+coverage
+node_modules
+package-lock.json
+design-tokens.json
+*.md
+
+# Design handoff artifacts (authored by the designer; not app source — do not reformat).
+design/
+
+# Pre-existing pack workflow files not authored in Phase 0 scaffolding.
+.github/workflows/deploy.yml
+.github/workflows/security-scan.yml

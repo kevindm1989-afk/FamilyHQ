@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/main.tsx",
+    "src/app/App.tsx",
+    "test/setup.ts",
+    "test/**/*.{test,spec}.{ts,tsx}",
+    "src/**/*.{test,spec}.{ts,tsx}",
+    "vite.config.ts",
+    "vitest.rules.config.ts",
+    "tailwind.config.ts",
+    "eslint.config.js",
+    "postcss.config.js",
+    "src/firebase/config.ts"
+  ],
+  "project": ["src/**/*.{ts,tsx}"],
+  "ignore": ["design/**", "src/features/**", "src/components/**", "src/hooks/**", "src/lib/**"],
+  "ignoreDependencies": ["react-router-dom", "@firebase/rules-unit-testing", "firebase-tools"]
+}

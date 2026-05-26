@@ -1,0 +1,23 @@
+rules_version = '2';
+
+// ===========================================================================
+// PLACEHOLDER RULES — DENY EVERYTHING.
+//
+// The REAL security rules are Task 5 (Phase 1), owned by the implementer +
+// test-writer. They are the authorization boundary for the whole product
+// (ADR-0002) and are security-critical (no autonomous merge). They must
+// implement the helper functions and tenant/role/active/immutability
+// predicates described in system-design §2.4.
+//
+// Until then this denies all client access by default. Deny-by-default is the
+// safe baseline: the worst failure mode is cross-tenant leakage of children's
+// data (F1), so an empty/incomplete ruleset must never accidentally allow
+// access.
+// ===========================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
