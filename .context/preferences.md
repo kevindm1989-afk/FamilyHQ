@@ -26,6 +26,42 @@ that wasn't a one-off mistake but a taste mismatch.
   invariants, workarounds. No restating what the code does.
 - Tests: colocated with source, named `*.test.ts`.
 
+## This project — Family HQ
+
+The standing preferences above hold. Project-specific calls:
+
+- **Stack is fixed** (not up for re-litigation): React 18 + Vite, TypeScript
+  (TSX), Tailwind CSS, Firebase v10 (Firestore + Auth), React Router v6,
+  vite-plugin-pwa with Workbox. The spec's `.js`/`.jsx` filenames are adapted
+  to `.ts`/`.tsx` (e.g. `firebase/config.js` → `firebase/config.ts`).
+- **Design tokens are locked and pixel-perfect.** Colours, type scale, spacing,
+  radii, and shadows come from the design handoff (mirrored into
+  `design-tokens.json` / the Tailwind theme). No inventing values, no
+  off-palette colours, no magic numbers. Build the Tailwind theme from the
+  tokens, then consume only theme values.
+- **Feature-module architecture.** Each feature is self-contained under
+  `src/features/{feature}/` (its own components, hooks, and Firestore logic) so
+  new features can be added without touching existing ones. Shared primitives
+  live in `src/components/`; cross-cutting hooks in `src/hooks/`.
+- **Flat, expansion-friendly data model.** Top-level Firestore collections
+  (`users`, `events`, `posts`, `chores`, `transactions`, `invites`, plus the
+  `settings/family` doc). Avoid deep nesting that would force a restructure when
+  collections are added later.
+- **Dynamic family, never hardcoded.** Member lists, chore-assignment
+  dropdowns, parent filter tabs, and "The Fam" avatar row all derive from the
+  live Firestore `users` collection (active members only). The demo's four
+  fixed people (Sarah/David/Maya/Ben) are reference only — do not bake them in.
+- **Every section ships its empty state and its loading state.** A screen is
+  not done until "no data yet" reads friendly and the loading path is handled.
+- **Every user action routes through the toast system** — success and error
+  alike (chore approved/rejected, post deleted, invite sent, errors).
+- **Errors are user-safe.** Show a friendly toast; never surface raw
+  Firebase/stack errors or any child's PII to the UI or logs.
+- **Avatar initials & colour by role:** initials from display name; indigo bg
+  for members, amber bg for parents; amber crown badge on parent avatars.
+- **Offline-first PWA:** Firestore offline persistence on; app-shell cached;
+  offline fallback page; pull-to-refresh on Dashboard and Board.
+
 ## Architecture taste
 
 - Simple over clever, unless the clever version is documented.
