@@ -12,6 +12,12 @@
  *  (3) family freshly created in the same batch with createdBy == uid
  *  (4) fixed shape: isActive==true, allowanceBalance==0, role=='parent'
  *
+ * PRIVACY FINDING 2: the founding parent's email is adult [PI] and is NO LONGER
+ * written into the family-readable users doc. The bootstrap batch writes the
+ * email into userPrivate/{uid} instead — in the SAME atomic batch. The users
+ * doc therefore carries NO email field; the rule's bootstrap shape no longer
+ * permits an `email` key on the users doc.
+ *
  * These FAIL today (deny-all => Test A's assertSucceeds throws) and pass once
  * the bounded self-create rule + the families-create rule land.
  */
@@ -59,6 +65,7 @@ async function bootstrapBatch(
     isActive?: boolean;
     allowanceBalance?: number;
     createFamily?: boolean;
+    writeUserPrivate?: boolean;
     extra?: Record<string, unknown>;
   },
 ): Promise<void> {
@@ -74,9 +81,9 @@ async function bootstrapBatch(
       createdAt: Date.now(),
     });
   }
+  // users doc carries NO email (privacy finding 2).
   batch.set(doc(mdb, 'users', opts.uid), {
     name: 'Founder',
-    email: 'founder@example.test',
     role: opts.role ?? 'parent',
     familyId: opts.familyId,
     isActive: opts.isActive ?? true,
@@ -84,6 +91,13 @@ async function bootstrapBatch(
     theme: 'light',
     ...opts.extra,
   });
+  // Email [PI] is written to the per-subject private doc, same atomic batch.
+  if (opts.writeUserPrivate !== false) {
+    batch.set(doc(mdb, 'userPrivate', opts.uid), {
+      email: 'founder@example.test',
+      familyId: opts.familyId,
+    });
+  }
   await batch.commit();
 }
 

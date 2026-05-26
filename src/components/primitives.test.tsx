@@ -118,6 +118,36 @@ describe('TextField', () => {
     expect(screen.getByLabelText('Email')).not.toHaveAttribute('aria-invalid', 'true');
   });
 
+  it('announces the error via an assertive live region (role=alert) (a11y finding)', () => {
+    // aria-describedby alone does not announce a newly-appearing error; the
+    // error element must be role=alert (or in an assertive live region) so AT
+    // announces it when validation fails (WCAG 3.3.1 / 4.1.3).
+    render(
+      <TextField
+        label="Email"
+        value="x"
+        onChange={vi.fn()}
+        error="Enter a valid email"
+      />,
+    );
+    const alert = screen.getByRole('alert');
+    expect(
+      alert,
+      'the error text must be exposed as an alert / assertive live region',
+    ).toHaveTextContent('Enter a valid email');
+
+    // It must STILL be programmatically associated with the input.
+    const input = screen.getByLabelText('Email');
+    const describedBy = input.getAttribute('aria-describedby');
+    expect(describedBy, 'error must remain associated via aria-describedby').toBeTruthy();
+    expect(alert.id).toBe(describedBy);
+  });
+
+  it('does not render an alert region when there is no error', () => {
+    render(<TextField label="Email" value="x" onChange={vi.fn()} />);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('masks input when type is password', () => {
     render(
       <TextField label="Password" value="" onChange={vi.fn()} type="password" />,

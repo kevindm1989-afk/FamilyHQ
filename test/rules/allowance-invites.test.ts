@@ -28,12 +28,90 @@ afterEach(async () => {
   await env.clearFirestore();
 });
 
-describe('M27: who can write allowanceBalance', () => {
-  it('same-family parent CAN write a member allowanceBalance', async () => {
+/**
+ * SECURITY FINDING 1/3 — a same-family parent doing a BARE updateDoc on a
+ * member's users doc may update ONLY `name` and `isActive`. allowanceBalance is
+ * a tracked-money field whose only legitimate write path is the Phase-3
+ * approval runTransaction (M28); a direct bare balance write at the rules layer
+ * is DENIED (previously this passed — tightened to denied here). role, email,
+ * and familyId are never parent-writable on a member doc either.
+ *
+ * NOTE: balance changes are deferred to the Phase-3 approval runTransaction
+ * (M27/M28). No direct balanceWrite is permitted at the rules layer — the
+ * transaction enforces the chore-status guard + matching ledger doc; a bare
+ * update cannot.
+ */
+describe('M28: parent bare-update of a member doc is limited to name + isActive', () => {
+  it('same-family parent CAN set a member name', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertSucceeds(updateDoc(doc(db, 'users', UID.memberA), { name: 'Renamed' }));
+  });
+
+  it('same-family parent CAN deactivate a member (isActive:false)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertSucceeds(updateDoc(doc(db, 'users', UID.memberA), { isActive: false }));
+  });
+
+  it('same-family parent CAN re-activate a member (isActive:true)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    // deactivatedA is seeded isActive:false; a parent may flip it back to true.
+    await assertSucceeds(
+      updateDoc(doc(db, 'users', UID.deactivatedA), { isActive: true }),
+    );
+  });
+
+  it('same-family parent CAN set name AND isActive together', async () => {
     const db = env.authenticatedContext(UID.parentA).firestore();
     const { doc, updateDoc } = await import('firebase/firestore');
     await assertSucceeds(
+      updateDoc(doc(db, 'users', UID.memberA), { name: 'Renamed', isActive: false }),
+    );
+  });
+
+  it('M28: same-family parent CANNOT bare-write a member allowanceBalance (deferred to Phase-3 txn)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
       updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 25 }),
+    );
+  });
+
+  it('M28: same-family parent CANNOT bare-write allowanceBalance to 0 either (no direct balance writes)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 0 }),
+    );
+  });
+
+  it('same-family parent CANNOT change a member role (no parent-granted elevation)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(updateDoc(doc(db, 'users', UID.memberA), { role: 'parent' }));
+  });
+
+  it('same-family parent CANNOT change a member familyId (no tenant reassignment)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(updateDoc(doc(db, 'users', UID.memberA), { familyId: FAMILY_B }));
+  });
+
+  it('same-family parent CANNOT write a member email onto the family-readable users doc (email left this doc)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(db, 'users', UID.memberA), { email: 'leak@example.test' }),
+    );
+  });
+
+  it('same-family parent CANNOT set name AND allowanceBalance together (mixed write still denied)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(db, 'users', UID.memberA), { name: 'Renamed', allowanceBalance: 99 }),
     );
   });
 
@@ -43,10 +121,16 @@ describe('M27: who can write allowanceBalance', () => {
     await assertFails(updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 25 }));
   });
 
-  it('cross-family parent CANNOT write another family member balance', async () => {
+  it('cross-family parent CANNOT update another family member (name)', async () => {
     const db = env.authenticatedContext(UID.parentB).firestore();
     const { doc, updateDoc } = await import('firebase/firestore');
-    await assertFails(updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 25 }));
+    await assertFails(updateDoc(doc(db, 'users', UID.memberA), { name: 'hijack' }));
+  });
+
+  it('cross-family parent CANNOT deactivate another family member', async () => {
+    const db = env.authenticatedContext(UID.parentB).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(updateDoc(doc(db, 'users', UID.memberA), { isActive: false }));
   });
 });
 

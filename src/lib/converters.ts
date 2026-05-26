@@ -12,7 +12,16 @@ import type {
   QueryDocumentSnapshot,
   SnapshotOptions,
 } from 'firebase/firestore';
-import type { Chore, Family, FamilyEvent, Invite, Post, Transaction, User } from './types';
+import type {
+  Chore,
+  Family,
+  FamilyEvent,
+  Invite,
+  Post,
+  Transaction,
+  User,
+  UserPrivate,
+} from './types';
 
 function makeConverter<T extends DocumentData>(): FirestoreDataConverter<T> {
   return {
@@ -42,3 +51,20 @@ export const transactionConverter: FirestoreDataConverter<Transaction> =
   makeConverter<Transaction>();
 
 export const inviteConverter: FirestoreDataConverter<Invite> = makeConverter<Invite>();
+
+/**
+ * CONTRACT STUB (privacy finding 2) — converter for `userPrivate/{uid}`.
+ *
+ * Declared here so the tests can import the symbol and pin its existence; the
+ * implementer replaces this stub with the real converter. Signature only — it
+ * MUST throw until implemented so a missing implementation can never silently
+ * pass for a converter that shapes adult-email [PI].
+ */
+export const userPrivateConverter: FirestoreDataConverter<UserPrivate> = {
+  toFirestore() {
+    throw new Error('userPrivateConverter.toFirestore not implemented');
+  },
+  fromFirestore() {
+    throw new Error('userPrivateConverter.fromFirestore not implemented');
+  },
+};

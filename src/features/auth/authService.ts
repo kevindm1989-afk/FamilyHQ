@@ -119,3 +119,33 @@ export async function signIn(
 export async function sendPasswordReset(deps: { auth: Auth }, email: string): Promise<void> {
   await sendPasswordResetEmail(deps.auth, email);
 }
+
+/**
+ * CONTRACT STUB (M19, P6 — security finding 2 / privacy finding 1, CRITICAL).
+ *
+ * On sign-out (and on account switch) the on-device IndexedDB Firestore cache —
+ * which may hold another family's children's PI — MUST be cleared so the next
+ * user on a shared device cannot read stale family data.
+ *
+ * Required behavior (pinned by signOut.test.ts):
+ *  1. call Firebase `signOut(auth)` FIRST (revoke the live session),
+ *  2. then `terminate(db)` (stop the Firestore client so the cache can be
+ *     released — clearIndexedDbPersistence rejects on a running client),
+ *  3. then `clearIndexedDbPersistence(db)` (wipe the on-device cache),
+ *  in that exact order.
+ *
+ * If `signOut` itself fails, cache clearing MUST STILL run (a failed sign-out
+ * must not leave child PI on the device); the rejection is surfaced after the
+ * cache is cleared.
+ *
+ * Signature only here — the implementer writes the body. It throws until then
+ * so the test fails for the right reason (no real IndexedDB required; the test
+ * mocks firebase/auth + firebase/firestore).
+ */
+export async function signOutAndClearCache(deps: {
+  auth: Auth;
+  db: Firestore;
+}): Promise<void> {
+  void deps;
+  throw new Error('signOutAndClearCache not implemented');
+}

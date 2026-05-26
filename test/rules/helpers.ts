@@ -47,12 +47,20 @@ export const UID = {
 
 export type SeededUser = {
   name: string;
-  email: string;
   role: 'parent' | 'member';
   familyId: string;
   isActive: boolean;
   allowanceBalance: number;
   theme: 'light' | 'dark';
+};
+
+/**
+ * Privacy finding 2: adult email [PI] lives on userPrivate/{uid}, NOT on the
+ * family-readable users doc. familyId is carried for parent-read rule scoping.
+ */
+export type SeededUserPrivate = {
+  email: string;
+  familyId: string;
 };
 
 /**
@@ -85,6 +93,11 @@ export async function seedBaseline(env: RulesTestEnvironment): Promise<void> {
     };
     for (const [uid, data] of Object.entries(users)) {
       await setDoc(doc(db, 'users', uid), data);
+      // Email [PI] lives on the per-subject private doc (privacy finding 2).
+      await setDoc(doc(db, 'userPrivate', uid), {
+        email: `${data.name.toLowerCase().replace(/\s+/g, '.')}@example.test`,
+        familyId: data.familyId,
+      });
     }
 
     // One doc per tenant collection, per family, for cross-tenant read/list.
@@ -149,7 +162,6 @@ function mkUser(
 ): SeededUser {
   return {
     name,
-    email: `${name.toLowerCase().replace(/\s+/g, '.')}@example.test`,
     role,
     familyId,
     isActive,

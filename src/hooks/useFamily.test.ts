@@ -19,7 +19,6 @@ const mk = (
 ): UserWithId => ({
   id,
   name: id,
-  email: `${id}@example.test`,
   role,
   familyId,
   isActive,
@@ -64,5 +63,26 @@ describe('deriveActiveMembers', () => {
     const tricky = [mk('a', 'fam-A', true), mk('a10', 'fam-A10', true)];
     const result = deriveActiveMembers(tricky, 'fam-A');
     expect(result.map((u) => u.id)).toEqual(['a']);
+  });
+});
+
+describe('deriveActiveMembers — derived members carry no adult [PI] (privacy finding 2)', () => {
+  it('does NOT expose email on any derived member', () => {
+    const result = deriveActiveMembers(ALL, 'fam-A');
+    expect(result.length).toBeGreaterThan(0);
+    for (const member of result) {
+      expect(
+        member,
+        'email is adult [PI] and must not flow through the family member list',
+      ).not.toHaveProperty('email');
+    }
+  });
+
+  it('exposes ONLY the non-PII member fields the UI needs', () => {
+    const [member] = deriveActiveMembers(ALL, 'fam-A');
+    expect(member).toBeDefined();
+    expect(Object.keys(member ?? {}).sort()).toEqual(
+      ['allowanceBalance', 'familyId', 'id', 'isActive', 'name', 'role', 'theme'].sort(),
+    );
   });
 });

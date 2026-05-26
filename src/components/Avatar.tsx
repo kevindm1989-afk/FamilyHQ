@@ -10,6 +10,14 @@ export interface AvatarProps {
   role: Role;
   size?: AvatarSize;
   ring?: boolean;
+  /**
+   * A11y finding: the avatar is decorative (aria-hidden) and the parent crown
+   * is icon/color only. In a role-conveying context, set this so parent status
+   * is exposed to assistive tech as visually-hidden TEXT ("Parent"), not via
+   * the crown alone. Implementer renders a non-aria-hidden visually-hidden
+   * label for parents when true.
+   */
+  showRoleForA11y?: boolean;
 }
 
 const SIZE_CLASS: Record<AvatarSize, string> = {

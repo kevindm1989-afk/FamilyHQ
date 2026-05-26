@@ -20,6 +20,13 @@ import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 export interface AuthState {
   authUser: FirebaseUser | null;
   loading: boolean;
+  /**
+   * Sign the user out AND clear the on-device IndexedDB cache (M19, CRITICAL).
+   * MUST route through authService.signOutAndClearCache so a shared device
+   * never retains the prior family's children's PI. Contract pinned by
+   * useAuth.signOut.test.tsx.
+   */
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -46,7 +53,18 @@ export function AuthProvider(props: { children: ReactNode }): ReactElement {
     };
   }, []);
 
-  const value = useMemo<AuthState>(() => ({ authUser, loading }), [authUser, loading]);
+  // Sign-out routes through signOutAndClearCache (M19). Firebase is imported
+  // lazily (same pattern as the auth listener) so the module stays SDK-free at
+  // load time. Body is a contract stub — the implementer wires it; it throws so
+  // the test fails for the right reason until then.
+  const signOut = async (): Promise<void> => {
+    throw new Error('useAuth.signOut not implemented');
+  };
+
+  const value = useMemo<AuthState>(
+    () => ({ authUser, loading, signOut }),
+    [authUser, loading],
+  );
 
   return createElement(AuthContext.Provider, { value }, props.children);
 }

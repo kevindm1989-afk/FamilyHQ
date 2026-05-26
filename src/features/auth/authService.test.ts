@@ -109,8 +109,43 @@ describe('signUpFoundingParent — atomic bootstrap (happy path)', () => {
       isActive: true,
       allowanceBalance: 0,
       name: 'A Parent',
-      email: 'parent@example.test',
     });
+  });
+
+  it('does NOT write email onto the family-readable users doc (privacy finding 2)', async () => {
+    await signUpFoundingParent({ auth, db }, validSignup);
+    const userDoc = batchOps.find((o) => o.path === 'users/new-uid');
+    expect(userDoc).toBeDefined();
+    expect(
+      userDoc?.data,
+      'email is adult [PI] and must not live on the family-readable users doc',
+    ).not.toHaveProperty('email');
+  });
+
+  it('writes the email to userPrivate/{uid} in the SAME atomic batch', async () => {
+    await signUpFoundingParent({ auth, db }, validSignup);
+
+    const privateDoc = batchOps.find((o) => o.path === 'userPrivate/new-uid');
+    expect(privateDoc, 'a userPrivate/{uid} doc must be written for the email').toBeDefined();
+    expect(privateDoc?.data).toMatchObject({ email: 'parent@example.test' });
+    // It is part of the SAME batch (one commit) so there is no orphaned email.
+    expect(batchCommitted).toBe(true);
+  });
+
+  it('scopes the userPrivate doc to the same familyId as the family/users docs (rule scoping)', async () => {
+    await signUpFoundingParent({ auth, db }, validSignup);
+
+    const familyDoc = batchOps.find((o) => o.path.startsWith('families/'));
+    const familyId = familyDoc?.path.split('/')[1];
+    const privateDoc = batchOps.find((o) => o.path === 'userPrivate/new-uid');
+    expect(privateDoc?.data.familyId).toBe(familyId);
+  });
+
+  it('the userPrivate doc carries ONLY email + familyId (no extra PI)', async () => {
+    await signUpFoundingParent({ auth, db }, validSignup);
+    const privateDoc = batchOps.find((o) => o.path === 'userPrivate/new-uid');
+    expect(privateDoc).toBeDefined();
+    expect(Object.keys(privateDoc?.data ?? {}).sort()).toEqual(['email', 'familyId']);
   });
 
   it('points the parent users doc at the SAME familyId as the family doc it creates', async () => {

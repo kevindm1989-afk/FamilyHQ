@@ -106,6 +106,34 @@ describe('Button — disabled and loading states', () => {
     render(<Button loading>Saving</Button>);
     expect(screen.getByRole('button')).toHaveAttribute('aria-busy', 'true');
   });
+
+  it('loading button KEEPS a non-empty accessible name (a11y finding)', () => {
+    // Replacing the label with only a spinner leaves the control nameless for
+    // screen-reader users. The action label must remain the accessible name
+    // (via visually-hidden text or aria-label) while loading.
+    render(<Button loading>Approve</Button>);
+    const btn = screen.getByRole('button', { name: /approve/i });
+    expect(
+      btn,
+      'a loading button must still expose its action label as the accessible name',
+    ).toBeInTheDocument();
+    expect(btn).toHaveAttribute('aria-busy', 'true');
+  });
+});
+
+describe('Button — pressed/active affordance per variant (a11y finding)', () => {
+  // Color alone is not a sufficient press signal; each variant must carry an
+  // active-state affordance class (active:* utility) so the press is visible.
+  for (const variant of VARIANTS) {
+    it(`${variant} variant exposes an active:* press affordance`, () => {
+      render(<Button variant={variant}>Go</Button>);
+      const btn = screen.getByRole('button', { name: 'Go' });
+      expect(
+        btn.className,
+        `${variant} must have an active:* utility for the pressed affordance`,
+      ).toMatch(/\bactive:/);
+    });
+  }
 });
 
 describe('Button — click behavior', () => {

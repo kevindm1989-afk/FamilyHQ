@@ -28,15 +28,36 @@ export interface Family {
   createdAt: number;
 }
 
-/** `users/{uid}` — keyed by Auth UID. */
+/**
+ * `users/{uid}` — keyed by Auth UID. FAMILY-READABLE doc.
+ *
+ * Privacy finding 2 (review of Phases 1-2): `email` is adult [PI] and MUST NOT
+ * be exposed to other members of the family (children must not see an adult's
+ * email). It is therefore NOT on this family-readable doc — it lives on the
+ * per-subject `userPrivate/{uid}` doc instead (readable only by the subject and
+ * a same-family parent). Do not re-add `email` here.
+ */
 export interface User {
   name: string; // [PI/PI-child]
-  email: string; // [PI] (adults; child credential model per ADR-0006 Q3)
   role: Role; // immutable from client
   familyId: string; // immutable from client
   allowanceBalance: number; // parent/transaction-written only
   isActive: boolean; // parent-written only
   theme: Theme; // self-writable
+}
+
+/**
+ * `userPrivate/{uid}` — per-subject private doc (privacy finding 2).
+ *
+ * Holds the adult `email` [PI] that was removed from the family-readable `users`
+ * doc. Readable ONLY by the subject (uid == auth.uid) and a same-family PARENT;
+ * NOT readable by other members (a child cannot read another member's email).
+ * `familyId` is carried solely so firestore.rules can scope the parent-read
+ * predicate; it is immutable from the client.
+ */
+export interface UserPrivate {
+  email: string; // [PI] adult email (child credential model per ADR-0006 Q3)
+  familyId: string; // immutable from client — for rule scoping only
 }
 
 export interface FamilyEvent {

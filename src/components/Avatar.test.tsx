@@ -61,6 +61,47 @@ describe('Avatar — crown badge is parents-only', () => {
   });
 });
 
+describe('Avatar — parent role is available to assistive tech as TEXT (a11y finding)', () => {
+  // The amber crown badge is aria-hidden, and the whole avatar is decorative
+  // (aria-hidden) — so parent status is conveyed by color/icon ALONE, invisible
+  // to AT (WCAG 1.4.1 / 1.1.1). In a role-conveying context the parent status
+  // must be exposed as text. Contract: passing `showRoleForA11y` renders a
+  // visually-hidden, NON-aria-hidden "Parent" label for parents.
+  it('exposes a "Parent" text label to AT when showRoleForA11y is set', () => {
+    render(<Avatar name="Sarah K" role="parent" showRoleForA11y />);
+    expect(
+      screen.getByText(/parent/i),
+      'parent status must be available to AT as text, not via the crown alone',
+    ).toBeInTheDocument();
+  });
+
+  it('does NOT expose a role label for a member with showRoleForA11y', () => {
+    render(<Avatar name="Maya R" role="member" showRoleForA11y />);
+    expect(screen.queryByText(/parent/i)).not.toBeInTheDocument();
+  });
+
+  it('does NOT render the role text when showRoleForA11y is omitted (decorative use)', () => {
+    render(<Avatar name="Sarah K" role="parent" />);
+    expect(screen.queryByText(/parent/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('AvatarChip — parent role available to AT as text (a11y finding)', () => {
+  it('renders a visually-hidden "Parent" label for a parent chip', () => {
+    render(<AvatarChip name="Sarah Kim" role="parent" onClick={vi.fn()} />);
+    const btn = screen.getByRole('button');
+    expect(
+      btn,
+      'a parent chip must convey parent status to AT as text (accessible name includes Parent)',
+    ).toHaveTextContent(/parent/i);
+  });
+
+  it('does NOT add a parent label for a member chip', () => {
+    render(<AvatarChip name="Maya Rivera" role="member" onClick={vi.fn()} />);
+    expect(screen.getByRole('button')).not.toHaveTextContent(/parent/i);
+  });
+});
+
 describe('AvatarChip — tappable account-switcher trigger', () => {
   it('renders the person first name and is a button', () => {
     render(<AvatarChip name="Sarah Kim" role="parent" onClick={vi.fn()} />);
