@@ -43,14 +43,20 @@ The standing preferences above hold. Project-specific calls:
   `src/features/{feature}/` (its own components, hooks, and Firestore logic) so
   new features can be added without touching existing ones. Shared primitives
   live in `src/components/`; cross-cutting hooks in `src/hooks/`.
-- **Flat, expansion-friendly data model.** Top-level Firestore collections
-  (`users`, `events`, `posts`, `chores`, `transactions`, `invites`, plus the
-  `settings/family` doc). Avoid deep nesting that would force a restructure when
-  collections are added later.
+- **Multi-tenant, expansion-friendly data model.** Family HQ is a multi-tenant
+  SaaS: a `families/{familyId}` collection plus top-level collections (`users`,
+  `events`, `posts`, `chores`, `transactions`, `invites`) where **every
+  document carries a `familyId`**. Avoid deep nesting that would force a
+  restructure when collections are added later. `familyId` and `role` are
+  immutable from the client — enforced in `firestore.rules`.
+- **Tenant isolation is the cardinal rule.** Every read/write/query is scoped to
+  the caller's `familyId`; no path may cross families. This is enforced in
+  security rules, not the client, and is treated as security-critical.
 - **Dynamic family, never hardcoded.** Member lists, chore-assignment
   dropdowns, parent filter tabs, and "The Fam" avatar row all derive from the
-  live Firestore `users` collection (active members only). The demo's four
-  fixed people (Sarah/David/Maya/Ben) are reference only — do not bake them in.
+  live `users` collection for the caller's family (active members only). The
+  demo's four fixed people (Sarah/David/Maya/Ben) are reference only — never
+  baked in.
 - **Every section ships its empty state and its loading state.** A screen is
   not done until "no data yet" reads friendly and the loading path is handled.
 - **Every user action routes through the toast system** — success and error
