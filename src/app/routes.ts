@@ -1,14 +1,11 @@
 /**
- * CONTRACT — route table + guard predicates (Task 7, handoff §Navigation).
+ * Route table + guard predicates (Task 7, handoff §Navigation).
  *
- * Signatures + the static route metadata only; the implementer wires these into
- * the React Router tree. Kept as pure data/functions so the guard + nav-hiding
- * logic is unit-testable without rendering the whole router.
- *
- * Screen ids (handoff): dashboard | calendar | board | chores | add_chore |
- * add_event | compose | account_switcher. add_chore/add_event/compose are
- * MODAL routes that hide the BottomNav. add_chore is parent-only (a member is
- * bounced). family management is parent-only.
+ * Pure data/functions so the guard + nav-hiding logic is unit-testable without
+ * rendering the router. add_chore/add_event/compose are MODAL routes that hide
+ * the BottomNav. add_chore and family management are parent-only (a member is
+ * bounced to the dashboard). UI gating is cosmetic — firestore.rules is the
+ * real authority boundary.
  */
 import type { Role } from '../lib/types';
 
@@ -26,16 +23,55 @@ export type ScreenId =
 export interface RouteMeta {
   id: ScreenId;
   path: string;
-  /** Modal routes hide the BottomNav and show a Back button. */
   isModal: boolean;
-  /** Parent-only routes bounce a member to the dashboard. */
   parentOnly: boolean;
 }
 
-export declare const ROUTES: Record<ScreenId, RouteMeta>;
+export const ROUTES: Record<ScreenId, RouteMeta> = {
+  dashboard: { id: 'dashboard', path: '/', isModal: false, parentOnly: false },
+  calendar: {
+    id: 'calendar',
+    path: '/calendar',
+    isModal: false,
+    parentOnly: false,
+  },
+  board: { id: 'board', path: '/board', isModal: false, parentOnly: false },
+  chores: { id: 'chores', path: '/chores', isModal: false, parentOnly: false },
+  family: { id: 'family', path: '/family', isModal: false, parentOnly: true },
+  add_chore: {
+    id: 'add_chore',
+    path: '/chores/new',
+    isModal: true,
+    parentOnly: true,
+  },
+  add_event: {
+    id: 'add_event',
+    path: '/calendar/new',
+    isModal: true,
+    parentOnly: false,
+  },
+  compose: {
+    id: 'compose',
+    path: '/board/new',
+    isModal: true,
+    parentOnly: false,
+  },
+  account_switcher: {
+    id: 'account_switcher',
+    path: '/switch-account',
+    isModal: true,
+    parentOnly: false,
+  },
+};
 
-/** True when the BottomNav should be HIDDEN for this screen (modal routes). */
-export declare function hidesBottomNav(screen: ScreenId): boolean;
+export function hidesBottomNav(screen: ScreenId): boolean {
+  return ROUTES[screen].isModal;
+}
 
-/** True when a user with `role` may view `screen` (false => bounce). */
-export declare function canAccess(screen: ScreenId, role: Role): boolean;
+export function canAccess(screen: ScreenId, role: Role): boolean {
+  const meta = ROUTES[screen];
+  if (meta.parentOnly) {
+    return role === 'parent';
+  }
+  return true;
+}

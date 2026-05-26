@@ -68,6 +68,13 @@ exclude_args=(
   "--exclude=*.theme.*"
   "--exclude=design-tokens.json"
   "--exclude=tailwind.config.*"
+  # Test files legitimately reference token VALUES in assertions/comments (e.g.
+  # asserting a class maps to a documented hex). They are not shipped UI, so the
+  # raw-literal rule does not apply to them.
+  "--exclude=*.test.ts"
+  "--exclude=*.test.tsx"
+  "--exclude=*.spec.ts"
+  "--exclude=*.spec.tsx"
 )
 
 violations=0

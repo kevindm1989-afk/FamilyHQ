@@ -15,5 +15,5 @@
   ],
   "project": ["src/**/*.{ts,tsx}"],
   "ignore": ["design/**", "src/features/**", "src/components/**", "src/hooks/**", "src/lib/**"],
-  "ignoreDependencies": ["react-router-dom", "@firebase/rules-unit-testing", "firebase-tools"]
+  "ignoreDependencies": ["firebase-tools"]
 }

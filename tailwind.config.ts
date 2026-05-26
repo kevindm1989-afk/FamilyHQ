@@ -29,6 +29,30 @@ const type = tokens.typography;
 const space = tokens.spacing;
 const radius = tokens.radius;
 const shadow = tokens.shadow;
+const components = tokens.components;
+const layout = tokens.layout;
+const motion = tokens.motion;
+
+// Component dimensions, traced straight to tokens so primitives never need a
+// magic-number literal. Keys are semantic (avatar-*, control-*, nav, topbar,
+// fab) and map to design-tokens.json components.*/layout.*.
+const avatar = components.avatar.sizes;
+const sizeScale: Record<string, string> = {
+  'avatar-chip': avatar.chip,
+  'avatar-default': avatar.default,
+  'avatar-switcher': avatar.switcher,
+  'avatar-author': avatar.author,
+  'btn-sm': components.button.sizes.sm.height,
+  'btn-md': components.button.sizes.md.height,
+  'btn-lg': components.button.sizes.lg.height,
+  field: components.textField.rowHeight,
+  badge: components.badge.height,
+  'badge-sm': components.badge.heightSm,
+  topbar: layout.topBarHeight,
+  nav: layout.bottomNavHeight,
+  fab: layout.fab.size,
+  backslot: layout.backSlotWidth,
+};
 
 // spacing keys in the token file are the raw px-step labels (plus _-prefixed
 // meta keys we skip). Build a clean numeric-key scale for Tailwind.
@@ -78,6 +102,7 @@ export default {
           card: light.surface.card,
           line: light.surface.line,
           line2: light.surface.line2,
+          scrim: light.surface.scrim,
         },
         // Text / ink
         ink: {
@@ -149,11 +174,30 @@ export default {
       zIndex: Object.fromEntries(
         Object.entries(tokens.zIndex).map(([k, v]) => [k, String(v)]),
       ) as Record<string, string>,
+      width: sizeScale,
+      height: sizeScale,
       minHeight: {
         tap: tokens.touchTarget.min, // 44px — WCAG 2.5.5 minimum tap target
       },
       minWidth: {
         tap: tokens.touchTarget.min,
+      },
+      maxWidth: {
+        app: layout.maxWidth,
+        frame: layout.frameAbove,
+      },
+      ringColor: {
+        brand: light.brand.indigo,
+      },
+      transitionTimingFunction: {
+        out: motion.easing.out,
+        sheet: motion.easing.sheet,
+      },
+      transitionDuration: {
+        cardPress: motion.duration.cardPress,
+        scrim: motion.duration.scrim,
+        toast: motion.duration.toast,
+        sheet: motion.duration.sheet,
       },
     },
   },

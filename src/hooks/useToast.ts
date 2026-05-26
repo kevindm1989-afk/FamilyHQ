@@ -1,27 +1,76 @@
 /**
- * CONTRACT — toast queue (Task 7, style-guide §Toast).
+ * Toast queue (Task 7, style-guide §Toast).
  *
- * Signatures only; implementer writes the provider + hook bodies. Every user
- * action (success AND error) routes through the toast. A toast auto-dismisses
- * after `TOAST_DURATION_MS` (1.8s, design-tokens components.toast.autoDismiss);
- * the visible toast is announced (role=status / aria-live=polite — the
- * component, not this hook, owns the DOM).
- *
- * Errors passed to `showToast` must already be user-safe (no raw Firebase/PII).
+ * Every user action (success AND error) routes through the toast. A toast
+ * auto-dismisses after `TOAST_DURATION_MS` (1.8s). Errors passed to `showToast`
+ * must already be user-safe (no raw Firebase/PII) — mapping happens at the
+ * feature-service boundary, not here.
  */
-import type { ReactElement, ReactNode } from 'react';
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 
 export const TOAST_DURATION_MS = 1800;
 
 export interface ToastApi {
-  /** The currently-visible toast message, or null when none. */
   message: string | null;
-  /** Queue a toast; it becomes visible and auto-dismisses after the duration. */
   showToast: (message: string) => void;
-  /** Dismiss the current toast immediately. */
   dismiss: () => void;
 }
 
-export declare function ToastProvider(props: { children: ReactNode }): ReactElement;
+const ToastContext = createContext<ToastApi | undefined>(undefined);
 
-export declare function useToast(): ToastApi;
+export function ToastProvider(props: { children: ReactNode }): ReactElement {
+  const [message, setMessage] = useState<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  const dismiss = useCallback(() => {
+    clearTimer();
+    setMessage(null);
+  }, [clearTimer]);
+
+  const showToast = useCallback(
+    (next: string) => {
+      clearTimer();
+      setMessage(next);
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        setMessage(null);
+      }, TOAST_DURATION_MS);
+    },
+    [clearTimer],
+  );
+
+  useEffect(() => clearTimer, [clearTimer]);
+
+  const value = useMemo<ToastApi>(
+    () => ({ message, showToast, dismiss }),
+    [message, showToast, dismiss],
+  );
+
+  return createElement(ToastContext.Provider, { value }, props.children);
+}
+
+export function useToast(): ToastApi {
+  const ctx = useContext(ToastContext);
+  if (ctx === undefined) {
+    throw new Error('useToast must be used within a ToastProvider');
+  }
+  return ctx;
+}
