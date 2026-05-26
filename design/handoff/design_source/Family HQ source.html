@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="color-scheme" content="light only" />
+<meta name="supported-color-schemes" content="light" />
+<meta name="theme-color" content="#F9FAFB" />
+<meta name="darkreader-lock" />
+<title>Family HQ — Family PWA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: light only; }
+  html { color-scheme: light only !important; }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background: #F9FAFB !important;
+    color: #0F172A !important;
+    min-height: 100vh;
+    width: 100%;
+    /* defeat Samsung Internet "Dark mode for sites" */
+    forced-color-adjust: none;
+    -webkit-forced-color-adjust: none;
+  }
+  @media (prefers-color-scheme: dark) {
+    html, body { background: #F9FAFB !important; color: #0F172A !important; }
+    html { filter: none !important; }
+  }
+  #stage {
+    min-height: 100vh;
+    min-height: 100dvh;
+    width: 100%;
+    background: #F9FAFB;
+    display: flex; align-items: stretch; justify-content: center;
+  }
+  @media (min-width: 700px) {
+    body { background: radial-gradient(120% 80% at 50% 0%, #F5F4FA 0%, #E7E9F0 80%); overflow: hidden; height: 100vh; }
+    #stage { align-items: center; background: transparent; }
+  }
+  .hb-scroll::-webkit-scrollbar { width: 0; height: 0; }
+  .hb-scroll { scrollbar-width: none; }
+  #fallback {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 8px;
+    background: #F9FAFB; color: #3730A3;
+    font-family: 'Inter', system-ui, sans-serif;
+    z-index: 1;
+  }
+  #fallback .logo {
+    width: 64px; height: 64px; border-radius: 18px; background: #fff;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 8px 24px rgba(55,48,163,0.18);
+    margin-bottom: 12px;
+  }
+  #fallback h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; margin: 0; color: #3730A3; }
+  #fallback p { font-size: 13px; color: #64748B; font-weight: 500; margin: 0; }
+  #err {
+    position: fixed; left: 12px; right: 12px; bottom: 12px;
+    background: #FEE2E2; color: #991B1B; padding: 12px 14px; border-radius: 12px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+    white-space: pre-wrap; max-height: 50vh; overflow: auto;
+    z-index: 9999; display: none;
+  }
+</style>
+</head>
+<body>
+  <div id="fallback">
+    <div class="logo">
+      <svg width="34" height="34" viewBox="0 0 32 32" fill="none">
+        <path d="M4 14L16 4l12 10v13a2 2 0 0 1-2 2h-6v-8h-8v8H6a2 2 0 0 1-2-2V14z" fill="#3730A3"/>
+        <path d="M4 14L16 4l12 10" stroke="#F59E0B" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+    </div>
+    <h1>Family HQ</h1>
+    <p>Loading your family…</p>
+  </div>
+  <div id="stage"></div>
+  <pre id="err"></pre>
+
+  <template id="__bundler_thumbnail" data-bg-color="#3730A3">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+      <rect width="100" height="100" fill="#3730A3"/>
+      <path d="M22 52L50 28l28 24v22a4 4 0 0 1-4 4H58V60H42v18H26a4 4 0 0 1-4-4V52z" fill="#fff"/>
+      <path d="M22 52L50 28l28 24" stroke="#F59E0B" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+  </template>
+
+  <script>
+    window.__hbErr = (msg) => {
+      const el = document.getElementById('err');
+      if (el) { el.style.display = 'block'; el.textContent += msg + '\n\n'; }
+    };
+    window.addEventListener('error', e => __hbErr(String(e.message || e.error)));
+    window.addEventListener('unhandledrejection', e => __hbErr(String(e.reason)));
+  </script>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="components.jsx"></script>
+  <script type="text/babel" src="screens.jsx"></script>
+  <script type="text/babel" src="app.jsx"></script>
+  <script type="text/babel" src="mount.jsx"></script>
+</body>
+</html>
