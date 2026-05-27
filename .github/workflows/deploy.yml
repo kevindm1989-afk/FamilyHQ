@@ -1,8 +1,23 @@
 name: Deploy
 
+# MANUAL-ONLY until a real deployment target is configured.
+#
+# This is still the Agent OS template stub: the deploy steps are placeholder
+# `echo`s and the jobs do NOT set up Node / run `npm ci` / install the security
+# tools, so they cannot actually build, verify, or deploy yet. Auto-running on
+# push to `main` only produced failing runs.
+#
+# Before re-enabling `push: [main]`, the following human-gated decisions and
+# wiring must be in place (see .context/constraints.md "Human gates" and the
+# system-design open questions):
+#   - Firebase project + REGION chosen (permanent, cross-border decision)
+#   - real deploy commands (Firebase Hosting + `firebase deploy --only
+#     firestore:rules,hosting`) and CI secrets (service account)
+#   - the staging/production jobs given `setup-node` + `npm ci` +
+#     gitleaks/semgrep before they run `scripts/verify.sh`
+#   - production deploys remain gated behind a GitHub Environment with required
+#     reviewers (the human gate)
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       environment:
