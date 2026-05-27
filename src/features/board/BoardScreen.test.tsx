@@ -288,3 +288,112 @@ describe('BoardScreen — compose entry point', () => {
     expect(within(dialog).getByText(/new post/i)).toBeInTheDocument();
   });
 });
+
+describe('BoardScreen — timestamp is a machine-readable <time> (Finding G, a11y moderate)', () => {
+  it('renders each post timestamp inside a <time> element with an absolute dateTime', () => {
+    renderBoard({
+      feed: {
+        posts: [mkPost({ id: 'p1', createdAt: 1716000000000 })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    const post = screen.getByRole('article');
+    const timeEl = post.querySelector('time');
+    expect(timeEl, 'the timestamp must be a <time> element').not.toBeNull();
+    const dt = timeEl?.getAttribute('datetime') ?? '';
+    // An ISO-8601 absolute instant, not the relative "Nm ago" text.
+    expect(dt, 'the <time> must carry an absolute ISO datetime').toMatch(
+      /^\d{4}-\d{2}-\d{2}T/,
+    );
+    expect(new Date(dt).getTime()).toBe(1716000000000);
+  });
+
+  it('exposes the absolute date to AT (title or aria-label), not relative text alone', () => {
+    renderBoard({
+      feed: {
+        posts: [mkPost({ id: 'p1', createdAt: 1716000000000 })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    const timeEl = screen.getByRole('article').querySelector('time');
+    const absolute =
+      timeEl?.getAttribute('title') ?? timeEl?.getAttribute('aria-label') ?? '';
+    expect(
+      absolute.length,
+      'the <time> must surface an absolute date via title/aria-label for AT',
+    ).toBeGreaterThan(0);
+    expect(absolute).not.toMatch(/\bago\b/);
+  });
+});
+
+describe('BoardScreen — each post article has an accessible name (Finding G, a11y moderate)', () => {
+  it('the post <article> is labelled by the author name (aria-labelledby)', () => {
+    renderBoard({
+      feed: {
+        posts: [mkPost({ id: 'p1', authorId: 'uid-member-a', authorName: 'Maya Rivera' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    const article = screen.getByRole('article');
+    expect(
+      article,
+      'each post article must have an accessible name referencing the author',
+    ).toHaveAccessibleName(/maya rivera/i);
+  });
+});
+
+describe('BoardScreen — the feed list has an accessible name (Finding G, a11y moderate)', () => {
+  it('the posts list region exposes an accessible name', () => {
+    renderBoard({
+      feed: {
+        posts: [mkPost({ id: 'p1' }), mkPost({ id: 'p2' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    const list = screen.getByRole('list');
+    expect(
+      list,
+      'the feed list must have an accessible name (e.g. "Board posts")',
+    ).toHaveAccessibleName(/post|board|feed/i);
+  });
+});
+
+describe('BoardScreen — single ToastViewport when compose is open (Finding F, a11y serious)', () => {
+  it('does not create a SECOND toast live region when the compose sheet is open', async () => {
+    // BoardScreen renders a ToastViewport AND opens ComposePost; if ComposePost
+    // also renders its own ToastViewport, an action toast is announced by TWO
+    // role="status" regions. The single instance must live at the shell only.
+    const onDeletePost = vi.fn().mockResolvedValue(undefined);
+    renderBoard({
+      viewer: { uid: 'uid-member-a', name: 'Maya Rivera', role: 'member' },
+      onDeletePost,
+      feed: {
+        posts: [mkPost({ id: 'mine', authorId: 'uid-member-a' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    // Open the compose sheet so both potential viewports are mounted.
+    fireEvent.click(screen.getByRole('button', { name: /new post|compose|add post/i }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // Fire a toast (delete) and assert it is announced exactly once.
+    fireEvent.click(screen.getByRole('button', { name: /delete/i }));
+    await waitFor(() =>
+      expect(screen.getAllByText(POST_DELETE_SUCCESS).length).toBeGreaterThan(0),
+    );
+    expect(
+      screen.getAllByText(POST_DELETE_SUCCESS).length,
+      'the toast must appear once — exactly one ToastViewport across the shell + open compose sheet',
+    ).toBe(1);
+  });
+});

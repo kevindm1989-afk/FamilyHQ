@@ -82,7 +82,7 @@ function Harness({ familyId }: { familyId: string | null }) {
       <span data-testid="count">{posts.length}</span>
       <ul>
         {posts.map((p) => (
-          <li key={p.id} data-testid="post-id">
+          <li key={p.id} data-testid="post-id" data-created-at={String(p.createdAt)}>
             {p.id}
           </li>
         ))}
@@ -92,7 +92,22 @@ function Harness({ familyId }: { familyId: string | null }) {
   );
 }
 
-function fakeSnapshot(docs: Array<{ id: string; familyId: string; createdAt: number }>) {
+/**
+ * A snapshot whose `createdAt` is TIMESTAMP-SHAPED — an object with a
+ * `.toMillis()` method (or `null` for a pending serverTimestamp write) — exactly
+ * as the Firestore SDK returns at read time. The previous fixture fed a plain
+ * `number`, which masked the "Invalid Date" bug (the hook never converted, so a
+ * real Timestamp reached the UI and `new Date(timestampObject)` produced
+ * Invalid Date). createdAtMs is the ms the converter MUST expose; pass `null` to
+ * model a not-yet-resolved serverTimestamp.
+ */
+type TimestampLike = { toMillis: () => number } | null;
+function tsOf(ms: number | null): TimestampLike {
+  return ms === null ? null : { toMillis: () => ms };
+}
+function fakeSnapshot(
+  docs: Array<{ id: string; familyId: string; createdAtMs: number | null }>,
+) {
   return {
     docs: docs.map((d) => ({
       id: d.id,
@@ -101,7 +116,7 @@ function fakeSnapshot(docs: Array<{ id: string; familyId: string; createdAt: num
         authorId: 'a',
         authorName: 'A',
         familyId: d.familyId,
-        createdAt: d.createdAt,
+        createdAt: tsOf(d.createdAtMs),
       }),
     })),
   };
@@ -152,8 +167,8 @@ describe('useFamilyPosts — state transitions (happy / empty / error)', () => {
     act(() => {
       cap.snapshotCb!(
         fakeSnapshot([
-          { id: 'p2', familyId: 'fam-A', createdAt: 2000 },
-          { id: 'p1', familyId: 'fam-A', createdAt: 1000 },
+          { id: 'p2', familyId: 'fam-A', createdAtMs: 2000 },
+          { id: 'p1', familyId: 'fam-A', createdAtMs: 1000 },
         ]),
       );
     });
@@ -196,5 +211,130 @@ describe('useFamilyPosts — pull-to-refresh contract', () => {
       screen.getByText('refresh').click();
     });
     expect(cap.getDocsFromServerCalls).toBeGreaterThan(0);
+  });
+});
+
+describe('useFamilyPosts — Timestamp conversion (Finding B, HIGH: masked "Invalid Date")', () => {
+  it('converts a Firestore Timestamp-shaped createdAt to NUMERIC ms before exposing it', async () => {
+    // The SDK returns a Timestamp object (with .toMillis()), NOT a number. The
+    // hook/converter MUST convert it; otherwise a Timestamp object reaches the
+    // UI and relativeTime(new Date(obj)) yields "Invalid Date". This is the
+    // assertion the old numeric fixture could not make.
+    render(<Harness familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+    act(() => {
+      cap.snapshotCb!(
+        fakeSnapshot([{ id: 'p1', familyId: 'fam-A', createdAtMs: 1716000000000 }]),
+      );
+    });
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('1'));
+    const created = screen.getByTestId('post-id').getAttribute('data-created-at');
+    expect(
+      created,
+      'createdAt must be the numeric ms (Timestamp.toMillis()), not a Timestamp object or [object Object]',
+    ).toBe('1716000000000');
+    expect(Number.isFinite(Number(created))).toBe(true);
+  });
+
+  it('a PENDING serverTimestamp (createdAt null) yields a sane numeric createdAt (~now), never NaN/null/epoch', async () => {
+    // Optimistic local write: the snapshot fires with createdAt === null before
+    // the server resolves it. The hook must surface a usable numeric ms (treat
+    // as ~now), so relativeTime renders "just now" rather than NaN / epoch / a
+    // crash.
+    const before = Date.now();
+    render(<Harness familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+    act(() => {
+      cap.snapshotCb!(fakeSnapshot([{ id: 'pending', familyId: 'fam-A', createdAtMs: null }]));
+    });
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('1'));
+    const raw = screen.getByTestId('post-id').getAttribute('data-created-at');
+    const value = Number(raw);
+    expect(raw, 'pending createdAt must not surface as the string "null"').not.toBe('null');
+    expect(Number.isFinite(value), 'pending createdAt must be a finite number, not NaN').toBe(true);
+    expect(value, 'pending createdAt must be ~now, not the epoch (0)').toBeGreaterThanOrEqual(
+      before,
+    );
+    expect(value).toBeLessThanOrEqual(Date.now());
+  });
+});
+
+describe('useFamilyPosts — family switch clears posts (Finding C, HIGH: cross-tenant display leak)', () => {
+  it('resets posts to empty on a familyId CHANGE (fam-A -> fam-B), not only on null', async () => {
+    const { rerender } = render(<Harness familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+    act(() => {
+      cap.snapshotCb!(
+        fakeSnapshot([{ id: 'a-only-post', familyId: 'fam-A', createdAtMs: 1000 }]),
+      );
+    });
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('1'));
+
+    // Switch family. Before fam-B's snapshot arrives the fam-A posts MUST be
+    // gone — a stale fam-A post must never be visible while signed into fam-B.
+    rerender(<Harness familyId="fam-B" />);
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('0'));
+    expect(screen.queryByText('a-only-post')).not.toBeInTheDocument();
+  });
+});
+
+describe('useFamilyPosts — refresh() concurrency + import failure (Finding D)', () => {
+  it('the LATEST refresh() wins when an earlier call resolves last (request-token guard)', async () => {
+    // Two overlapping refreshes; the FIRST resolves LAST. Without a request
+    // token, the stale first response clobbers the newer second one. We control
+    // resolution order via deferred promises returned by getDocsFromServer.
+    const deferreds: Array<{
+      resolve: (v: { docs: unknown[] }) => void;
+    }> = [];
+    getDocsFromServerMock.mockImplementation(() => {
+      cap.getDocsFromServerCalls += 1;
+      return new Promise<{ docs: unknown[] }>((resolve) => {
+        deferreds.push({ resolve });
+      });
+    });
+
+    render(<Harness familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+
+    act(() => {
+      screen.getByText('refresh').click(); // request #1
+      screen.getByText('refresh').click(); // request #2 (latest)
+    });
+    await waitFor(() => expect(deferreds.length).toBe(2));
+
+    // Resolve the SECOND (latest) first, then the FIRST (stale) last.
+    await act(async () => {
+      deferreds[1].resolve(
+        fakeSnapshot([{ id: 'latest-2', familyId: 'fam-A', createdAtMs: 2000 }]),
+      );
+    });
+    await act(async () => {
+      deferreds[0].resolve(
+        fakeSnapshot([{ id: 'stale-1', familyId: 'fam-A', createdAtMs: 1000 }]),
+      );
+    });
+
+    await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('1'));
+    expect(
+      screen.getByTestId('post-id').textContent,
+      'the latest refresh result must win; a late-resolving earlier call must not clobber it',
+    ).toBe('latest-2');
+  });
+
+  it('sets error + stops loading when the subscribe path REJECTS/throws (no permanent skeleton)', async () => {
+    // Model the lazy config import / query construction failing inside the
+    // subscribe effect. The hook must catch it, surface a user-safe error, and
+    // stop loading — never leave a permanent skeleton (loading stuck true).
+    // We force the failure deterministically by making the query builder throw
+    // for this one test (the effect must not let that escape unhandled).
+    collectionMock.mockImplementationOnce(() => {
+      throw new Error('boom: config/query path failed inside subscribe effect');
+    });
+    render(<Harness familyId="fam-A" />);
+    await waitFor(() => expect(screen.getByTestId('loading').textContent).toBe('false'));
+    expect(
+      (screen.getByTestId('error').textContent ?? '').length,
+      'a failed subscribe must set a user-safe error, not hang on loading',
+    ).toBeGreaterThan(0);
   });
 });

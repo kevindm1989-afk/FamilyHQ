@@ -132,6 +132,85 @@ describe('posts create — signed-in + active + incomingSameFamily + authored-by
   });
 });
 
+describe('posts create — authorId + authorName bound to the caller, exact shape (Finding A, SECURITY-CRITICAL)', () => {
+  // The shipped create rule today is only `isActive() && incomingSameFamily()`,
+  // so it does NOT bind authorId/authorName to the caller and does NOT lock the
+  // doc shape. These DENY tests PIN that tightening (bind identity + shape) and
+  // FAIL against the over-permissive rule. helpers.ts seeds members/parents with
+  // real `name` fields, which the rule must compare authorName against.
+
+  it('a member creating a post with a FORGED authorId (another member’s uid) is DENIED', async () => {
+    const db = env.authenticatedContext(UID.memberA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(doc(db, 'posts', 'forged-authorid-member'), {
+        content: 'pretending to be member two',
+        authorId: UID.member2A, // not the caller — impersonation
+        authorName: 'Member Two A',
+        familyId: FAMILY_A,
+        createdAt: Date.now(),
+      }),
+    );
+  });
+
+  it('a member creating a post with a FORGED authorId (a parent’s uid) is DENIED', async () => {
+    const db = env.authenticatedContext(UID.memberA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(doc(db, 'posts', 'forged-authorid-parent'), {
+        content: 'pretending to be the parent',
+        authorId: UID.parentA, // not the caller — privilege impersonation
+        authorName: 'Parent A',
+        familyId: FAMILY_A,
+        createdAt: Date.now(),
+      }),
+    );
+  });
+
+  it('a member creating a post whose authorName != their own users/{uid}.name is DENIED', async () => {
+    const db = env.authenticatedContext(UID.memberA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(doc(db, 'posts', 'forged-authorname'), {
+        content: 'spoofed display name',
+        authorId: UID.memberA, // correct uid
+        authorName: 'Totally Not Member A', // mismatched name — spoof
+        familyId: FAMILY_A,
+        createdAt: Date.now(),
+      }),
+    );
+  });
+
+  it('a create carrying an EXTRA/unexpected key (beyond the post shape) is DENIED', async () => {
+    const db = env.authenticatedContext(UID.memberA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(doc(db, 'posts', 'smuggled-field'), {
+        content: 'smuggling a field',
+        authorId: UID.memberA,
+        authorName: 'Member A',
+        familyId: FAMILY_A,
+        createdAt: Date.now(),
+        isPinned: true, // not part of {content,authorId,authorName,familyId,createdAt}
+      }),
+    );
+  });
+
+  it('a well-formed self-authored post in the caller’s own family with their real name SUCCEEDS (positive control, not weakened)', async () => {
+    const db = env.authenticatedContext(UID.memberA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertSucceeds(
+      setDoc(doc(db, 'posts', 'well-formed-by-member-a'), {
+        content: 'a real family post',
+        authorId: UID.memberA,
+        authorName: 'Member A', // matches seedBaseline users/{memberA}.name
+        familyId: FAMILY_A,
+        createdAt: Date.now(),
+      }),
+    );
+  });
+});
+
 describe('posts read — own-family only (existing guarantee, P1/P2/P7)', () => {
   it('an active member CAN get an own-family post', async () => {
     const db = env.authenticatedContext(UID.memberA).firestore();
