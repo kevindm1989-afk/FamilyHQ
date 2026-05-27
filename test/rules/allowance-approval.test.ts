@@ -205,9 +205,18 @@ describe('F4/M27 idempotency: double-approve credits EXACTLY once (the status gu
   it('a SECOND approval of an already-approved chore ABORTS (status != complete)', async () => {
     await memberCompletesChoreA();
     await runApproval(UID.parentA, CHORE_A, 'txn-approve-1'); // first: credits once
-    // Second approve: the chore is now `approved`, so the in-transaction guard
-    // throws and the whole transaction aborts — assertFails captures the abort.
-    await assertFails(runApproval(UID.parentA, CHORE_A, 'txn-approve-2'));
+    // Second approve: the chore is now `approved`, so the in-transaction status
+    // guard THROWS an app-level Error('chore-not-complete') and the whole
+    // transaction aborts. This is an APP-LEVEL abort (the integrity guarantee),
+    // NOT a rules PERMISSION_DENIED — assertFails only accepts the latter, so we
+    // assert the thrown abort directly and then confirm NO side effects landed.
+    await expect(runApproval(UID.parentA, CHORE_A, 'txn-approve-2')).rejects.toThrow(
+      'chore-not-complete',
+    );
+    expect(await readBalance(UID.memberA), 'a re-approve must not double-credit').toBe(
+      CHORE_DOLLAR_VALUE,
+    );
+    expect(await countTxnsForChore(CHORE_A), 'the second approve writes no ledger doc').toBe(1);
   });
 
   it('after a double-approve the balance reflects EXACTLY one credit (3, never 6)', async () => {
@@ -234,8 +243,12 @@ describe('F4/M27 idempotency: double-approve credits EXACTLY once (the status gu
 
 describe('M27 abort: approving a chore that is NOT complete is a no-op (no credit, no ledger)', () => {
   it('approving a PENDING chore aborts (never completed)', async () => {
-    // CHORE_A is seeded pending; skip the member-complete step.
-    await assertFails(runApproval(UID.parentA, CHORE_A, 'txn-approve-pending'));
+    // CHORE_A is seeded pending; skip the member-complete step. The status guard
+    // throws an APP-LEVEL Error (not a rules PERMISSION_DENIED), so we assert the
+    // abort directly and confirm no balance credit and no ledger doc landed.
+    await expect(runApproval(UID.parentA, CHORE_A, 'txn-approve-pending')).rejects.toThrow(
+      'chore-not-complete',
+    );
     expect(await readBalance(UID.memberA), 'no credit for a pending chore').toBe(0);
     expect(await countTxnsForChore(CHORE_A), 'no ledger for a pending chore').toBe(0);
   });
@@ -243,8 +256,14 @@ describe('M27 abort: approving a chore that is NOT complete is a no-op (no credi
   it('approving an already-APPROVED chore aborts (idempotent re-approve)', async () => {
     await memberCompletesChoreA();
     await runApproval(UID.parentA, CHORE_A, 'txn-approve-1');
-    await assertFails(runApproval(UID.parentA, CHORE_A, 'txn-approve-again'));
-    expect(await readBalance(UID.memberA)).toBe(CHORE_DOLLAR_VALUE);
+    // The chore is now `approved`; the status guard throws an app-level abort.
+    await expect(runApproval(UID.parentA, CHORE_A, 'txn-approve-again')).rejects.toThrow(
+      'chore-not-complete',
+    );
+    expect(await readBalance(UID.memberA), 'no second credit on a re-approve').toBe(
+      CHORE_DOLLAR_VALUE,
+    );
+    expect(await countTxnsForChore(CHORE_A), 'no second ledger doc on a re-approve').toBe(1);
   });
 
   it('approving a REJECTED chore aborts (no credit on a sent-back chore)', async () => {
@@ -256,9 +275,12 @@ describe('M27 abort: approving a chore that is NOT complete is a no-op (no credi
       status: 'rejected',
       rejectionReason: 'Try again',
     });
-    await assertFails(runApproval(UID.parentA, CHORE_A, 'txn-approve-rejected'));
+    // status is now `rejected` != `complete`; the guard throws an app-level abort.
+    await expect(runApproval(UID.parentA, CHORE_A, 'txn-approve-rejected')).rejects.toThrow(
+      'chore-not-complete',
+    );
     expect(await readBalance(UID.memberA), 'a rejected chore is never credited').toBe(0);
-    expect(await countTxnsForChore(CHORE_A)).toBe(0);
+    expect(await countTxnsForChore(CHORE_A), 'no ledger doc for a rejected chore').toBe(0);
   });
 });
 

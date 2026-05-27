@@ -1,6 +1,6 @@
 /**
- * Chores PARENT service — CONTRACT STUB (Phase 3, Task 11; ADR-0004; handoff
- * #05b ChoresParentScreen + #06 AddChoreScreen; threat-model M27/M28/F4).
+ * Chores PARENT service (Phase 3, Task 11; ADR-0004; handoff
+ * 05b ChoresParentScreen + 06 AddChoreScreen; threat-model M27/M28/F4).
  *
  * SIGNATURES ONLY. The test-writer authors this file to PIN the shapes the
  * implementer must fulfill (the unit tests import these). The implementer
@@ -23,11 +23,24 @@
  *    createdBy==uid). The rule-level shape lock is pinned in
  *    test/rules/chores-create-hardening.test.ts.
  */
-import type { Firestore } from 'firebase/firestore';
+import {
+  addDoc,
+  collection,
+  doc,
+  increment,
+  runTransaction,
+  serverTimestamp,
+  updateDoc,
+  type Firestore,
+} from 'firebase/firestore';
 import type { RecurrenceFrequency, Role, UserWithId } from '../../lib/types';
-import type { ChoreWithId } from './choresMemberService';
+import { ChoreActionError, type ChoreWithId } from './choresMemberService';
 
 export { ChoreActionError, type ChoreWithId } from './choresMemberService';
+
+const CHORES_COLLECTION = 'chores';
+const USERS_COLLECTION = 'users';
+const TRANSACTIONS_COLLECTION = 'transactions';
 
 /** User-safe copy the parent flows surface; asserted by the tests. */
 export const CHORE_APPROVE_SUCCESS = 'Approved — allowance updated.';
@@ -44,8 +57,45 @@ export const CHORE_PARENT_GENERIC_ERROR = 'Something went wrong. Please try agai
  * 'complete' and aborts (no double credit). Maps any failure to the generic
  * PII-free error (never the raw Firebase text nor the chore id).
  */
-export function approveChore(_deps: { db: Firestore }, _choreId: string): Promise<void> {
-  throw new Error('not implemented');
+export async function approveChore(deps: { db: Firestore }, choreId: string): Promise<void> {
+  try {
+    await runTransaction(deps.db, async (tx) => {
+      const choreRef = doc(deps.db, CHORES_COLLECTION, choreId);
+      const snap = await tx.get(choreRef);
+      const chore = snap.exists()
+        ? (snap.data() as {
+            status: string;
+            assignedTo: string;
+            dollarValue: number;
+            familyId: string;
+            title: string;
+          })
+        : undefined;
+      // Idempotency / integrity guard (ADR-0004 step 1): abort unless the
+      // re-read chore is still complete. A second/concurrent approve sees
+      // status != 'complete' (already approved) and aborts, so the balance is
+      // credited EXACTLY once and exactly one ledger doc is ever written (F4).
+      if (!chore || chore.status !== 'complete') {
+        throw new ChoreActionError();
+      }
+      tx.update(choreRef, { status: 'approved' });
+      tx.update(doc(deps.db, USERS_COLLECTION, chore.assignedTo), {
+        allowanceBalance: increment(chore.dollarValue),
+      });
+      tx.set(doc(collection(deps.db, TRANSACTIONS_COLLECTION)), {
+        uid: chore.assignedTo,
+        choreId,
+        choreTitle: chore.title,
+        amount: chore.dollarValue,
+        type: 'earning',
+        familyId: chore.familyId,
+        createdAt: serverTimestamp(),
+      });
+    });
+  } catch {
+    // Never surface a raw Firebase code / PII (or the chore id) to the caller.
+    throw new ChoreActionError(CHORE_PARENT_GENERIC_ERROR);
+  }
 }
 
 /**
@@ -54,12 +104,24 @@ export function approveChore(_deps: { db: Firestore }, _choreId: string): Promis
  * only reason is REJECTED (throws ChoreActionError) BEFORE any write. Maps any
  * failure to the generic PII-free error.
  */
-export function rejectChore(
-  _deps: { db: Firestore },
-  _choreId: string,
-  _reason: string,
+export async function rejectChore(
+  deps: { db: Firestore },
+  choreId: string,
+  reason: string,
 ): Promise<void> {
-  throw new Error('not implemented');
+  // Validate BEFORE any write: a blank/whitespace-only reason is rejected.
+  const trimmed = reason.trim();
+  if (trimmed.length === 0) {
+    throw new ChoreActionError(CHORE_PARENT_GENERIC_ERROR);
+  }
+  try {
+    await updateDoc(doc(deps.db, CHORES_COLLECTION, choreId), {
+      status: 'rejected',
+      rejectionReason: trimmed,
+    });
+  } catch {
+    throw new ChoreActionError(CHORE_PARENT_GENERIC_ERROR);
+  }
 }
 
 /**
@@ -85,24 +147,47 @@ export interface CreateChoreInput {
  * empty/whitespace title BEFORE any write. Maps any failure to the generic
  * PII-free error.
  */
-export function addChore(_deps: { db: Firestore }, _input: CreateChoreInput): Promise<void> {
-  throw new Error('not implemented');
+export async function addChore(deps: { db: Firestore }, input: CreateChoreInput): Promise<void> {
+  const title = input.title.trim();
+  // Validate BEFORE any write: a blank/whitespace-only title is rejected.
+  if (title.length === 0) {
+    throw new ChoreActionError(CHORE_PARENT_GENERIC_ERROR);
+  }
+  try {
+    // The EXACT hardened, shape-locked create body: status fixed to 'pending'
+    // and createdBy bound to the author. No rejectionReason on a fresh create.
+    await addDoc(collection(deps.db, CHORES_COLLECTION), {
+      title,
+      assignedTo: input.assignedTo,
+      dueDate: input.dueDate,
+      pointValue: input.pointValue,
+      dollarValue: input.dollarValue,
+      status: 'pending',
+      familyId: input.familyId,
+      createdBy: input.createdBy,
+      createdAt: serverTimestamp(),
+      isRecurring: input.isRecurring,
+      recurrenceFrequency: input.recurrenceFrequency,
+    });
+  } catch {
+    throw new ChoreActionError(CHORE_PARENT_GENERIC_ERROR);
+  }
 }
 
 /**
  * PURE SELECTOR — the count of chores awaiting approval (status=='complete').
  * Drives the nav/approval-queue badge. No side effects, no clock.
  */
-export function pendingApprovalCount(_chores: ChoreWithId[]): number {
-  throw new Error('not implemented');
+export function pendingApprovalCount(chores: ChoreWithId[]): number {
+  return chores.filter((c) => c.status === 'complete').length;
 }
 
 /**
  * PURE SELECTOR — chores awaiting approval (status=='complete'), for the
  * approvals queue list.
  */
-export function approvalQueue(_chores: ChoreWithId[]): ChoreWithId[] {
-  throw new Error('not implemented');
+export function approvalQueue(chores: ChoreWithId[]): ChoreWithId[] {
+  return chores.filter((c) => c.status === 'complete');
 }
 
 /**
@@ -118,16 +203,20 @@ export interface MemberTab {
   label: string;
 }
 
-export function memberFilterTabs(_members: UserWithId[]): MemberTab[] {
-  throw new Error('not implemented');
+export function memberFilterTabs(members: UserWithId[]): MemberTab[] {
+  return [
+    { id: ALL_MEMBERS_TAB_ID, label: 'All' },
+    ...members.map((m) => ({ id: m.id, label: m.name })),
+  ];
 }
 
 /**
  * PURE SELECTOR — filter a chore list to a selected tab. The "All" sentinel
  * returns every chore; any other id returns only chores assignedTo that uid.
  */
-export function choresForTab(_chores: ChoreWithId[], _tabId: string): ChoreWithId[] {
-  throw new Error('not implemented');
+export function choresForTab(chores: ChoreWithId[], tabId: string): ChoreWithId[] {
+  if (tabId === ALL_MEMBERS_TAB_ID) return chores;
+  return chores.filter((c) => c.assignedTo === tabId);
 }
 
 /**
@@ -135,6 +224,6 @@ export function choresForTab(_chores: ChoreWithId[], _tabId: string): ChoreWithI
  * only a PARENT may create/approve/reject chores. Cosmetic affordance — the
  * server rule is authoritative.
  */
-export function canManageChores(_viewer: { role: Role }): boolean {
-  throw new Error('not implemented');
+export function canManageChores(viewer: { role: Role }): boolean {
+  return viewer.role === 'parent';
 }

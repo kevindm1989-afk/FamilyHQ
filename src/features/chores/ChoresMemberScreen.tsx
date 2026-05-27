@@ -136,7 +136,12 @@ export function ChoresMemberScreen(props: ChoresMemberScreenProps): ReactElement
     setSubmittingId(choreId);
     void onMarkComplete(choreId)
       .then(() => {
-        showToast(CHORE_COMPLETE_SUCCESS);
+        // Defer the success toast to a macrotask so the steady-state UI (the
+        // chore moving into the "Waiting for approval" section) settles first.
+        // The toast copy itself contains "waiting for approval", so announcing
+        // it synchronously would briefly duplicate that phrase with the section
+        // heading; the queued announcement still fires for assistive tech.
+        setTimeout(() => showToast(CHORE_COMPLETE_SUCCESS), 0);
         pendingFocusRef.current = true;
       })
       .catch(() => showToast(CHORE_GENERIC_ERROR))
@@ -207,7 +212,15 @@ export function ChoresMemberScreen(props: ChoresMemberScreenProps): ReactElement
               headingRef={waitingHeadingRef}
             />
             <ChoreSection title="Recently approved" chores={approved} strikeThrough />
-            <ChoreSection title="Needs another try" chores={rejected} />
+            {/* Rejected chores get their OWN section with a "Try again" redo
+                affordance (rejected -> complete; the rule now permits it). It
+                reuses the SAME mark-complete action as the pending bucket. */}
+            <ChoreSection
+              title="Needs another try"
+              chores={rejected}
+              onTryAgain={handleMarkComplete}
+              submittingId={submittingId}
+            />
           </>
         )}
       </section>
@@ -226,12 +239,22 @@ interface ChoreSectionProps {
   faded?: boolean | undefined;
   strikeThrough?: boolean | undefined;
   onMarkComplete?: ((choreId: string) => void) | undefined;
+  onTryAgain?: ((choreId: string) => void) | undefined;
   submittingId?: string | null | undefined;
   headingRef?: RefObject<HTMLHeadingElement> | undefined;
 }
 
 function ChoreSection(props: ChoreSectionProps): ReactElement | null {
-  const { title, chores, faded, strikeThrough, onMarkComplete, submittingId, headingRef } = props;
+  const {
+    title,
+    chores,
+    faded,
+    strikeThrough,
+    onMarkComplete,
+    onTryAgain,
+    submittingId,
+    headingRef,
+  } = props;
   if (chores.length === 0) return null;
   return (
     <div className="flex flex-col gap-12">
@@ -252,6 +275,7 @@ function ChoreSection(props: ChoreSectionProps): ReactElement | null {
               faded={faded}
               strikeThrough={strikeThrough}
               onMarkComplete={onMarkComplete}
+              onTryAgain={onTryAgain}
               submitting={submittingId === chore.id}
             />
           </li>
@@ -266,11 +290,12 @@ interface ChoreRowProps {
   faded?: boolean | undefined;
   strikeThrough?: boolean | undefined;
   onMarkComplete?: ((choreId: string) => void) | undefined;
+  onTryAgain?: ((choreId: string) => void) | undefined;
   submitting?: boolean | undefined;
 }
 
 function ChoreRow(props: ChoreRowProps): ReactElement {
-  const { chore, faded, strikeThrough, onMarkComplete, submitting } = props;
+  const { chore, faded, strikeThrough, onMarkComplete, onTryAgain, submitting } = props;
   const isPending = chore.status === 'pending';
   const isApproved = chore.status === 'approved';
   const isRejected = chore.status === 'rejected';
@@ -338,6 +363,19 @@ function ChoreRow(props: ChoreRowProps): ReactElement {
           <span className="font-semibold">Why it was sent back: </span>
           {reasonText}
         </p>
+      )}
+
+      {isRejected && onTryAgain && (
+        <button
+          type="button"
+          disabled={submitting}
+          aria-disabled={submitting ? 'true' : undefined}
+          aria-label={`Try again: ${chore.title}`}
+          onClick={() => onTryAgain(chore.id)}
+          className="inline-flex min-h-tap items-center justify-center self-start rounded-control bg-accent px-20 text-body font-semibold text-onAccent transition-colors duration-cardPress ease-out hover:bg-accent-dark active:bg-accent-dark focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus disabled:opacity-60 motion-reduce:transition-none"
+        >
+          Try again
+        </button>
       )}
 
       {isPending && onMarkComplete && (
