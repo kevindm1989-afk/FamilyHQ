@@ -21,6 +21,8 @@ import { AddChore, type AddChoreValue } from '../features/chores/AddChore';
 import { useMyChores } from '../features/chores/useMyChores';
 import { useFamilyChores } from '../features/chores/useFamilyChores';
 import { markComplete } from '../features/chores/choresMemberService';
+import { AllowanceHistoryScreen } from '../features/allowance/AllowanceHistoryScreen';
+import { useAllowanceHistory } from '../features/allowance/useAllowanceHistory';
 import {
   addChore,
   approveChore,
@@ -105,6 +107,7 @@ export function AppShell(): ReactElement {
           <Route path={ROUTES.calendar.path} element={<CalendarRoute />} />
           <Route path={ROUTES.board.path} element={<BoardRoute />} />
           <Route path={ROUTES.chores.path} element={<ChoresRoute />} />
+          <Route path={ROUTES.allowance.path} element={<AllowanceRoute />} />
           <Route
             path={ROUTES.family.path}
             element={guard('family', <Placeholder title="Family" />)}
@@ -380,6 +383,89 @@ function ParentChoresRoute(props: {
         today={today}
       />
     </>
+  );
+}
+
+/**
+ * Allowance History route — role-gated read-only ledger view. A MEMBER sees
+ * their OWN ledger (no picker): the hook is scoped to their own uid + familyId.
+ * A PARENT picks a child (the picker over active members) and the hook re-queries
+ * for the selected child's uid + familyId. Each branch issues only the
+ * `where('familyId','==',fid) AND where('uid','==',uid)` query its role's rule
+ * allows — never a peer-leaking familyId-only query. UI gating is cosmetic;
+ * firestore.rules is the authoritative boundary.
+ */
+function AllowanceRoute(): ReactElement {
+  const { familyId, currentUser, members, role } = useFamily();
+  return role === 'parent' ? (
+    <ParentAllowanceRoute familyId={familyId} currentUser={currentUser} members={members} />
+  ) : (
+    <MemberAllowanceRoute familyId={familyId} currentUser={currentUser} />
+  );
+}
+
+function MemberAllowanceRoute(props: {
+  familyId: string | null;
+  currentUser: ReturnType<typeof useFamily>['currentUser'];
+}): ReactElement {
+  const { familyId, currentUser } = props;
+  // A member sees ONLY their own ledger — scope the hook to their own uid.
+  const feed = useAllowanceHistory(currentUser?.id ?? null, familyId);
+
+  if (!currentUser || !familyId) {
+    return <Placeholder title="Allowance" />;
+  }
+
+  const viewer = { uid: currentUser.id, name: currentUser.name, role: currentUser.role };
+
+  return (
+    <AllowanceHistoryScreen
+      viewer={viewer}
+      selectedMember={{
+        uid: currentUser.id,
+        name: currentUser.name,
+        balanceCents: currentUser.allowanceBalance,
+      }}
+      members={[]}
+      feed={feed}
+      onSelectMember={() => undefined}
+      nowMs={Date.now()}
+    />
+  );
+}
+
+function ParentAllowanceRoute(props: {
+  familyId: string | null;
+  currentUser: ReturnType<typeof useFamily>['currentUser'];
+  members: ReturnType<typeof useFamily>['members'];
+}): ReactElement {
+  const { familyId, currentUser, members } = props;
+  // The parent picks which child's ledger to view; default to the first active
+  // member. The hook re-queries whenever the selection changes.
+  const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  const effectiveUid = selectedUid ?? members[0]?.id ?? null;
+  const feed = useAllowanceHistory(effectiveUid, familyId);
+
+  if (!currentUser || !familyId) {
+    return <Placeholder title="Allowance" />;
+  }
+
+  const viewer = { uid: currentUser.id, name: currentUser.name, role: currentUser.role };
+  const selected = members.find((m) => m.id === effectiveUid);
+
+  return (
+    <AllowanceHistoryScreen
+      viewer={viewer}
+      selectedMember={{
+        uid: selected?.id ?? '',
+        name: selected?.name ?? '',
+        balanceCents: selected?.allowanceBalance ?? Number.NaN,
+      }}
+      members={members}
+      feed={feed}
+      onSelectMember={setSelectedUid}
+      nowMs={Date.now()}
+    />
   );
 }
 

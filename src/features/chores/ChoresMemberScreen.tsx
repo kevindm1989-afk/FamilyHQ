@@ -121,7 +121,7 @@ function formatMoney(value: number): string {
 }
 
 export function ChoresMemberScreen(props: ChoresMemberScreenProps): ReactElement {
-  const { viewer, feed, onMarkComplete } = props;
+  const { viewer, feed, onMarkComplete, onViewHistory } = props;
   const { showToast } = useToast();
 
   // Per-chore in-flight guard: while a mark-complete write is pending the chore
@@ -187,13 +187,13 @@ export function ChoresMemberScreen(props: ChoresMemberScreenProps): ReactElement
           >
             {formatMoney(viewer.allowanceBalance)}
           </span>
-          {/* Placeholder for the deferred Allowance History feature: focusable
-              but aria-disabled so it announces as "coming soon", not a silent
-              no-op. */}
+          {/* Allowance History shipped: a live control that navigates to the
+              member's ledger (no longer the aria-disabled "coming soon"
+              placeholder). */}
           <button
             type="button"
-            aria-disabled="true"
-            className="self-start text-meta font-semibold text-accent-dark underline opacity-60 focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+            onClick={onViewHistory}
+            className="inline-flex min-h-tap items-center self-start text-meta font-semibold text-accent-dark underline focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
           >
             View history
           </button>
