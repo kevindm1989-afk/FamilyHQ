@@ -134,7 +134,8 @@ export async function sendPasswordReset(deps: { auth: Auth }, email: string): Pr
 }
 
 /**
- * CONTRACT STUB (M19, P6 — security finding 2 / privacy finding 1, CRITICAL).
+ * CONTRACT STUB (M19, P6 — security finding 2 / privacy finding 1, CRITICAL;
+ * adversarial review Findings 2 & 3).
  *
  * On sign-out (and on account switch) the on-device IndexedDB Firestore cache —
  * which may hold another family's children's PI — MUST be cleared so the next
@@ -145,13 +146,25 @@ export async function sendPasswordReset(deps: { auth: Auth }, email: string): Pr
  *  2. then `terminate(db)` (stop the Firestore client so the cache can be
  *     released — clearIndexedDbPersistence rejects on a running client),
  *  3. then `clearIndexedDbPersistence(db)` (wipe the on-device cache),
+ *  4. then `deps.reload()` — force a full page reload AFTER the cache is
+ *     cleared, so a FRESH Firestore client is constructed (the terminated
+ *     singleton is otherwise unusable and could be reused; Finding 2). The
+ *     reload is injected (not a direct `window.location` touch) so it is
+ *     unit-testable.
  *  in that exact order.
  *
  * If `signOut` itself fails, cache clearing MUST STILL run (a failed sign-out
  * must not leave child PI on the device); the rejection is surfaced after the
- * cache is cleared.
+ * cache is cleared. The reload still fires on the clean-clear path.
  */
-export async function signOutAndClearCache(deps: { auth: Auth; db: Firestore }): Promise<void> {
+export interface SignOutDeps {
+  auth: Auth;
+  db: Firestore;
+  /** Force a full page reload (fresh Firestore client) AFTER the cache clear. */
+  reload: () => void;
+}
+
+export async function signOutAndClearCache(deps: SignOutDeps): Promise<void> {
   const { auth, db } = deps;
 
   // Capture (do not yet throw) a sign-out failure: the cache MUST still be
@@ -172,4 +185,39 @@ export async function signOutAndClearCache(deps: { auth: Auth; db: Firestore }):
   if (signOutError !== undefined) {
     throw signOutError;
   }
+}
+
+/**
+ * CONTRACT STUB (M19, P6 — adversarial review Finding 3, startup uid-guard).
+ *
+ * Closes the non-graceful-session-end stale-cache leak: if the previous session
+ * ended WITHOUT routing through signOutAndClearCache (tab killed, crash, token
+ * expiry), the IndexedDB cache may still hold the prior user's family PI. On app
+ * startup, before Firestore is used for a session, compare the authenticated uid
+ * to a persisted "last cached uid" marker:
+ *  - if a prior uid is recorded AND it differs from `currentUid` →
+ *    `clearIndexedDbPersistence(db)` BEFORE returning (wipe the foreign cache),
+ *  - then record `currentUid` via `setLastUid` (confirmed session marker),
+ *  - if the uid is the SAME as the marker → do NOT clear (warm cache reuse is
+ *    safe; same user),
+ *  - if there is NO prior uid → do NOT clear, but still record the marker.
+ *
+ * The marker is persisted in localStorage by the wiring (the implementer);
+ * get/set are injected here so the unit test needs no real storage or IndexedDB.
+ * Pinned by clearCacheIfUserChanged.test.ts.
+ */
+export interface ClearCacheIfUserChangedDeps {
+  db: Firestore;
+  currentUid: string;
+  getLastUid: () => string | null;
+  setLastUid: (uid: string) => void;
+}
+
+export async function clearCacheIfUserChanged(
+  _deps: ClearCacheIfUserChangedDeps,
+): Promise<void> {
+  // Contract stub only — implemented by the implementer to satisfy
+  // clearCacheIfUserChanged.test.ts. Intentionally throws so the
+  // not-yet-implemented path is never silently a no-op.
+  throw new Error('clearCacheIfUserChanged not implemented');
 }

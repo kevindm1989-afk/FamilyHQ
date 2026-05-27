@@ -9,6 +9,9 @@
  *   1. call signOut(auth)            — revoke the live session FIRST,
  *   2. then terminate(db)            — stop the Firestore client,
  *   3. then clearIndexedDbPersistence(db) — wipe the cache,
+ *   4. then reload()                 — force a full page reload AFTER the clear
+ *      so a FRESH Firestore client is constructed (Finding 2: the terminated
+ *      singleton must never be reused). reload is INJECTED so it is testable.
  * in that exact order. A failure of signOut must NOT skip cache clearing (a
  * failed sign-out must never leave child PI on the device).
  *
@@ -60,9 +63,16 @@ import { signOutAndClearCache } from './authService';
 const auth = { currentUser: { uid: 'u1' } } as unknown as import('firebase/auth').Auth;
 const db = { __db: true } as unknown as import('firebase/firestore').Firestore;
 
+// Injected reload (Finding 2): a synchronous full-page reload trigger. Pushing
+// to the same ordered log lets us assert it fires AFTER the cache clear.
+let reload: ReturnType<typeof vi.fn>;
+
 beforeEach(() => {
   vi.clearAllMocks();
   callOrder = [];
+  reload = vi.fn(() => {
+    callOrder.push('reload');
+  });
   signOut.mockImplementation((..._a: unknown[]): Promise<void> => {
     callOrder.push('signOut');
     return Promise.resolve();
@@ -78,25 +88,40 @@ beforeEach(() => {
 });
 
 describe('signOutAndClearCache — happy path', () => {
-  it('calls signOut, terminate, then clearIndexedDbPersistence in that order', async () => {
-    await signOutAndClearCache({ auth, db });
-    expect(callOrder).toEqual(['signOut', 'terminate', 'clearIndexedDbPersistence']);
+  it('calls signOut, terminate, clearIndexedDbPersistence, then reload in that order', async () => {
+    await signOutAndClearCache({ auth, db, reload });
+    expect(callOrder).toEqual([
+      'signOut',
+      'terminate',
+      'clearIndexedDbPersistence',
+      'reload',
+    ]);
   });
 
   it('passes the Auth instance to signOut', async () => {
-    await signOutAndClearCache({ auth, db });
+    await signOutAndClearCache({ auth, db, reload });
     expect(signOut).toHaveBeenCalledWith(auth);
   });
 
   it('passes the Firestore instance to terminate and clearIndexedDbPersistence', async () => {
-    await signOutAndClearCache({ auth, db });
+    await signOutAndClearCache({ auth, db, reload });
     expect(terminate).toHaveBeenCalledWith(db);
     expect(clearIndexedDbPersistence).toHaveBeenCalledWith(db);
   });
 
   it('clears the cache exactly once (no double-clear)', async () => {
-    await signOutAndClearCache({ auth, db });
+    await signOutAndClearCache({ auth, db, reload });
     expect(clearIndexedDbPersistence).toHaveBeenCalledTimes(1);
+  });
+
+  it('Finding 2: forces a full page reload AFTER the cache is cleared (fresh Firestore client)', async () => {
+    await signOutAndClearCache({ auth, db, reload });
+    expect(reload, 'sign-out must trigger a reload so a fresh client is built').toHaveBeenCalledTimes(1);
+    // Reload must come strictly AFTER the clear — never before (otherwise the
+    // page tears down before the cache is wiped).
+    const clearIdx = callOrder.indexOf('clearIndexedDbPersistence');
+    const reloadIdx = callOrder.indexOf('reload');
+    expect(reloadIdx, 'reload must fire after clearIndexedDbPersistence').toBeGreaterThan(clearIdx);
   });
 });
 
@@ -107,7 +132,7 @@ describe('signOutAndClearCache — sign-out failure still clears the cache', () 
       return Promise.reject(new Error('network-signout-failure'));
     });
 
-    await expect(signOutAndClearCache({ auth, db })).rejects.toThrow();
+    await expect(signOutAndClearCache({ auth, db, reload })).rejects.toThrow();
 
     // The cache MUST still be cleared despite the signOut failure.
     expect(

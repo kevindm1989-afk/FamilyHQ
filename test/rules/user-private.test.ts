@@ -27,6 +27,63 @@ import { FAMILY_A, FAMILY_B, UID, getEnv, seedBaseline, teardownEnv } from './he
 
 let env: Awaited<ReturnType<typeof getEnv>>;
 
+const NEW_FAMILY = 'family-private-fresh';
+
+/**
+ * The rules-testing contexts return a compat Firestore instance from
+ * `.firestore()`. We accept it loosely; the modular `firebase/firestore`
+ * functions operate on it at runtime.
+ */
+type ContextFirestore = ReturnType<
+  ReturnType<Awaited<ReturnType<typeof getEnv>>['authenticatedContext']>['firestore']
+>;
+
+/**
+ * Founding-parent bootstrap batch MIRRORING the real signup
+ * (signup-bootstrap.test.ts / authService.signUpFoundingParent): a fresh uid
+ * atomically writes families/{fid} (createdBy == uid) + a parent users/{uid}
+ * doc + the userPrivate/{uid} doc carrying the SAME familyId. This is the ONLY
+ * legitimate path that creates a userPrivate doc, and the userPrivate create
+ * rule must bind its familyId to the family the caller belongs to (same-batch
+ * users doc + getAfter on families), NOT accept an arbitrary client value.
+ */
+async function bootstrapBatch(
+  db: ContextFirestore,
+  opts: {
+    uid: string;
+    usersFamilyId: string;
+    privateFamilyId?: string;
+    createdBy?: string;
+    createFamily?: boolean;
+    privateExtra?: Record<string, unknown>;
+    omitPrivateFamilyId?: boolean;
+  },
+): Promise<void> {
+  const { doc, writeBatch } = await import('firebase/firestore');
+  const mdb = db as unknown as import('firebase/firestore').Firestore;
+  const batch = writeBatch(mdb);
+  const privateFamily = opts.privateFamilyId ?? opts.usersFamilyId;
+  if (opts.createFamily !== false) {
+    batch.set(doc(mdb, 'families', opts.usersFamilyId), {
+      familyName: 'Fresh Family',
+      createdBy: opts.createdBy ?? opts.uid,
+      createdAt: Date.now(),
+    });
+  }
+  batch.set(doc(mdb, 'users', opts.uid), {
+    name: 'Founder',
+    role: 'parent',
+    familyId: opts.usersFamilyId,
+    isActive: true,
+    allowanceBalance: 0,
+    theme: 'light',
+  });
+  const privateDoc: Record<string, unknown> = { email: 'founder@example.test' };
+  if (!opts.omitPrivateFamilyId) privateDoc.familyId = privateFamily;
+  batch.set(doc(mdb, 'userPrivate', opts.uid), { ...privateDoc, ...opts.privateExtra });
+  await batch.commit();
+}
+
 beforeAll(async () => {
   env = await getEnv();
 });
@@ -101,13 +158,102 @@ describe('userPrivate list is denied (no enumeration of adult emails)', () => {
 });
 
 describe('userPrivate write authority', () => {
-  it('a fresh subject CAN self-create their own userPrivate (bootstrap path)', async () => {
+  // FLIPPED (Finding 1, HIGH): the old test asserted a fresh subject could
+  // self-create their userPrivate with an ARBITRARY familyId (FAMILY_A) to
+  // which they have no relationship — that asserted the unbounded-create hole.
+  // The legitimate bootstrap creates the family + users + userPrivate in ONE
+  // batch and the userPrivate.familyId must equal the family the caller is
+  // joining (their same-batch users doc / the family they create).
+  it('a founding parent CAN self-create userPrivate in the SAME bootstrap batch (familyId matches own new family)', async () => {
+    const db = env.authenticatedContext(UID.fresh).firestore();
+    await assertSucceeds(
+      bootstrapBatch(db, { uid: UID.fresh, usersFamilyId: NEW_FAMILY }),
+    );
+  });
+
+  it('Finding 1: a fresh subject CANNOT self-create userPrivate with an arbitrary foreign familyId (no same-batch users doc claiming it)', async () => {
+    // No users doc, no family created — just a bare userPrivate claiming a
+    // pre-existing foreign tenant. This is the exact hole the old test asserted.
     const db = env.authenticatedContext(UID.fresh).firestore();
     const { doc, setDoc } = await import('firebase/firestore');
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(db, 'userPrivate', UID.fresh), {
         email: 'founder@example.test',
         familyId: FAMILY_A,
+      }),
+    );
+  });
+
+  it('Finding 1: founding-parent batch whose userPrivate.familyId differs from the batch users/family -> DENIED (cross-tenant userPrivate)', async () => {
+    const db = env.authenticatedContext(UID.fresh).firestore();
+    await assertFails(
+      bootstrapBatch(db, {
+        uid: UID.fresh,
+        usersFamilyId: NEW_FAMILY,
+        privateFamilyId: FAMILY_A, // points at a foreign tenant, not own new family
+      }),
+    );
+  });
+
+  it('Finding 1: an ESTABLISHED member (users doc says FAMILY_A, no userPrivate yet) CANNOT create a userPrivate carrying a foreign familyId', async () => {
+    // establishedNoPrivateA has users/{uid} with familyId == FAMILY_A but NO
+    // userPrivate yet, so this is a genuine CREATE. Claiming FAMILY_B must be
+    // denied — the create familyId is bound to the caller's own family.
+    const db = env.authenticatedContext(UID.establishedNoPrivateA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(doc(db, 'userPrivate', UID.establishedNoPrivateA), {
+        email: 'foreign@example.test',
+        familyId: FAMILY_B,
+      }),
+    );
+  });
+
+  it('an ESTABLISHED member CAN create their own userPrivate with their OWN familyId (positive control for the bound create)', async () => {
+    // Same actor, claiming the family their users doc already says (FAMILY_A):
+    // a legitimate self-create that the bound rule must still permit.
+    const db = env.authenticatedContext(UID.establishedNoPrivateA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertSucceeds(
+      setDoc(doc(db, 'userPrivate', UID.establishedNoPrivateA), {
+        email: 'mine@example.test',
+        familyId: FAMILY_A,
+      }),
+    );
+  });
+
+  it('Finding 1: userPrivate create carrying an EXTRA field is DENIED (keys().hasOnly([email,familyId]))', async () => {
+    const db = env.authenticatedContext(UID.fresh).firestore();
+    await assertFails(
+      bootstrapBatch(db, {
+        uid: UID.fresh,
+        usersFamilyId: NEW_FAMILY,
+        privateExtra: { isSuperAdmin: true },
+      }),
+    );
+  });
+
+  it('Finding 1: userPrivate create MISSING familyId is DENIED (keys().hasOnly([email,familyId]) requires both)', async () => {
+    const db = env.authenticatedContext(UID.fresh).firestore();
+    await assertFails(
+      bootstrapBatch(db, {
+        uid: UID.fresh,
+        usersFamilyId: NEW_FAMILY,
+        omitPrivateFamilyId: true,
+      }),
+    );
+  });
+
+  it('Finding 1: an existing userPrivate cannot be clobbered by a fresh create (familyId already pinned)', async () => {
+    // memberA's userPrivate already exists (seeded with FAMILY_A). A second
+    // create attempting to repoint familyId to FAMILY_B is an update under the
+    // hood and must be denied (familyId immutable; not a fresh create).
+    const db = env.authenticatedContext(UID.memberA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(doc(db, 'userPrivate', UID.memberA), {
+        email: 'clobber@example.test',
+        familyId: FAMILY_B,
       }),
     );
   });

@@ -1,10 +1,26 @@
-import { useCallback, useEffect, useRef, type ReactElement, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  type ReactElement,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 
 export interface BottomSheetProps {
   open: boolean;
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /**
+   * CONTRACT (adversarial review Finding 4): when the element that was focused
+   * before the sheet opened is detached/unmounted by close time, focus must NOT
+   * silently fall to document.body. The implementer restores focus to this
+   * fallback element if it is provided and still in the document; otherwise it
+   * falls back to the dialog heading (never document.body). Pinned by
+   * BottomSheet.test.tsx.
+   */
+  fallbackFocusRef?: RefObject<HTMLElement>;
 }
 
 const FOCUSABLE_SELECTOR =

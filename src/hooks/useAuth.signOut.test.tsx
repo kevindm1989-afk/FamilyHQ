@@ -64,4 +64,25 @@ describe('useAuth.signOut — routes through the cache-clearing path', () => {
       expect.objectContaining({ auth: fakeAuth, db: fakeDb }),
     );
   });
+
+  it('Finding 2: passes a reload callback so signOutAndClearCache can force a fresh client', async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await act(async () => {
+      await result.current.signOut();
+    });
+
+    await waitFor(() => {
+      expect(signOutAndClearCache).toHaveBeenCalledTimes(1);
+    });
+    // The hook must supply the reload affordance (e.g. window.location.reload)
+    // so the service can rebuild the Firestore client after the cache clear.
+    const passed = signOutAndClearCache.mock.calls[0]?.[0] as
+      | { reload?: unknown }
+      | undefined;
+    expect(
+      typeof passed?.reload,
+      'useAuth.signOut must inject a reload() callback into signOutAndClearCache',
+    ).toBe('function');
+  });
 });

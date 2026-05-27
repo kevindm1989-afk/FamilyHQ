@@ -94,3 +94,40 @@ describe('M3: a member cannot tamper with ANOTHER user doc', () => {
     await assertFails(updateDoc(doc(db, 'users', UID.member2A), { name: 'Hacked' }));
   });
 });
+
+/**
+ * Finding 7 (MEDIUM) — self-deactivation lockout. parentUpdateAllowed lets a
+ * same-family parent flip a member's isActive (deactivate/reactivate), but it
+ * must NOT let a parent set isActive:false on their OWN users doc: a parent
+ * locking themselves out (especially the only/founding parent) is a footgun
+ * that strands the family with no active parent. Self-deactivation is denied;
+ * deactivating OTHER members and reactivating a member remain allowed
+ * (covered in allowance-invites.test.ts).
+ */
+describe('Finding 7: a parent cannot self-deactivate (no parent lockout)', () => {
+  it('parent CANNOT set isActive:false on their OWN users doc', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(db, 'users', UID.parentA), { isActive: false }),
+    );
+  });
+
+  it('parent CANNOT self-deactivate even when bundling a name change (mixed write still denied)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(db, 'users', UID.parentA), { name: 'Renamed', isActive: false }),
+    );
+  });
+
+  it('a parent CAN still rename their own doc (self-edit unaffected by the self-deactivation guard)', async () => {
+    // Guard rejects only isActive:false on self; a name-only self-edit (the
+    // selfUpdateAllowed path) must still succeed.
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertSucceeds(
+      updateDoc(doc(db, 'users', UID.parentA), { name: 'Parent Renamed' }),
+    );
+  });
+});

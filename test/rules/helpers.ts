@@ -43,6 +43,11 @@ export const UID = {
   memberB: 'uid-member-b',
   // a freshly-authenticated user with NO users/{uid} doc yet (signup bootstrap).
   fresh: 'uid-fresh-founder',
+  // an ESTABLISHED member of FAMILY_A who has a users/{uid} doc but NO
+  // userPrivate/{uid} doc yet — lets the userPrivate CREATE rule be exercised
+  // for a caller whose family is already pinned (Finding 1: a create claiming a
+  // foreign familyId must be denied; only the caller's own family is allowed).
+  establishedNoPrivateA: 'uid-established-no-private-a',
 } as const;
 
 export type SeededUser = {
@@ -99,6 +104,13 @@ export async function seedBaseline(env: RulesTestEnvironment): Promise<void> {
         familyId: data.familyId,
       });
     }
+
+    // An established FAMILY_A member with a users doc but NO userPrivate doc, so
+    // the userPrivate CREATE rule can be exercised for an already-placed caller.
+    await setDoc(
+      doc(db, 'users', UID.establishedNoPrivateA),
+      mkUser('Established No Private', 'member', FAMILY_A, true),
+    );
 
     // One doc per tenant collection, per family, for cross-tenant read/list.
     for (const fid of [FAMILY_A, FAMILY_B]) {
