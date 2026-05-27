@@ -15,6 +15,9 @@ import {
   deleteEvent,
   type CreateEventInput,
 } from '../features/calendar/calendarService';
+import { ChoresMemberScreen } from '../features/chores/ChoresMemberScreen';
+import { useMyChores } from '../features/chores/useMyChores';
+import { markComplete } from '../features/chores/choresMemberService';
 import type { EventTag } from '../lib/types';
 import { ROUTES, canAccess, hidesBottomNav, type RouteMeta, type ScreenId } from './routes';
 
@@ -92,7 +95,7 @@ export function AppShell(): ReactElement {
           />
           <Route path={ROUTES.calendar.path} element={<CalendarRoute />} />
           <Route path={ROUTES.board.path} element={<BoardRoute />} />
-          <Route path={ROUTES.chores.path} element={<Placeholder title="Chores" />} />
+          <Route path={ROUTES.chores.path} element={<ChoresRoute />} />
           <Route
             path={ROUTES.family.path}
             element={guard('family', <Placeholder title="Family" />)}
@@ -250,6 +253,46 @@ function CalendarRoute(): ReactElement {
       today={today}
       onDeleteEvent={handleDelete}
       onCreateEvent={handleCreate}
+    />
+  );
+}
+
+/**
+ * Chores route — wires the member view to live data. A MEMBER sees their own
+ * chores (the only query the rules allow: familyId + assignedTo == self) and can
+ * mark a pending chore complete. The PARENT approval queue is the NEXT feature;
+ * for now a parent sees their OWN assigned chores via the same member-style
+ * screen (the feed is scoped to the viewer's uid). UI branching is cosmetic —
+ * firestore.rules is the authoritative boundary.
+ */
+function ChoresRoute(): ReactElement {
+  const { familyId, currentUser } = useFamily();
+  const feed = useMyChores(currentUser?.id ?? null, familyId);
+
+  if (!currentUser || !familyId) {
+    return <Placeholder title="Chores" />;
+  }
+
+  const viewer = {
+    uid: currentUser.id,
+    name: currentUser.name,
+    role: currentUser.role,
+    allowanceBalance: currentUser.allowanceBalance,
+  };
+
+  // Firebase config is imported lazily (mirrors useFamily / BoardRoute) so the
+  // shell module stays SDK-free at the top level.
+  const handleMarkComplete = async (choreId: string): Promise<void> => {
+    const { db } = await import('../firebase/config');
+    await markComplete({ db }, choreId);
+  };
+
+  return (
+    <ChoresMemberScreen
+      familyId={familyId}
+      viewer={viewer}
+      feed={feed}
+      onMarkComplete={handleMarkComplete}
     />
   );
 }

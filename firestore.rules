@@ -142,7 +142,7 @@ service cloud.firestore {
       }
 
       // A same-family active parent doing a BARE update of a member doc may
-      // change ONLY `name` and `isActive` (M28, security finding 1/3). The set
+      // change ONLY `name` and `isActive` (M31, security finding 1/3). The set
       // of CHANGED keys must be a subset of {name, isActive}; this denies any
       // write that touches `role` (no parent-granted elevation), `familyId` (no
       // tenant reassignment), `allowanceBalance` (deferred to the Phase-3
@@ -386,8 +386,24 @@ service cloud.firestore {
           && immutable('familyId');
       }
 
-      allow get: if isActive() && sameFamily(resource);
-      allow list: if listScopedToOwnFamily();
+      // Read scoping (SECURITY-CRITICAL, M1/own-assignee): a MEMBER reads ONLY
+      // chores assigned to them; a PARENT reads ANY chore in their own family
+      // (the Task 11 approval queue depends on the parent branch). Both branches
+      // are gated by isActive() + sameFamily(resource), so cross-tenant reads
+      // are denied for everyone (a parent is NOT exempt from tenant isolation),
+      // and a deactivated user is denied. For `list`, Firestore evaluates this
+      // per returned document: a member's family-only query that would surface a
+      // peer's chore is denied (peer's assignedTo != caller), while their
+      // family-AND-own-assignment query is allowed; a parent's family-only query
+      // is allowed (the parent branch needs no own-assignment predicate).
+      function memberOwnsOrIsParent() {
+        return isActive()
+          && sameFamily(resource)
+          && (isParent() || resource.data.assignedTo == request.auth.uid);
+      }
+
+      allow get: if memberOwnsOrIsParent();
+      allow list: if memberOwnsOrIsParent();
       allow create: if isParent() && incomingSameFamily();
       allow update: if memberLegalCompletion() || parentChoreUpdate();
       allow delete: if isParent() && sameFamily(resource);

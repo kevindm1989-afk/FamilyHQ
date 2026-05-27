@@ -88,6 +88,14 @@ describe('P2/P12/M7: list queries must carry the own-family filter', () => {
     });
 
     it(`P2: own-family where('familyId','==',A) list of ${col} is allowed`, async () => {
+      // chores reads are own-assignee-scoped for members (see
+      // chores-member-view.test.ts); a member's family-only chore list is
+      // denied — they must add where('assignedTo','==',uid). The allow/deny
+      // cases for member chore lists live in that file, so we don't duplicate
+      // them here; we only exclude chores from this member-own-family-list
+      // assertion. (The unconstrained-denied and cross-family-denied chore
+      // iterations above still apply and must keep running.)
+      if (col === 'chores') return;
       const aDb = env.authenticatedContext(UID.memberA).firestore();
       const { collection, getDocs, query, where } = await import('firebase/firestore');
       await assertSucceeds(
