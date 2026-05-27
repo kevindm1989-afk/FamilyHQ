@@ -396,7 +396,7 @@ describe('ChoresParentScreen — money precision (member-view matcher lesson)', 
             id: 'c',
             title: 'A chore',
             pointValue: 1,
-            dollarValue: 100, // $1.00 in cents
+            dollarValue: 250, // $2.50 — distinct from the $1.00 balance so /\$1\.00/ matches only the chip
             assignedTo: 'uid-one',
           }),
         ],

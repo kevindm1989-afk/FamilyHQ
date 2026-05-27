@@ -87,6 +87,17 @@ service cloud.firestore {
       return isActive() && sameFamily(resource);
     }
 
+    // Money is INTEGER CENTS everywhere (ADR-0009 / second-opinion #4 /
+    // adversarial Finding 7): dollarValue, txn amount, and allowanceBalance are
+    // whole cents, `>= 0`, `<= MONEY_MAX` ($1,000,000); pointValue is whole
+    // integer points (same bound). A fractional value (a float-dollar smuggled
+    // where cents are expected) or an over-cap value is DENIED at the
+    // authorization boundary, not merely in the client form.
+    function MONEY_MAX() { return 100000000; }
+    function isValidMoneyInt(v) {
+      return v is int && v >= 0 && v <= MONEY_MAX();
+    }
+
     // --- users -------------------------------------------------------------
     //
     // read (get): active caller, same family (M1/P7). Reading own doc requires
@@ -193,7 +204,7 @@ service cloud.firestore {
           && sameFamily(resource)
           && incomingSameFamily()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['allowanceBalance'])
-          && request.resource.data.allowanceBalance is number
+          && isValidMoneyInt(request.resource.data.allowanceBalance)
           && request.resource.data.allowanceBalance >= resource.data.allowanceBalance;
       }
 
@@ -445,10 +456,8 @@ service cloud.firestore {
                ['title', 'assignedTo', 'dueDate', 'pointValue', 'dollarValue',
                 'status', 'familyId', 'createdBy', 'createdAt', 'isRecurring',
                 'recurrenceFrequency'])
-          && request.resource.data.pointValue is number
-          && request.resource.data.pointValue >= 0
-          && request.resource.data.dollarValue is number
-          && request.resource.data.dollarValue >= 0
+          && isValidMoneyInt(request.resource.data.pointValue)
+          && isValidMoneyInt(request.resource.data.dollarValue)
           && request.resource.data.isRecurring is bool
           && request.resource.data.recurrenceFrequency in ['none', 'weekly', 'biweekly']
           && request.resource.data.dueDate is string
@@ -502,8 +511,7 @@ service cloud.firestore {
           && request.resource.data.keys().hasAll(
                ['uid', 'choreId', 'choreTitle', 'amount', 'type', 'familyId', 'createdAt'])
           && request.resource.data.type == 'earning'
-          && request.resource.data.amount is number
-          && request.resource.data.amount >= 0
+          && isValidMoneyInt(request.resource.data.amount)
           && txnUidIsSameFamilyUser();
       }
 

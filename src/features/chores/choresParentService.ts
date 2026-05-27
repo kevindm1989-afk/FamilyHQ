@@ -33,7 +33,12 @@ import {
   updateDoc,
   type Firestore,
 } from 'firebase/firestore';
-import type { RecurrenceFrequency, Role, UserWithId } from '../../lib/types';
+import {
+  MONEY_MAX_CENTS,
+  type RecurrenceFrequency,
+  type Role,
+  type UserWithId,
+} from '../../lib/types';
 import { ChoreActionError, type ChoreWithId } from './choresMemberService';
 
 export { ChoreActionError, type ChoreWithId } from './choresMemberService';
@@ -67,8 +72,15 @@ export const MONEY_INVALID_INDICATOR = '—';
  * SIGNATURE ONLY — implementer fills the body. The unit tests pin the exact
  * formatted output.
  */
-export function formatMoney(_cents: number): string {
-  throw new Error('not implemented');
+const MONEY_FORMAT = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+export function formatMoney(cents: number): string {
+  return MONEY_FORMAT.format(cents / 100);
 }
 
 /**
@@ -79,8 +91,8 @@ export function formatMoney(_cents: number): string {
  *
  * SIGNATURE ONLY — implementer fills the body.
  */
-export function isValidMoneyCents(_value: number): boolean {
-  throw new Error('not implemented');
+export function isValidMoneyCents(value: number): boolean {
+  return Number.isInteger(value) && value >= 0 && value <= MONEY_MAX_CENTS;
 }
 
 /**
@@ -111,6 +123,12 @@ export async function approveChore(deps: { db: Firestore }, choreId: string): Pr
       // status != 'complete' (already approved) and aborts, so the balance is
       // credited EXACTLY once and exactly one ledger doc is ever written (F4).
       if (!chore || chore.status !== 'complete') {
+        throw new ChoreActionError();
+      }
+      // Defensive money integrity guard (second-opinion #2): never credit a
+      // non-integer / negative dollarValue, even if a malformed chore slipped
+      // past the create rule. Abort the whole transaction if violated.
+      if (!Number.isInteger(chore.dollarValue) || chore.dollarValue < 0) {
         throw new ChoreActionError();
       }
       tx.update(choreRef, { status: 'approved' });

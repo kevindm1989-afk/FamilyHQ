@@ -61,6 +61,14 @@ export function useFamilyChores(familyId: string | null): UseFamilyChoresResult 
   const [error, setError] = useState<string | null>(null);
   const refreshToken = useRef(0);
   const dbRef = useRef<Firestore | null>(null);
+  // Finding 9: the live listener can re-fire with the SAME docs it already
+  // delivered (a redundant cache/network re-emission). After a refresh() has
+  // written a newer canonical result, such a redundant re-fire must NOT clobber
+  // it. We record the doc-id signature of the listener's LAST delivery; a
+  // re-fire whose signature is unchanged is ignored, while a genuinely newer
+  // snapshot (a different doc set) is still applied. Reset per effect run so a
+  // familyId change does not carry a stale signature.
+  const lastSnapshotSig = useRef<string | null>(null);
 
   useEffect(() => {
     setChores([]);
@@ -71,6 +79,7 @@ export function useFamilyChores(familyId: string | null): UseFamilyChoresResult 
     }
     setLoading(true);
     setError(null);
+    lastSnapshotSig.current = null;
     let unsub: (() => void) | undefined;
     let cancelled = false;
     void import('../../firebase/config')
@@ -80,7 +89,19 @@ export function useFamilyChores(familyId: string | null): UseFamilyChoresResult 
         unsub = onSnapshot(
           buildQuery(db, familyId),
           (snap) => {
-            setChores((snap as { docs: QueryDocumentSnapshot[] }).docs.map(toChore));
+            const docs = (snap as { docs: QueryDocumentSnapshot[] }).docs;
+            const sig = docs.map((d) => d.id).join(',');
+            // Ignore a redundant re-fire of the same doc set: it carries no new
+            // information and must not overwrite a newer refresh() result.
+            if (sig === lastSnapshotSig.current) {
+              setLoading(false);
+              return;
+            }
+            lastSnapshotSig.current = sig;
+            // Claim the next monotonic token so a refresh in flight knows a newer
+            // live snapshot has superseded it (its stale resolution is dropped).
+            refreshToken.current += 1;
+            setChores(docs.map(toChore));
             setLoading(false);
           },
           () => {
