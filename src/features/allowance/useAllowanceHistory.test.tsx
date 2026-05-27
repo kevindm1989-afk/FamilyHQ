@@ -362,3 +362,41 @@ describe('useAllowanceHistory — switching member/family clears transactions (c
     expect(screen.queryByText('a-txn')).not.toBeInTheDocument();
   });
 });
+
+describe('useAllowanceHistory — a recovered listener error clears (F6: stale error must not stick over good data)', () => {
+  it('clears a prior error AND populates transactions when a later snapshot succeeds (error -> empty)', async () => {
+    // F6: the onSnapshot success callback currently does NOT clear a prior
+    // `error`, so after an error-then-success the error banner sticks over good
+    // data. Drive the listener: first error, then a successful snapshot with
+    // docs. The hook MUST return error to null AND surface the transactions.
+    render(<Harness uid="uid-child-a" familyId="fam-A" />);
+    await waitFor(() => expect(cap.errorCb).not.toBeNull());
+
+    // 1) Listener errors first.
+    act(() => cap.errorCb!(new Error('transient-listener-failure')));
+    await waitFor(() => {
+      expect(screen.getByTestId('error').textContent?.length ?? 0).toBeGreaterThan(0);
+    });
+
+    // 2) The SAME listener then recovers and delivers docs.
+    act(() => {
+      cap.snapshotCb!(
+        fakeSnapshot([
+          { id: 'recovered-1', uid: 'uid-child-a', familyId: 'fam-A', createdAtMs: 2000 },
+          { id: 'recovered-2', uid: 'uid-child-a', familyId: 'fam-A', createdAtMs: 1000 },
+        ]),
+      );
+    });
+
+    // The error must be CLEARED (no sticky banner over good data)...
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('error').textContent,
+        'a successful snapshot after an error must clear the prior error (F6)',
+      ).toBe(''),
+    );
+    // ...and the recovered transactions must populate.
+    expect(screen.getByTestId('count').textContent).toBe('2');
+    expect(screen.getByTestId('loading').textContent).toBe('false');
+  });
+});
