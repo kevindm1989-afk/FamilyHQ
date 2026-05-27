@@ -139,7 +139,7 @@ describe('ChoresMemberScreen — pending section + Mark done', () => {
       },
     });
     expect(screen.getByText(/10/)).toBeInTheDocument();
-    expect(screen.getByText(/\$?3(\.00)?/)).toBeInTheDocument();
+    expect(screen.getByText(/\$3\.00/)).toBeInTheDocument();
   });
 
   it('shows a "Mark done" button ONLY on a pending chore', () => {
