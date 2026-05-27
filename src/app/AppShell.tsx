@@ -101,7 +101,7 @@ export function AppShell(): ReactElement {
             path={ROUTES.add_chore.path}
             element={guard('add_chore', <Placeholder title="Add Chore" />)}
           />
-          <Route path={ROUTES.add_event.path} element={<CalendarRoute />} />
+          <Route path={ROUTES.add_event.path} element={guard('add_event', <CalendarRoute />)} />
           <Route path={ROUTES.compose.path} element={<Placeholder title="New Post" />} />
           <Route path={ROUTES.account_switcher.path} element={<AccountScreen />} />
           <Route path="*" element={<Navigate to={ROUTES.dashboard.path} replace />} />

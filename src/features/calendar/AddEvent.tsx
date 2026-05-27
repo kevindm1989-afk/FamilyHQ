@@ -20,7 +20,7 @@
  * "who's it for" multi-select, and a location field — NONE are in the locked
  * 7-field schema, so this form does NOT collect or submit them.
  */
-import { useEffect, useId, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import { BottomSheet } from '../../components';
 import { ToastViewport } from '../../app/ToastViewport';
 import { useToast } from '../../hooks/useToast';
@@ -58,6 +58,31 @@ const CATEGORIES: ReadonlyArray<{ tag: EventTag; label: string }> = [
   { tag: 'work', label: 'Work' },
 ];
 
+const CATEGORY_TAGS: ReadonlyArray<EventTag> = CATEGORIES.map((c) => c.tag);
+const DAY_CHOICES: ReadonlyArray<DayChoice> = ['today', 'tomorrow'];
+
+/**
+ * Arrow-key roving for a radiogroup: Left/Up moves to the previous option,
+ * Right/Down to the next (wrapping). Mirrors the ARIA radiogroup keyboard
+ * pattern so the control is operable without a pointer (Finding E).
+ */
+function handleRadioKeys<T>(
+  e: KeyboardEvent,
+  options: ReadonlyArray<T>,
+  current: T,
+  set: (next: T) => void,
+): void {
+  const idx = options.indexOf(current);
+  if (idx < 0) return;
+  let next = idx;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (idx + 1) % options.length;
+  else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp')
+    next = (idx - 1 + options.length) % options.length;
+  else return;
+  e.preventDefault();
+  set(options[next]!);
+}
+
 /** Build an ISO datetime string from a Y/M/D (0-based month) at a fixed default
  * time-of-day. Date-only math via Date.UTC — never crosses a DST boundary in a
  * way that shifts the calendar day. */
@@ -88,8 +113,14 @@ export function AddEvent(props: AddEventProps): ReactElement {
   const [tag, setTag] = useState<EventTag>('family');
   const [dayChoice, setDayChoice] = useState<DayChoice>('today');
   const [submitting, setSubmitting] = useState(false);
+  // Becomes true after a submit attempt with an empty title (or a create error),
+  // surfacing the field as aria-invalid with associated error text (Finding E).
+  const [titleInvalid, setTitleInvalid] = useState(false);
   const titleId = useId();
   const descriptionId = useId();
+  const titleErrorId = useId();
+  const dateLegendId = useId();
+  const categoryLegendId = useId();
   const titleRef = useRef<HTMLInputElement>(null);
 
   // Suppress success side effects (toast + onClose) if the sheet was dismissed/
@@ -115,8 +146,12 @@ export function AddEvent(props: AddEventProps): ReactElement {
 
   const handleSubmit = (): void => {
     // aria-disabled keeps the button focusable; guard the action here so an
-    // unavailable click is a no-op (does not call onCreate).
-    if (!canSubmit) return;
+    // unavailable click is a no-op (does not call onCreate). An empty-title
+    // attempt is surfaced as an accessible validation error (Finding E).
+    if (!canSubmit) {
+      if (trimmed.length === 0) setTitleInvalid(true);
+      return;
+    }
     setSubmitting(true);
     const value: AddEventValue = {
       title: trimmed,
@@ -130,13 +165,16 @@ export function AddEvent(props: AddEventProps): ReactElement {
         showToast(EVENT_CREATE_SUCCESS);
         setTitle('');
         setDescription('');
+        setTitleInvalid(false);
         setSubmitting(false);
         onClose();
       })
       .catch(() => {
         if (!mountedRef.current || !openRef.current) return;
-        // Never surface a raw Firebase code / PII — generic copy only.
+        // Never surface a raw Firebase code / PII — generic copy only. Also flag
+        // the field so AT users see the create did not succeed.
         showToast(EVENT_GENERIC_ERROR);
+        setTitleInvalid(true);
         setSubmitting(false);
       });
   };
@@ -154,12 +192,26 @@ export function AddEvent(props: AddEventProps): ReactElement {
               ref={titleRef}
               type="text"
               value={title}
-              required
-              onChange={(e) => setTitle(e.target.value)}
+              aria-required="true"
+              aria-invalid={titleInvalid || undefined}
+              aria-describedby={titleInvalid ? titleErrorId : undefined}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                if (e.target.value.trim().length > 0) setTitleInvalid(false);
+              }}
               placeholder="What's happening?"
               className="w-full bg-transparent text-body text-ink placeholder:text-ink-mute2 focus:outline-none"
             />
           </div>
+          {titleInvalid && (
+            <p
+              id={titleErrorId}
+              role="alert"
+              className="text-meta font-semibold text-status-danger-text"
+            >
+              Please enter an event title before adding it.
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col gap-6">
@@ -177,36 +229,52 @@ export function AddEvent(props: AddEventProps): ReactElement {
         </div>
 
         <fieldset className="flex flex-col gap-6">
-          <legend className="text-label font-semibold text-ink-2">Date</legend>
-          <div className="flex flex-wrap gap-8">
-            {[
-              { choice: 'today' as const, label: 'Today' },
-              { choice: 'tomorrow' as const, label: 'Tomorrow' },
-            ].map(({ choice, label }) => {
-              const selected = dayChoice === choice;
-              return (
-                <button
-                  key={choice}
-                  type="button"
-                  aria-pressed={selected}
-                  onClick={() => setDayChoice(choice)}
-                  className={`inline-flex min-h-tap items-center justify-center rounded-control border px-16 text-body font-semibold transition-colors duration-cardPress ease-out focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none ${
-                    selected
-                      ? 'border-brand bg-brand-light text-brand'
-                      : 'border-surface-line bg-surface-card text-ink-2 hover:bg-surface-line2'
-                  }`}
-                >
-                  {label}
-                </button>
-              );
-            })}
+          <legend id={dateLegendId} className="text-label font-semibold text-ink-2">
+            Date
+          </legend>
+          <div className="flex flex-wrap items-center gap-8">
+            {/* Today/Tomorrow are mutually-exclusive radios in a radiogroup named
+                by the Date legend; arrow keys move the selection (roving
+                tabindex), Tab reaches the group (Finding E). Pick date is OUTSIDE
+                the group. */}
+            <div role="radiogroup" aria-labelledby={dateLegendId} className="flex flex-wrap gap-8">
+              {(
+                [
+                  { choice: 'today', label: 'Today' },
+                  { choice: 'tomorrow', label: 'Tomorrow' },
+                ] as ReadonlyArray<{ choice: DayChoice; label: string }>
+              ).map(({ choice, label }) => {
+                const selected = dayChoice === choice;
+                return (
+                  <button
+                    key={choice}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    tabIndex={selected ? 0 : -1}
+                    onClick={() => setDayChoice(choice)}
+                    onKeyDown={(e) => handleRadioKeys(e, DAY_CHOICES, dayChoice, setDayChoice)}
+                    className={`inline-flex min-h-tap items-center justify-center rounded-control border px-16 text-body font-semibold transition-colors duration-cardPress ease-out focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none ${
+                      selected
+                        ? 'border-brand bg-brand-light text-brand'
+                        : 'border-surface-line bg-surface-card text-ink-2 hover:bg-surface-line2'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
             {/* Pick date is a placeholder affordance for a future native date
-                picker; the locked schema only needs a day, and Today/Tomorrow
-                cover the common case. It selects Today as a safe default. */}
+                picker — OUTSIDE the radiogroup, aria-disabled, and a no-op so it
+                does NOT silently change the selected day (Finding E). */}
             <button
               type="button"
-              onClick={() => setDayChoice('today')}
-              className="inline-flex min-h-tap items-center justify-center rounded-control border border-surface-line bg-surface-card px-16 text-body font-semibold text-ink-2 transition-colors duration-cardPress ease-out hover:bg-surface-line2 focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none"
+              aria-disabled="true"
+              onClick={() => {
+                /* no-op: no real picker yet; must not mutate the selected day */
+              }}
+              className="inline-flex min-h-tap cursor-not-allowed items-center justify-center rounded-control border border-surface-line bg-surface-card px-16 text-body font-semibold text-ink-mute opacity-50 focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none"
             >
               Pick date
             </button>
@@ -214,16 +282,29 @@ export function AddEvent(props: AddEventProps): ReactElement {
         </fieldset>
 
         <fieldset className="flex flex-col gap-6">
-          <legend className="text-label font-semibold text-ink-2">Category</legend>
-          <div className="flex flex-wrap gap-8">
+          <legend id={categoryLegendId} className="text-label font-semibold text-ink-2">
+            Category
+          </legend>
+          {/* Mutually-exclusive radios in a radiogroup named by the Category
+              legend; arrow keys move the selection (roving tabindex). Each
+              option pairs a token colour dot with its text label (WCAG 1.4.1 —
+              never colour alone). */}
+          <div
+            role="radiogroup"
+            aria-labelledby={categoryLegendId}
+            className="flex flex-wrap gap-8"
+          >
             {CATEGORIES.map(({ tag: catTag, label }) => {
               const selected = tag === catTag;
               return (
                 <button
                   key={catTag}
                   type="button"
-                  aria-pressed={selected}
+                  role="radio"
+                  aria-checked={selected}
+                  tabIndex={selected ? 0 : -1}
                   onClick={() => setTag(catTag)}
+                  onKeyDown={(e) => handleRadioKeys(e, CATEGORY_TAGS, tag, setTag)}
                   className={`inline-flex min-h-tap items-center gap-8 rounded-control border px-16 text-body font-semibold transition-colors duration-cardPress ease-out focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none ${
                     selected
                       ? 'border-brand bg-brand-light text-brand'

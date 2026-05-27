@@ -286,6 +286,18 @@ service cloud.firestore {
     //   immutable. A cross-family parent, a member, a deactivated user, and an
     //   unauthenticated client are all denied.
     match /events/{eventId} {
+      // VALUE VALIDATION (Finding C): tag must be a known enum value and date
+      // must be an ISO datetime string (YYYY-MM-DDThh:mm:ss...). Applied on
+      // create AND update — a stale/garbage tag or a date-only/free-text date is
+      // rejected at the authorization boundary, not merely in the client form.
+      function eventTagValid() {
+        return request.resource.data.tag in ['school', 'sports', 'family', 'work'];
+      }
+      function eventDateValid() {
+        return request.resource.data.date is string
+          && request.resource.data.date.matches('^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*');
+      }
+
       allow get: if isActive() && sameFamily(resource);
       allow list: if listScopedToOwnFamily();
       allow create: if isActive()
@@ -297,9 +309,25 @@ service cloud.firestore {
               'familyId', 'createdBy', 'createdAt'])
         && request.resource.data.keys().hasAll(
              ['title', 'description', 'date', 'tag',
-              'familyId', 'createdBy', 'createdAt']);
+              'familyId', 'createdBy', 'createdAt'])
+        && eventTagValid()
+        && eventDateValid();
+      // update: ONLY the content fields (title/description/date/tag) are
+      // editable; identity (createdBy/createdAt) and tenant (familyId) are
+      // IMMUTABLE — mirrors the create-time identity binding (createdBy ==
+      // auth.uid). The CHANGED-key set must be a NON-EMPTY subset of the four
+      // content fields: requiring non-empty denies a no-op self re-assert of
+      // createdBy (which changes no value, so affectedKeys is empty), making
+      // createdBy/createdAt effectively write-once. familyId stays additionally
+      // pinned by immutable(). Value validation re-asserts the tag enum + ISO
+      // datetime on every edit.
       allow update: if isActive() && isParent() && sameFamily(resource)
-        && immutable('familyId');
+        && immutable('familyId')
+        && request.resource.data.diff(resource.data).affectedKeys().size() > 0
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['title', 'description', 'date', 'tag'])
+        && eventTagValid()
+        && eventDateValid();
       allow delete: if isActive() && isParent() && sameFamily(resource);
     }
 

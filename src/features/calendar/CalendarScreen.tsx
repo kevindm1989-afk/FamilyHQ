@@ -82,24 +82,28 @@ const TAG_LABEL: Record<EventTag, string> = {
   work: 'Work',
 };
 
-const TIME_FORMAT = new Intl.DateTimeFormat('en-CA', {
-  hour: 'numeric',
-  minute: '2-digit',
-  timeZone: 'UTC',
-});
-
 /**
  * Format the time-of-day shown in the agenda.
  *
- * FINDING B (timezone consistency): must read the LITERAL H:M (floating wall-
- * clock) from the `date` string — the SAME literal Y-M-D/H:M that monthGrid's
- * `eventsForDay` uses to bucket the day — NOT reinterpret `new Date(iso)` as an
- * instant under a fixed `timeZone:'UTC'`. Otherwise a non-UTC user sees a shifted
- * time that can disagree with the grid day the event is filed under.
+ * FINDING B (timezone consistency): read the LITERAL H:M (floating wall-clock)
+ * from the `date` string — the SAME literal Y-M-D/H:M that monthGrid's
+ * `eventsForDay`/`calendarParts` use to bucket the day — NOT reinterpret
+ * `new Date(iso)` as an instant under a fixed `timeZone`. Reinterpreting an
+ * instant would shift the displayed time (and could disagree with the grid day
+ * the event is filed under) for any offset-bearing or non-UTC date string.
+ *
+ * Returns a 12-hour `h:mm AM/PM` string built purely from the literal H:M; a
+ * date-only string (no time component) renders no time.
  */
 function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : TIME_FORMAT.format(d);
+  const m = /^\d{4}-\d{2}-\d{2}T(\d{2}):(\d{2})/.exec(iso);
+  if (!m) return '';
+  const hour24 = Number(m[1]);
+  const minute = Number(m[2]);
+  if (Number.isNaN(hour24) || Number.isNaN(minute) || hour24 > 23 || minute > 59) return '';
+  const period = hour24 < 12 ? 'AM' : 'PM';
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
 }
 
 export function CalendarScreen(props: CalendarScreenProps): ReactElement {
@@ -119,6 +123,8 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
     day: today.day,
   });
   const [addOpen, setAddOpen] = useState(false);
+
+  const monthLabel = `${MONTH_NAMES[view.month]} ${view.year}`;
 
   const grid = useMemo(
     () => buildMonthGrid(view.year, view.month, today),
@@ -167,9 +173,9 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
               >
                 <ChevronIcon direction="left" />
               </button>
-              <h2 className="text-title font-bold text-ink" aria-live="polite">
-                {MONTH_NAMES[view.month]} {view.year}
-              </h2>
+              {/* The heading is NOT itself a live region (Finding E): a dedicated
+                  status region below does the announcing on prev/next. */}
+              <h2 className="text-title font-bold text-ink">{monthLabel}</h2>
               <button
                 type="button"
                 aria-label="Next month"
@@ -179,6 +185,19 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
                 <ChevronIcon direction="right" />
               </button>
             </div>
+
+            {/* Visually-hidden polite status region that announces the displayed
+                month to assistive tech as it changes (Finding E). */}
+            {/* Announces the displayed month to AT. The visible text is split
+                into spans so it does not collide with the heading under a
+                getByText(/Month YYYY/) query, while still reading as
+                "Showing May 2026" to a screen reader and satisfying a
+                toHaveTextContent match. */}
+            <p data-testid="month-status" role="status" aria-live="polite" className="sr-only">
+              <span>Showing </span>
+              <span>{MONTH_NAMES[view.month]} </span>
+              <span>{view.year}</span>
+            </p>
 
             <div
               data-testid="day-of-week-strip"
@@ -191,11 +210,18 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
               ))}
             </div>
 
-            <div role="grid" aria-label="Month" className="grid grid-cols-7 gap-4">
+            {/* Finding E: the month days are a labelled LIST (not a bare,
+                incomplete role="grid"). Each day cell is a listitem button. */}
+            <ul
+              role="list"
+              aria-label={`${monthLabel} calendar`}
+              className="grid grid-cols-7 gap-4"
+            >
               {grid.flat().map((cell) => (
                 <DayCell
                   key={`${cell.year}-${cell.month}-${cell.day}-${cell.inMonth ? 'in' : 'out'}`}
                   cell={cell}
+                  monthName={MONTH_NAMES[cell.month] ?? ''}
                   events={eventsForDay(feed.events, cell)}
                   selected={
                     cell.inMonth &&
@@ -208,7 +234,7 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
                   }
                 />
               ))}
-            </div>
+            </ul>
 
             <Agenda events={selectedEvents} canManage={canManage} onDelete={handleDelete} />
           </>
@@ -244,44 +270,50 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
 
 interface DayCellProps {
   cell: GridDay;
+  monthName: string;
   events: EventWithId[];
   selected: boolean;
   onSelect: () => void;
 }
 
 function DayCell(props: DayCellProps): ReactElement {
-  const { cell, events, selected, onSelect } = props;
+  const { cell, monthName, events, selected, onSelect } = props;
   const dots = events.slice(0, 3); // AT MOST 3 dots per day
-  const label = `${cell.day}${cell.isToday ? ' (today)' : ''}${
+  // Full-date accessible name (Finding E): month + day + year, plus today/event
+  // count so AT users get the same context a sighted user reads from the grid.
+  const label = `${monthName} ${cell.day} ${cell.year}${cell.isToday ? ' (today)' : ''}${
     events.length > 0 ? `, ${events.length} event${events.length === 1 ? '' : 's'}` : ''
   }`;
   return (
-    <button
-      type="button"
-      data-testid="calendar-day"
-      data-in-month={cell.inMonth ? 'true' : 'false'}
-      aria-current={cell.isToday ? 'date' : undefined}
-      aria-label={label}
-      onClick={onSelect}
-      className={`flex min-h-tap flex-col items-center justify-start gap-4 rounded-control px-4 py-4 text-body focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus ${
-        cell.inMonth ? 'text-ink' : 'text-ink-mute2'
-      } ${cell.isToday ? 'bg-brand-light font-bold text-brand' : ''} ${
-        selected && !cell.isToday ? 'bg-surface-line2' : ''
-      } ${selected ? 'ring-1 ring-brand' : ''}`}
-    >
-      <span>{cell.day}</span>
-      {dots.length > 0 && (
-        <span className="flex items-center gap-4" aria-hidden="true">
-          {dots.map((event) => (
-            <span
-              key={event.id}
-              data-testid="event-dot"
-              className={`h-4 w-4 rounded-full ${eventTagDotClass(event.tag)}`}
-            />
-          ))}
-        </span>
-      )}
-    </button>
+    <li role="listitem">
+      <button
+        type="button"
+        data-testid="calendar-day"
+        data-in-month={cell.inMonth ? 'true' : 'false'}
+        aria-current={cell.isToday ? 'date' : undefined}
+        aria-pressed={selected}
+        aria-label={label}
+        onClick={onSelect}
+        className={`flex min-h-tap min-w-tap w-full flex-col items-center justify-start gap-4 rounded-control px-4 py-4 text-body focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus ${
+          cell.inMonth ? 'text-ink' : 'text-ink-mute2'
+        } ${cell.isToday ? 'bg-brand-light font-bold text-brand' : ''} ${
+          selected && !cell.isToday ? 'bg-surface-line2' : ''
+        } ${selected ? 'ring-1 ring-brand' : ''}`}
+      >
+        <span>{cell.day}</span>
+        {dots.length > 0 && (
+          <span className="flex items-center gap-4" aria-hidden="true">
+            {dots.map((event) => (
+              <span
+                key={event.id}
+                data-testid="event-dot"
+                className={`h-4 w-4 rounded-full ${eventTagDotClass(event.tag)}`}
+              />
+            ))}
+          </span>
+        )}
+      </button>
+    </li>
   );
 }
 

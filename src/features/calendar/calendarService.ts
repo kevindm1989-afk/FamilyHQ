@@ -150,17 +150,27 @@ export function canManageEvents(viewer: { role: Role }): boolean {
 }
 
 /**
+ * STATIC lookup from a category/tag to its FULL literal token DOT colour class
+ * (mirrors Badge.tsx's `TONE_CLASS`). The full literal strings are what make the
+ * `bg-category-*-dot` utilities visible to Tailwind's JIT — a `bg-category-
+ * ${tag}-dot` template is NOT statically analysable, so the rule would never be
+ * emitted and the dot would disappear in production (Finding A, HIGH).
+ */
+const TAG_DOT_CLASS: Record<EventTag, string> = {
+  school: 'bg-category-school-dot',
+  sports: 'bg-category-sports-dot',
+  family: 'bg-category-family-dot',
+  work: 'bg-category-work-dot',
+};
+
+/**
  * Pure mapping from a category/tag to its token DOT colour class (style-guide
- * §category colours; tokens, never raw hex):
- *   school -> blue, sports -> green, family -> indigo, work -> grey.
+ * §category colours; tokens, never raw hex).
  *
- * MUST return one of FOUR exact STATIC literal class strings via a static lookup
- * map (mirrors Badge.tsx's `TONE_CLASS`) — NEVER string interpolation. A
- * `bg-category-${tag}-dot` template is invisible to Tailwind's JIT, so the rule
- * is never emitted and the dot disappears in production (Finding A, HIGH). An
- * UNKNOWN/invalid tag must fall SAFE to a real literal token class, never
- * `undefined`, empty, or an interpolated non-token.
+ * An UNKNOWN/invalid tag (stale cache, a future schema value) falls SAFE to a
+ * real literal token class — never `undefined`, empty, or an interpolated
+ * non-token.
  */
 export function eventTagDotClass(tag: EventTag): string {
-  return `bg-category-${tag}-dot`;
+  return TAG_DOT_CLASS[tag] ?? TAG_DOT_CLASS.family;
 }

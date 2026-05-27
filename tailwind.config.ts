@@ -86,6 +86,17 @@ const fontSize = Object.fromEntries(
 
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  // Belt-and-suspenders for the category dot utilities. These are emitted from a
+  // STATIC literal map (calendarService.eventTagDotClass / Badge.tsx TONE_CLASS),
+  // so the JIT already sees them — the safelist guarantees they survive even if a
+  // refactor ever obscures the literal. Each maps to a defined token-backed
+  // colour (theme.colors.category.*-dot, traced to design-tokens.json).
+  safelist: [
+    'bg-category-school-dot',
+    'bg-category-sports-dot',
+    'bg-category-family-dot',
+    'bg-category-work-dot',
+  ],
   // dark mode deferred to post-v1 (see ADR-0007 / tokens color.dark). Light-only.
   theme: {
     extend: {
