@@ -571,3 +571,23 @@ diff; **priv** = privacy-reviewer verifies compliance.
    credential so no child PI ever reaches TB3.
 6. **Note future-trigger reviews:** Quebec Law 25 / COPPA / GDPR-K before any
    non-Canadian or Quebec exposure.
+
+---
+
+## Addendum (2026-05-27) — deferred control: last-active-parent invariant
+
+Surfaced by adversarial review of the Phase 1-2 fixes. The `firestore.rules`
+`notSelfDeactivation()` guard blocks a parent from deactivating **themselves**,
+but a parent can still deactivate the **other** parent. The full "a family must
+always retain ≥1 active parent" invariant cannot be enforced in security rules
+alone (it requires an aggregate count of active parents per family).
+
+**Status:** DEFERRED to Phase 3 (Family Management + the invite Cloud Function,
+TB2). Enforcement options recorded for that phase: (a) a transactionally
+maintained `activeParentCount` on the `families` doc, deny-on-zero; or (b) route
+deactivation through the parent-only Cloud Function which counts active parents
+server-side. Until then the self-deactivation guard is defense-in-depth only,
+and the deactivation UI itself does not ship until Phase 3 — so the lockout
+vector is not reachable by an end user in Phases 0-2. New mitigation id: **M31
+(deferred)**. Test owed in Phase 3: a two-parent fixture proving the last active
+parent cannot be deactivated.
