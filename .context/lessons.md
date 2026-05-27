@@ -21,6 +21,60 @@ Append newest on top. Be specific — vague lessons don't prevent anything.
 
 ## Entries
 
+## 2026-05-27 — `assertFails` only matches PERMISSION_DENIED, not app-level transaction aborts
+
+**Symptom:** Allowance-approval abort tests (double-approve, approve-pending,
+approve-already-approved, approve-rejected) initially wrapped the test's own
+`runApproval` — whose status guard throws a plain `Error('chore-not-complete')`
+and aborts the transaction — in `assertFails(...)`. `assertFails`
+(`@firebase/rules-unit-testing`) resolves only on a rules `PERMISSION_DENIED`,
+so an app-level thrown abort does not satisfy it.
+**Root cause:** Two different failure mechanisms were conflated: a rules denial
+(server-side, PERMISSION_DENIED) vs an application-layer transaction abort (a
+thrown Error inside `runTransaction`). They need different assertions.
+**Fix:** Assert app-level aborts with `.rejects.toThrow('chore-not-complete')`
+PLUS side-effect checks (balance unchanged, no ledger doc), and reserve
+`assertFails` for genuine rules denials (cross-family, self-approve, deactivated).
+**Prevention:** When testing a client `runTransaction`, decide per case which
+layer enforces the guarantee. Rules denial -> `assertFails`. App-level guard /
+thrown abort -> `.rejects.toThrow(...)` + assert no side effects landed. Never
+use `assertFails` for a thrown Error.
+
+## 2026-05-27 — Component tests asserting a formatted value need DISTINCT fixture values per surface
+
+**Symptom:** A ChoresParent "money precision" test used a member balance equal to
+a chore reward, so once both surfaces rendered money, `getByText(/\$1\.00/)`
+matched two nodes and failed. The same class also bites money-vs-points: a chore
+`pointValue` of `1` can satisfy a `/\$1\.00/`-shaped matcher if the values aren't
+kept apart.
+**Root cause:** A `getByText` regex matches DOM text content, not a semantic
+slot. When two unrelated surfaces (balance chip + chore card; money + points)
+render coincidentally-equal text, the matcher can be satisfied by the wrong
+element — a false pass or a spurious multiple-match failure.
+**Fix:** Gave each surface a deliberately DISTINCT value (e.g. balance $1.00 /
+100c vs chore reward $2.50 / 250c; points 10 vs dollars 3) so each matcher can
+only resolve to its intended node, and scoped card assertions with `within(card)`.
+**Prevention:** In a component test asserting a formatted value, choose fixture
+numbers so no two surfaces collide, AND scope to the element (`within(...)`)
+rather than a document-wide `getByText`. Distinct fixtures + scoped queries, both.
+
+## 2026-05-27 — Declaring an ARIA composite role obligates the full keyboard contract — reuse the existing helper
+
+**Symptom:** New `role="radiogroup"`/`role="radio"` groups in the chores AddChore
+form were initially declared without the roving-tabindex + arrow-key handling the
+role requires, even though the calendar `AddEvent` form already had a working
+`handleRadioKeys` + `tabIndex={selected ? 0 : -1}` pattern.
+**Root cause:** An ARIA composite role (radiogroup, tablist, listbox, etc.) is a
+PROMISE of a specific keyboard interaction model (one tab stop, arrow keys move
+selection). Declaring the role without the keyboard behaviour is worse than no
+role — it lies to assistive tech.
+**Fix:** Reused the established pattern: exactly one radio tabbable
+(`tabIndex 0`), the rest `-1`, `ArrowRight/Down`/`ArrowLeft/Up` move selection
+via the shared `handleRadioKeys` helper shape.
+**Prevention:** Before adding any ARIA composite role, find the project's
+existing implementation of that role and reuse its keyboard handler. If declaring
+a composite role you can't make keyboard-operable, don't declare it.
+
 ## 2026-05-27 — Test mocks that always resolve hid a real rejection path
 
 **Symptom:** The cache-clear lifecycle suite passed, but a mock of
