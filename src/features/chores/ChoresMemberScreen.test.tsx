@@ -27,7 +27,12 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../hooks/useToast';
 import { ChoresMemberScreen, type ChoresMemberScreenProps } from './ChoresMemberScreen';
-import { CHORE_COMPLETE_SUCCESS, type ChoreWithId } from './choresMemberService';
+import {
+  CHORE_COMPLETE_SUCCESS,
+  CHORE_GENERIC_ERROR,
+  ChoreActionError,
+  type ChoreWithId,
+} from './choresMemberService';
 
 const VIEWER = {
   uid: 'uid-member-a',
@@ -311,5 +316,399 @@ describe('ChoresMemberScreen — Mark done button accessibility (focusable, aria
     expect(btn.tagName).toBe('BUTTON');
     btn.focus();
     expect(btn).toHaveFocus();
+  });
+});
+
+/**
+ * Deferred-promise helper: hold an onMarkComplete write IN FLIGHT so a second
+ * rapid click happens while the first has not resolved. No timers/clock — the
+ * promise resolves only when we call `resolve()`.
+ */
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+describe('ChoresMemberScreen — mark-complete in-flight guard (double-click bug)', () => {
+  it('disables the Mark done button while a mark-complete is in flight (aria-disabled or disabled)', async () => {
+    const d = deferred();
+    const onMarkComplete = vi.fn().mockReturnValue(d.promise);
+    renderScreen({
+      onMarkComplete,
+      feed: {
+        chores: [mkChore({ id: 'c1', status: 'pending' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    const btn = screen.getByRole('button', { name: /mark .*done|mark complete/i });
+    fireEvent.click(btn);
+    // While in flight the button must be non-actionable to a screen reader and
+    // pointer alike — either the disabled property or aria-disabled="true".
+    await waitFor(() => {
+      const ariaDisabled = btn.getAttribute('aria-disabled') === 'true';
+      const domDisabled = (btn as HTMLButtonElement).disabled === true;
+      expect(
+        ariaDisabled || domDisabled,
+        'in-flight Mark done must be disabled or aria-disabled="true"',
+      ).toBe(true);
+    });
+    d.resolve();
+  });
+
+  it('a SECOND rapid click does NOT invoke onMarkComplete again while the first is in flight', async () => {
+    const d = deferred();
+    const onMarkComplete = vi.fn().mockReturnValue(d.promise);
+    renderScreen({
+      onMarkComplete,
+      feed: {
+        chores: [mkChore({ id: 'c1', status: 'pending' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    const btn = screen.getByRole('button', { name: /mark .*done|mark complete/i });
+    fireEvent.click(btn);
+    fireEvent.click(btn); // second rapid click — must be ignored
+    await waitFor(() => expect(onMarkComplete).toHaveBeenCalledTimes(1));
+    // Give any erroneous second call a chance to register, then re-assert.
+    expect(onMarkComplete).toHaveBeenCalledTimes(1);
+    d.resolve();
+  });
+
+  it('a double-clicked Mark done shows the success toast and NEVER the scary error toast', async () => {
+    // Model the real bug: the FIRST write succeeds (chore -> complete); a SECOND
+    // write (if it fired) hits a now-complete chore and REJECTS, surfacing the
+    // generic error toast. The guard must stop the second invocation, so only
+    // the success copy is ever announced — the error copy must NEVER appear.
+    const d = deferred();
+    let call = 0;
+    const onMarkComplete = vi.fn(() => {
+      call += 1;
+      // First call resolves on demand; any second call rejects immediately (the
+      // chore is already complete server-side).
+      return call === 1 ? d.promise : Promise.reject(new ChoreActionError());
+    });
+    renderScreen({
+      onMarkComplete,
+      feed: {
+        chores: [mkChore({ id: 'c1', status: 'pending' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    const btn = screen.getByRole('button', { name: /mark .*done|mark complete/i });
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    d.resolve();
+    await waitFor(() => expect(screen.getByText(CHORE_COMPLETE_SUCCESS)).toBeInTheDocument());
+    expect(onMarkComplete).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(CHORE_GENERIC_ERROR)).not.toBeInTheDocument();
+  });
+});
+
+// Build a rejected chore, omitting rejectionReason entirely when absent (so the
+// "no reason" case is a genuinely missing field, not an explicit undefined —
+// exactOptionalPropertyTypes is on).
+function mkRejected(id: string, title: string, reason: string | undefined): ChoreWithId {
+  const base = { id, title, status: 'rejected' as const };
+  return reason === undefined ? mkChore(base) : mkChore({ ...base, rejectionReason: reason });
+}
+
+describe('ChoresMemberScreen — rejected chore gets its OWN section (not "To do")', () => {
+  function renderRejected(reason: string | undefined) {
+    return renderScreen({
+      feed: {
+        chores: [mkRejected('rej', 'Fold laundry', reason)],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+  }
+
+  it('renders a rejected chore under its OWN section heading, NOT under "To do"', () => {
+    renderRejected('Socks are still on the floor');
+    // The rejected chore lives under a distinct heading (e.g. "Needs another
+    // try" / "Sent back"), separate from the pending "To do" bucket.
+    const rejectedHeading = screen.getByRole('heading', {
+      name: /needs another try|sent back|try again|rejected/i,
+    });
+    expect(rejectedHeading).toBeInTheDocument();
+    // A "To do" heading must NOT exist when the only chore is rejected — the
+    // rejected chore must not be miscategorised as pending work.
+    expect(screen.queryByRole('heading', { name: /^to do$/i })).not.toBeInTheDocument();
+  });
+
+  it('a rejected chore still shows its rejectionReason in its own section', () => {
+    renderRejected('Socks are still on the floor');
+    expect(screen.getByText(/Socks are still on the floor/)).toBeInTheDocument();
+  });
+
+  it('a rejected chore does NOT get a Mark done button (re-submit flow is deferred)', () => {
+    renderRejected('Socks are still on the floor');
+    expect(
+      screen.queryByRole('button', { name: /mark .*done|mark complete/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps a pending chore under "To do" while a rejected chore sits in its own section', () => {
+    renderScreen({
+      feed: {
+        chores: [
+          mkChore({ id: 'p', title: 'Pending task', status: 'pending' }),
+          mkChore({ id: 'r', title: 'Rejected task', status: 'rejected', rejectionReason: 'redo' }),
+        ],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    // The pending "To do" section exists; the rejected one is separate.
+    expect(screen.getByRole('heading', { name: /^to do$/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /needs another try|sent back|try again|rejected/i }),
+    ).toBeInTheDocument();
+    // Only the pending chore has a Mark done button.
+    expect(screen.getAllByRole('button', { name: /mark .*done|mark complete/i })).toHaveLength(1);
+  });
+});
+
+describe('ChoresMemberScreen — rejected reason robustness (no empty red paragraph)', () => {
+  function renderRejected(reason: string | undefined) {
+    renderScreen({
+      feed: {
+        chores: [mkRejected('rej', 'Fold laundry', reason)],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+  }
+
+  // The robustness contract: an absent/empty/whitespace reason must NOT produce
+  // a bare empty danger-coloured paragraph. The chosen, PINNED fallback is the
+  // visible line "No reason given." (a sensible fallback, not nothing) so the
+  // rejection is still legible. A real reason renders verbatim.
+  const FALLBACK = /no reason given|sent back without a note|no note/i;
+
+  it('a rejected chore with NO rejectionReason shows a sensible fallback line, not an empty paragraph', () => {
+    renderRejected(undefined);
+    expect(screen.getByText(FALLBACK)).toBeInTheDocument();
+  });
+
+  it('a rejected chore with an EMPTY-STRING reason shows the fallback, not an empty paragraph', () => {
+    renderRejected('');
+    expect(screen.getByText(FALLBACK)).toBeInTheDocument();
+  });
+
+  it('a rejected chore with a WHITESPACE-ONLY reason shows the fallback, not the blank string', () => {
+    renderRejected('   \n\t  ');
+    expect(screen.getByText(FALLBACK)).toBeInTheDocument();
+  });
+
+  it('a rejected chore with a REAL reason shows that reason verbatim (not the fallback)', () => {
+    renderRejected('Half the plates are still dirty');
+    expect(screen.getByText('Half the plates are still dirty')).toBeInTheDocument();
+    expect(screen.queryByText(FALLBACK)).not.toBeInTheDocument();
+  });
+});
+
+describe('ChoresMemberScreen — unknown/out-of-enum status stays coherent', () => {
+  // Adversarial: a chore arrives with a status outside the ChoreStatus enum
+  // (stale cache / future schema). PINNED behavior: it is EXCLUDED from the
+  // "has chores" check — so when the ONLY chore is unknown-status, the screen
+  // shows the friendly empty state rather than claiming chores exist while
+  // rendering nothing in any section. It must never silently count as "has
+  // chores" yet appear in no section (an invisible, inconsistent screen).
+  function renderUnknownOnly() {
+    renderScreen({
+      feed: {
+        chores: [
+          mkChore({
+            id: 'weird',
+            title: 'Mystery chore',
+            // deliberately out-of-enum — cast through unknown to bypass the union
+            status: 'archived' as unknown as ChoreWithId['status'],
+          }),
+        ],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+  }
+
+  it('an out-of-enum status does NOT count as "has chores" (screen stays the empty state, not a blank list)', () => {
+    renderUnknownOnly();
+    expect(
+      screen.getByText(/no chores|all caught up|nothing to do|you're all set/i),
+    ).toBeInTheDocument();
+  });
+
+  it('an out-of-enum status is not rendered as a phantom row with a Mark done button', () => {
+    renderUnknownOnly();
+    expect(
+      screen.queryByRole('button', { name: /mark .*done|mark complete/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe('ChoresMemberScreen — accessibility (a11y findings)', () => {
+  it('the due date is VISIBLE text inside the <time> element (not only in the attribute)', () => {
+    renderScreen({
+      feed: {
+        chores: [mkChore({ id: 'c1', dueDate: '2026-05-30', status: 'pending' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    const time = document.querySelector('time[datetime="2026-05-30"]');
+    expect(time, 'a <time datetime> element must exist for the due date').not.toBeNull();
+    // Sighted users must SEE the friendly date; it cannot live only in the
+    // attribute / aria-label. The <time> element must have non-empty visible text.
+    expect((time?.textContent ?? '').trim().length).toBeGreaterThan(0);
+  });
+
+  it('the due date <time> visible text is the friendly date (May 2026), not the raw ISO digits only', () => {
+    renderScreen({
+      feed: {
+        chores: [mkChore({ id: 'c1', dueDate: '2026-05-30', status: 'pending' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    const time = document.querySelector('time[datetime="2026-05-30"]');
+    expect((time?.textContent ?? '')).toMatch(/May/);
+  });
+
+  it('the rejection reason is programmatically associated with the chore (aria-describedby or a visible "sent back" label)', () => {
+    renderScreen({
+      feed: {
+        chores: [
+          mkChore({
+            id: 'rej',
+            title: 'Dishes',
+            status: 'rejected',
+            rejectionReason: 'Half the plates are still dirty',
+          }),
+        ],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    const reason = screen.getByText('Half the plates are still dirty');
+    // Association is satisfied by EITHER: the chore title points at the reason
+    // via aria-describedby, OR the reason carries a visible "why it was sent
+    // back" label so it is self-describing.
+    const title = screen.getByText('Dishes');
+    const describedBy = title.getAttribute('aria-describedby');
+    const associatedById =
+      describedBy != null && reason.id !== '' && describedBy.split(/\s+/).includes(reason.id);
+    const hasVisibleLabel =
+      screen.queryByText(/why it was sent back|sent back|reason/i) !== null;
+    expect(
+      associatedById || hasVisibleLabel,
+      'rejection reason must be associated via aria-describedby OR carry a visible "sent back" label',
+    ).toBe(true);
+  });
+
+  it('the Mark done button accessible name identifies the chore (not a bare "Mark done")', () => {
+    renderScreen({
+      feed: {
+        chores: [mkChore({ id: 'c1', title: 'Walk the dog', status: 'pending' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    // The accessible name must include the chore title so a screen-reader user
+    // hearing several "Mark done" buttons can tell them apart.
+    expect(
+      screen.getByRole('button', { name: /mark .*walk the dog.* done|walk the dog/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('the balance has an accessible name that reads as the balance, not a bare number', () => {
+    renderScreen({ viewer: { ...VIEWER, allowanceBalance: 38.5 } });
+    // The amount element exposes a meaningful accessible name like
+    // "Your balance $38.50", so it is not announced as a lone "$38.50".
+    expect(
+      screen.getByText((_content, el) => {
+        if (el === null) return false;
+        const label = el.getAttribute('aria-label') ?? '';
+        return /your balance/i.test(label) && /38\.50/.test(label);
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('the "View history" placeholder is aria-disabled (coming soon), not an actionable no-op', () => {
+    renderScreen();
+    const viewHistory = screen.getByText(/view history/i);
+    const el = viewHistory.closest('button, a') ?? viewHistory;
+    expect(
+      el.getAttribute('aria-disabled'),
+      '"View history" must be aria-disabled (coming soon) so it is not a silent no-op',
+    ).toBe('true');
+  });
+});
+
+describe('ChoresMemberScreen — focus after mark-complete (jsdom best-effort; real-AT is a launch gate)', () => {
+  it('moves focus to a sensible target after a chore moves out of the To-do section', async () => {
+    // When a pending chore is marked complete it leaves the "To do" section, so
+    // its Mark done button is unmounted; focus must NOT be lost to <body>. The
+    // PINNED target is a focusable "Waiting for approval" heading. NOTE: focus
+    // restoration after async DOM change is only loosely observable in jsdom;
+    // the authoritative check is a real-AT pass at launch (flagged).
+    const d = deferred();
+    const onMarkComplete = vi.fn().mockReturnValue(d.promise);
+    const { rerender } = render(
+      <ToastProvider>
+        <ChoresMemberScreen
+          familyId="fam-A"
+          viewer={VIEWER}
+          feed={{
+            chores: [mkChore({ id: 'c1', title: 'Walk the dog', status: 'pending' })],
+            loading: false,
+            error: null,
+            refresh: vi.fn().mockResolvedValue(undefined),
+          }}
+          onMarkComplete={onMarkComplete}
+        />
+      </ToastProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /mark .*done|mark complete/i }));
+    d.resolve();
+    await waitFor(() => expect(onMarkComplete).toHaveBeenCalled());
+
+    // The feed flips the chore to complete (the hook re-snapshots in production).
+    rerender(
+      <ToastProvider>
+        <ChoresMemberScreen
+          familyId="fam-A"
+          viewer={VIEWER}
+          feed={{
+            chores: [mkChore({ id: 'c1', title: 'Walk the dog', status: 'complete' })],
+            loading: false,
+            error: null,
+            refresh: vi.fn().mockResolvedValue(undefined),
+          }}
+          onMarkComplete={onMarkComplete}
+        />
+      </ToastProvider>,
+    );
+
+    const waitingHeading = screen.getByRole('heading', { name: /waiting for approval/i });
+    await waitFor(() => expect(waitingHeading).toHaveFocus());
   });
 });

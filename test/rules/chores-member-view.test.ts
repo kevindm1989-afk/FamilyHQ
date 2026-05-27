@@ -89,6 +89,29 @@ describe('M1/own-assignee: a member can READ ONLY their own chores, scoped to ow
     );
   });
 
+  it('member CAN list own-family + own-assignment chores ordered by createdAt DESC (EXACT production query — exercises the composite index)', async () => {
+    // This is the LITERAL query useMyChores issues:
+    //   where(familyId==A) + where(assignedTo==self) + orderBy(createdAt,desc).
+    // Running it through the emulator exercises the composite-index requirement
+    // in firestore.indexes.json — if that index were missing or its field order
+    // were wrong (e.g. createdAt ASC, or assignedTo/familyId swapped), the
+    // emulator would reject this query with a failed-precondition, so this MUST
+    // succeed. A bare equality-only list (asserted elsewhere) would NOT catch a
+    // mis-ordered index, because no orderBy means no composite-index need.
+    const db = env.authenticatedContext(UID.memberA).firestore();
+    const { collection, getDocs, orderBy, query, where } = await import('firebase/firestore');
+    await assertSucceeds(
+      getDocs(
+        query(
+          collection(db, 'chores'),
+          where('familyId', '==', FAMILY_A),
+          where('assignedTo', '==', UID.memberA),
+          orderBy('createdAt', 'desc'),
+        ),
+      ),
+    );
+  });
+
   it('member CANNOT list chores with an UNCONSTRAINED query (would leak others) — denied', async () => {
     const db = env.authenticatedContext(UID.memberA).firestore();
     const { collection, getDocs } = await import('firebase/firestore');

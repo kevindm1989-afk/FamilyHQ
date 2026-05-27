@@ -143,6 +143,15 @@ describe('useMyChores — own-chore scoping (security: P2/M7 + own-assignment)',
     expect(cap.whereCalls).toContainEqual(['assignedTo', '==', 'uid-member-a']);
   });
 
+  it('orders the query by createdAt DESC (newest first) — exercises the composite index', async () => {
+    // The orderBy was mocked but never asserted; the production query relies on
+    // a (familyId, assignedTo, createdAt DESC) composite index, so the orderBy
+    // arguments are load-bearing and must be pinned.
+    render(<Harness uid="uid-member-a" familyId="fam-A" />);
+    await waitFor(() => expect(orderByMock).toHaveBeenCalled());
+    expect(orderByMock).toHaveBeenCalledWith('createdAt', 'desc');
+  });
+
   it('does NOT subscribe when there is no family yet (familyId null)', () => {
     render(<Harness uid="uid-member-a" familyId={null} />);
     expect(onSnapshotMock).not.toHaveBeenCalled();
