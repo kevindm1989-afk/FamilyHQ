@@ -37,6 +37,7 @@ import type { RecurrenceFrequency, Role, UserWithId } from '../../lib/types';
 import { ChoreActionError, type ChoreWithId } from './choresMemberService';
 
 export { ChoreActionError, type ChoreWithId } from './choresMemberService';
+export { MONEY_MAX_CENTS } from '../../lib/types';
 
 const CHORES_COLLECTION = 'chores';
 const USERS_COLLECTION = 'users';
@@ -47,6 +48,40 @@ export const CHORE_APPROVE_SUCCESS = 'Approved — allowance updated.';
 export const CHORE_REJECT_SUCCESS = 'Sent back to try again.';
 export const CHORE_ADD_SUCCESS = 'Chore added.';
 export const CHORE_PARENT_GENERIC_ERROR = 'Something went wrong. Please try again.';
+
+/**
+ * Distinct indicator rendered in place of a money amount when the value is not a
+ * finite, valid integer-cent amount (adversarial Finding 8). NEVER render a
+ * misleading "$0.00" for a non-finite balance.
+ */
+export const MONEY_INVALID_INDICATOR = '—';
+
+/**
+ * Format an INTEGER-CENTS money value as "$X.XX" for display (the single money
+ * formatter; money is stored as cents everywhere — second-opinion #4 / Finding
+ * 7). A non-finite or non-integer input is NOT a valid cents amount and MUST NOT
+ * be rendered as "$0.00" — callers detect that via isValidMoneyCents and render
+ * MONEY_INVALID_INDICATOR instead (Finding 8). `300` -> "$3.00"; `3850` ->
+ * "$38.50"; `0` -> "$0.00".
+ *
+ * SIGNATURE ONLY — implementer fills the body. The unit tests pin the exact
+ * formatted output.
+ */
+export function formatMoney(_cents: number): string {
+  throw new Error('not implemented');
+}
+
+/**
+ * True iff `value` is a valid money amount in INTEGER CENTS: a finite, whole
+ * number, `>= 0` and `<= MONEY_MAX_CENTS`. Used to gate the money display
+ * (Finding 8: a non-finite/NaN balance renders MONEY_INVALID_INDICATOR, not
+ * "$0.00").
+ *
+ * SIGNATURE ONLY — implementer fills the body.
+ */
+export function isValidMoneyCents(_value: number): boolean {
+  throw new Error('not implemented');
+}
 
 /**
  * Approve a COMPLETE chore in ONE Firestore transaction (ADR-0004). Re-reads the

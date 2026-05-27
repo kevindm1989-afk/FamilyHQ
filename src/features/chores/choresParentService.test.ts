@@ -104,11 +104,15 @@ import {
   CHORE_PARENT_GENERIC_ERROR,
   CHORE_REJECT_SUCCESS,
   ChoreActionError,
+  MONEY_INVALID_INDICATOR,
+  MONEY_MAX_CENTS,
   addChore,
   approvalQueue,
   approveChore,
   canManageChores,
   choresForTab,
+  formatMoney,
+  isValidMoneyCents,
   memberFilterTabs,
   pendingApprovalCount,
   rejectChore,
@@ -494,5 +498,82 @@ describe('canManageChores — pure role derivation (cosmetic; rules are authorit
 
   it('a member CANNOT manage chores', () => {
     expect(canManageChores({ role: 'member' })).toBe(false);
+  });
+});
+
+// =====================================================================
+// MONEY → INTEGER CENTS (second-opinion #4 / Finding 7): the single money
+// formatter turns whole cents into "$X.XX". Precise, exact-string matchers —
+// never a loose digit that a points/date value could satisfy (learned bug).
+// =====================================================================
+describe('formatMoney — integer CENTS to "$X.XX" display', () => {
+  it('formats 300 cents as exactly "$3.00"', () => {
+    expect(formatMoney(300)).toBe('$3.00');
+  });
+
+  it('formats 3850 cents as exactly "$38.50"', () => {
+    expect(formatMoney(3850)).toBe('$38.50');
+  });
+
+  it('formats 0 cents as exactly "$0.00"', () => {
+    expect(formatMoney(0)).toBe('$0.00');
+  });
+
+  it('formats 5 cents as exactly "$0.05" (sub-dollar cents, not "$5.00")', () => {
+    expect(formatMoney(5)).toBe('$0.05');
+  });
+
+  it('formats 100 cents as exactly "$1.00" (distinct from a points value of 1)', () => {
+    expect(formatMoney(100)).toBe('$1.00');
+  });
+
+  it('formats the MAX (100000000 cents) as exactly "$1,000,000.00"', () => {
+    expect(formatMoney(MONEY_MAX_CENTS)).toBe('$1,000,000.00');
+  });
+});
+
+describe('isValidMoneyCents — guards the money display (Finding 8)', () => {
+  it('accepts a valid integer-cents amount (300)', () => {
+    expect(isValidMoneyCents(300)).toBe(true);
+  });
+
+  it('accepts 0 cents', () => {
+    expect(isValidMoneyCents(0)).toBe(true);
+  });
+
+  it('accepts the max ($1,000,000 in cents)', () => {
+    expect(isValidMoneyCents(MONEY_MAX_CENTS)).toBe(true);
+  });
+
+  it('rejects NaN', () => {
+    expect(isValidMoneyCents(Number.NaN)).toBe(false);
+  });
+
+  it('rejects Infinity', () => {
+    expect(isValidMoneyCents(Number.POSITIVE_INFINITY)).toBe(false);
+  });
+
+  it('rejects a negative amount', () => {
+    expect(isValidMoneyCents(-1)).toBe(false);
+  });
+
+  it('rejects a fractional amount (350.5 — not whole cents)', () => {
+    expect(isValidMoneyCents(350.5)).toBe(false);
+  });
+
+  it('rejects an over-max amount (MONEY_MAX_CENTS + 1)', () => {
+    expect(isValidMoneyCents(MONEY_MAX_CENTS + 1)).toBe(false);
+  });
+});
+
+describe('money constants', () => {
+  it('MONEY_MAX_CENTS is $1,000,000 in cents (100000000)', () => {
+    expect(MONEY_MAX_CENTS).toBe(100000000);
+  });
+
+  it('MONEY_INVALID_INDICATOR is a non-empty, non-money string (distinct from "$0.00")', () => {
+    expect(typeof MONEY_INVALID_INDICATOR).toBe('string');
+    expect(MONEY_INVALID_INDICATOR.length).toBeGreaterThan(0);
+    expect(MONEY_INVALID_INDICATOR).not.toMatch(/\$/);
   });
 });

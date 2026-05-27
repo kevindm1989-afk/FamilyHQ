@@ -27,15 +27,21 @@ import { FAMILY_A, FAMILY_B, UID, getEnv, seedBaseline, teardownEnv } from './he
 let env: Awaited<ReturnType<typeof getEnv>>;
 const CHORE_A = `chore-${FAMILY_A}`; // assignedTo memberA, status pending
 
+// MONEY IS INTEGER CENTS (second-opinion #4 / adversarial Finding 7): dollarValue
+// is whole cents, >= 0 and <= MONEY_MAX (= 100000000 cents = $1,000,000). A
+// fractional value (e.g. 350.5) or an over-max value is DENIED at the rules layer.
+const MONEY_MAX = 100000000;
+
 /** A well-formed, valid parent-create chore body (the EXACT shape). Override
- * individual fields to build each malformed/invalid variant. */
+ * individual fields to build each malformed/invalid variant. `dollarValue` is in
+ * INTEGER CENTS — `200` means $2.00. */
 function validChore(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     title: 'Dishes',
     assignedTo: UID.memberA,
     dueDate: '2026-05-30',
-    pointValue: 5,
-    dollarValue: 2,
+    pointValue: 5, // integer POINTS, not money
+    dollarValue: 200, // integer CENTS — $2.00
     status: 'pending',
     familyId: FAMILY_A,
     createdBy: UID.parentA,
@@ -182,6 +188,53 @@ describe('chore create — numeric value validation (pointValue/dollarValue numb
     const db = env.authenticatedContext(UID.parentA).firestore();
     const { doc, setDoc } = await import('firebase/firestore');
     await assertFails(setDoc(doc(db, 'chores', 'string-point'), validChore({ pointValue: '5' })));
+  });
+});
+
+// === MONEY → INTEGER CENTS (second-opinion #4 / adversarial Finding 7) ========
+// dollarValue is now whole cents. The rule must require dollarValue `is int`,
+// `>= 0`, and `<= MONEY_MAX`. A fractional value (a float-dollar like 350.5
+// smuggled where cents are expected), a value over the cap, and (still) a
+// negative are DENIED; valid integer-cent boundaries ALLOWED.
+describe('chore create — dollarValue is INTEGER CENTS (Finding 7: int, >=0, <=$1,000,000)', () => {
+  it('a valid integer-cents dollarValue (300 = $3.00) is ALLOWED', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertSucceeds(
+      setDoc(doc(db, 'chores', 'cents-3-dollars'), validChore({ dollarValue: 300 })),
+    );
+  });
+
+  it('the MAX integer-cents dollarValue ($1,000,000 = 100000000) is ALLOWED (upper boundary)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertSucceeds(
+      setDoc(doc(db, 'chores', 'cents-max'), validChore({ dollarValue: MONEY_MAX })),
+    );
+  });
+
+  it('a FRACTIONAL dollarValue (350.5 — not whole cents) is DENIED (is int)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(doc(db, 'chores', 'frac-dollar'), validChore({ dollarValue: 350.5 })),
+    );
+  });
+
+  it('a dollarValue OVER the max (MONEY_MAX + 1) is DENIED (<= cap)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(doc(db, 'chores', 'over-max-dollar'), validChore({ dollarValue: MONEY_MAX + 1 })),
+    );
+  });
+
+  it('a FRACTIONAL pointValue (2.5 — points are whole) is DENIED (is int)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(doc(db, 'chores', 'frac-point'), validChore({ pointValue: 2.5 })),
+    );
   });
 });
 
@@ -352,5 +405,32 @@ describe('chore update — parent approve/reject transitions (paired with the cr
     const db = env.authenticatedContext(UID.parentB).firestore();
     const { doc, updateDoc } = await import('firebase/firestore');
     await assertFails(updateDoc(doc(db, 'chores', CHORE_A), { status: 'approved' }));
+  });
+
+  // Finding 2 (adversarial): the parent reject transition is from-status guarded —
+  // ONLY a `complete -> rejected` move is legal. A parent must NOT be able to move
+  // an already-TERMINAL `approved` chore back to `rejected` (which would let a
+  // reject path act on a credited chore). parentChoreUpdate requires
+  // resource.data.status == 'complete', so approved -> rejected is denied.
+  it('a parent CANNOT move an APPROVED chore to rejected (approved -> rejected denied; only complete -> rejected)', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const { doc, updateDoc } = await import('firebase/firestore');
+      await updateDoc(doc(ctx.firestore(), 'chores', CHORE_A), { status: 'approved' });
+    });
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(db, 'chores', CHORE_A), { status: 'rejected', rejectionReason: 'no take-backs' }),
+    );
+  });
+
+  it('a parent CANNOT move an APPROVED chore back to complete (re-open a credited chore)', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const { doc, updateDoc } = await import('firebase/firestore');
+      await updateDoc(doc(ctx.firestore(), 'chores', CHORE_A), { status: 'approved' });
+    });
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(updateDoc(doc(db, 'chores', CHORE_A), { status: 'complete' }));
   });
 });

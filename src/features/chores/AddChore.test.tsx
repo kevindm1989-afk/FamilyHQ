@@ -31,6 +31,8 @@ import { AddChore, type AddChoreProps, type AddChoreValue } from './AddChore';
 import { CHORE_ADD_SUCCESS } from './choresParentService';
 import type { UserWithId } from '../../lib/types';
 
+const EMPTY_MEMBERS: UserWithId[] = [];
+
 const TODAY = { year: 2026, month: 4, day: 27 }; // May 27 2026
 
 const MEMBERS: UserWithId[] = [
@@ -173,12 +175,15 @@ describe('AddChore — non-empty title validation (aria-disabled focusable submi
 });
 
 describe('AddChore — submit (happy): builds the schema-relevant value', () => {
-  it('calls onAdd with {title (trimmed), assignedTo, date (ISO), pointValue, dollarValue, isRecurring, recurrenceFrequency}', async () => {
+  it('calls onAdd with {title (trimmed), assignedTo, date (ISO), pointValue, dollarValue (CENTS), isRecurring, recurrenceFrequency}', async () => {
     const onAdd = vi.fn().mockResolvedValue(undefined);
     renderSheet({ onAdd });
     fireEvent.change(getTitleField(), { target: { value: '  Vacuum  ' } });
     fireEvent.click(within(screen.getByRole('radiogroup', { name: /assign/i })).getByRole('radio', { name: /ben/i }));
     fireEvent.change(screen.getByRole('spinbutton', { name: /point/i }), { target: { value: '8' } });
+    // The dollar field is dollars-with-cents ("4" = $4.00); the form emits the
+    // value in INTEGER CENTS (money is cents everywhere — second-opinion #4 /
+    // Finding 7). "4" dollars -> dollarValue 400 cents.
     fireEvent.change(screen.getByRole('spinbutton', { name: /dollar|\$|reward/i }), {
       target: { value: '4' },
     });
@@ -188,8 +193,8 @@ describe('AddChore — submit (happy): builds the schema-relevant value', () => 
     const value = onAdd.mock.calls[0]![0] as AddChoreValue;
     expect(value.title).toBe('Vacuum');
     expect(value.assignedTo).toBe('uid-ben');
-    expect(value.pointValue).toBe(8);
-    expect(value.dollarValue).toBe(4);
+    expect(value.pointValue, 'points stay integer points').toBe(8);
+    expect(value.dollarValue, '$4.00 must be emitted as 400 integer cents').toBe(400);
     expect(typeof value.isRecurring).toBe('boolean');
     expect(['none', 'weekly', 'biweekly']).toContain(value.recurrenceFrequency);
     expect(value.date, 'date must be an ISO datetime string').toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -197,6 +202,19 @@ describe('AddChore — submit (happy): builds the schema-relevant value', () => 
     expect(Object.keys(value).sort()).toEqual(
       ['assignedTo', 'date', 'dollarValue', 'isRecurring', 'pointValue', 'recurrenceFrequency', 'title'].sort(),
     );
+  });
+
+  it('a fractional-dollar entry ("3.50") is emitted as 350 integer cents (no float drift)', async () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined);
+    renderSheet({ onAdd });
+    fireEvent.change(getTitleField(), { target: { value: 'Dishes' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: /dollar|\$|reward/i }), {
+      target: { value: '3.50' },
+    });
+    fireEvent.click(getSubmit());
+    await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(1));
+    const value = onAdd.mock.calls[0]![0] as AddChoreValue;
+    expect(value.dollarValue, '$3.50 must be 350 integer cents').toBe(350);
   });
 
   it('Today chip produces the injected reference day (deterministic, no real clock)', async () => {
@@ -248,5 +266,256 @@ describe('AddChore — does NOT submit a forged status/createdBy/familyId (serve
     expect('status' in value, 'status is fixed to pending by the service, not the form').toBe(false);
     expect('createdBy' in value, 'createdBy is bound to the author by the service').toBe(false);
     expect('familyId' in value, 'familyId is bound by the service').toBe(false);
+  });
+});
+
+// =====================================================================
+// Finding 6 (adversarial): Add Chore assignee validation. A chore must be
+// assigned to a CURRENT active member. With no members the form cannot submit;
+// when the previously-selected assignee leaves `members`, submit must be blocked
+// (or the assignee re-defaulted to a valid current member).
+// =====================================================================
+describe('AddChore — Finding 6: assignee must be a current active member', () => {
+  it('with NO active members, submit is disabled even with a valid title (cannot assign to nobody)', () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined);
+    renderSheet({ members: EMPTY_MEMBERS, onAdd });
+    fireEvent.change(getTitleField(), { target: { value: 'Vacuum' } });
+    // A valid title alone is NOT enough — there is no valid assignee.
+    expect(getSubmit()).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('with NO active members, clicking submit NO-OPS (onAdd not called)', () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined);
+    renderSheet({ members: EMPTY_MEMBERS, onAdd });
+    fireEvent.change(getTitleField(), { target: { value: 'Vacuum' } });
+    fireEvent.click(getSubmit());
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  it('when the selected assignee is REMOVED from members, submit is blocked OR the assignee re-defaults to a current member', async () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined);
+    // Start with Ben selectable + selected, then re-render with Ben gone.
+    const { rerender } = render(
+      <ToastProvider>
+        <AddChore
+          open
+          onClose={vi.fn()}
+          author={{ uid: 'uid-parent-a', name: 'Sarah Kim', role: 'parent' }}
+          members={MEMBERS}
+          onAdd={onAdd}
+          today={TODAY}
+        />
+      </ToastProvider>,
+    );
+    fireEvent.change(getTitleField(), { target: { value: 'Vacuum' } });
+    fireEvent.click(
+      within(screen.getByRole('radiogroup', { name: /assign/i })).getByRole('radio', { name: /ben/i }),
+    );
+    // Ben (uid-ben) leaves the roster; only Maya remains.
+    rerender(
+      <ToastProvider>
+        <AddChore
+          open
+          onClose={vi.fn()}
+          author={{ uid: 'uid-parent-a', name: 'Sarah Kim', role: 'parent' }}
+          members={[MEMBERS[0]!]}
+          onAdd={onAdd}
+          today={TODAY}
+        />
+      </ToastProvider>,
+    );
+    fireEvent.click(getSubmit());
+    // Either the submit was blocked (no call) OR it re-defaulted to the remaining
+    // current member (Maya) — it must NEVER submit the stale uid-ben assignee.
+    if (onAdd.mock.calls.length > 0) {
+      const value = onAdd.mock.calls[0]![0] as AddChoreValue;
+      expect(value.assignedTo, 'must not submit a stale, no-longer-present assignee').not.toBe(
+        'uid-ben',
+      );
+      expect(['uid-maya'], 'a submitted assignee must be a current member').toContain(
+        value.assignedTo,
+      );
+    } else {
+      expect(onAdd).not.toHaveBeenCalled();
+    }
+  });
+});
+
+// =====================================================================
+// A11y BLOCKER — composite radiogroups (assign-to / due / frequency) must be
+// arrow-key operable with roving tabindex (the calendar AddEvent pattern):
+// only the selected radio is tabbable (tabIndex 0), the rest are tabIndex -1,
+// and ArrowRight/ArrowDown / ArrowLeft/ArrowUp move the selection.
+// =====================================================================
+describe('AddChore — a11y BLOCKER: assign-to radiogroup is arrow-key operable (roving tabindex)', () => {
+  it('only the SELECTED assign-to radio is tabbable (tabIndex 0); the rest are -1', () => {
+    renderSheet();
+    const group = screen.getByRole('radiogroup', { name: /assign/i });
+    const radios = within(group).getAllByRole('radio');
+    const tabbable = radios.filter((r) => r.getAttribute('tabindex') === '0');
+    expect(tabbable, 'exactly one assign-to radio is tabbable (roving tabindex)').toHaveLength(1);
+    // The tabbable one is the checked one.
+    expect(tabbable[0]).toHaveAttribute('aria-checked', 'true');
+    radios
+      .filter((r) => r.getAttribute('aria-checked') !== 'true')
+      .forEach((r) => expect(r).toHaveAttribute('tabindex', '-1'));
+  });
+
+  it('ArrowRight moves the assign-to selection to the next member (keyboard operable)', () => {
+    renderSheet();
+    const group = screen.getByRole('radiogroup', { name: /assign/i });
+    // Default selection is the first member (Maya). ArrowRight selects Ben.
+    const maya = within(group).getByRole('radio', { name: /maya/i });
+    fireEvent.keyDown(maya, { key: 'ArrowRight' });
+    expect(within(group).getByRole('radio', { name: /ben/i })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(within(group).getByRole('radio', { name: /maya/i })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+  });
+
+  it('ArrowLeft wraps the assign-to selection back to the previous member', () => {
+    renderSheet();
+    const group = screen.getByRole('radiogroup', { name: /assign/i });
+    const maya = within(group).getByRole('radio', { name: /maya/i });
+    // From the first option, ArrowLeft wraps to the last (Ben).
+    fireEvent.keyDown(maya, { key: 'ArrowLeft' });
+    expect(within(group).getByRole('radio', { name: /ben/i })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+});
+
+describe('AddChore — a11y BLOCKER: due radiogroup is arrow-key operable (roving tabindex)', () => {
+  it('only the SELECTED due radio is tabbable; ArrowRight moves the selection', () => {
+    renderSheet();
+    const group = screen.getByRole('radiogroup', { name: /due/i });
+    const radios = within(group).getAllByRole('radio');
+    expect(radios.filter((r) => r.getAttribute('tabindex') === '0')).toHaveLength(1);
+    const today = within(group).getByRole('radio', { name: /today/i });
+    fireEvent.keyDown(today, { key: 'ArrowRight' });
+    expect(within(group).getByRole('radio', { name: /tomorrow/i })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+});
+
+describe('AddChore — a11y: tap targets (min-w-tap on radios + submit)', () => {
+  it('every assign-to radio carries min-w-tap', () => {
+    renderSheet();
+    const group = screen.getByRole('radiogroup', { name: /assign/i });
+    within(group)
+      .getAllByRole('radio')
+      .forEach((r) => expect(r.className).toMatch(/min-w-tap/));
+  });
+
+  it('the submit button carries min-w-tap', () => {
+    renderSheet();
+    expect(getSubmit().className).toMatch(/min-w-tap/);
+  });
+});
+
+// =====================================================================
+// A11y — label overrides removed: title/points/dollars use their visible
+// <label> as the accessible name (no redundant aria-label); the date input has
+// a visible label; inputmode hints are correct.
+// =====================================================================
+describe('AddChore — a11y: visible labels (no aria-label override) + inputmode', () => {
+  it('the title input uses its visible label as the accessible name (no aria-label override)', () => {
+    renderSheet();
+    const title = screen.getByRole('textbox', { name: /what needs doing/i });
+    expect(title).not.toHaveAttribute('aria-label');
+  });
+
+  it('the point value input uses its visible label as the accessible name (no aria-label override)', () => {
+    renderSheet();
+    const points = screen.getByRole('spinbutton', { name: /point value/i });
+    expect(points).not.toHaveAttribute('aria-label');
+  });
+
+  it('the dollar reward input uses its visible label as the accessible name (no aria-label override)', () => {
+    renderSheet();
+    const dollars = screen.getByRole('spinbutton', { name: /dollar reward/i });
+    expect(dollars).not.toHaveAttribute('aria-label');
+  });
+
+  it('the point value input has inputMode="numeric"', () => {
+    renderSheet();
+    expect(screen.getByRole('spinbutton', { name: /point/i })).toHaveAttribute(
+      'inputmode',
+      'numeric',
+    );
+  });
+
+  it('the dollar reward input has inputMode="decimal"', () => {
+    renderSheet();
+    expect(screen.getByRole('spinbutton', { name: /dollar|reward/i })).toHaveAttribute(
+      'inputmode',
+      'decimal',
+    );
+  });
+
+  it('the "Pick date" native date input has a VISIBLE label (associated, not aria-label only)', () => {
+    renderSheet();
+    // Reveal the date input via the "Pick date" radio.
+    fireEvent.click(screen.getByRole('radio', { name: /pick date/i }));
+    // The date input must be reachable by a visible label association.
+    const dateInput = screen.getByLabelText(/due date|pick a date|date/i);
+    expect(dateInput).toBeInTheDocument();
+    expect(dateInput).not.toHaveAttribute('aria-label');
+  });
+});
+
+// =====================================================================
+// A11y — frequency group intended behavior. The group must NOT misapply
+// aria-disabled while its child radios stay operable (a contradictory state).
+// We pin the ALWAYS-OPERABLE choice: the radiogroup is never aria-disabled, and
+// selecting a frequency turns recurrence on.
+// =====================================================================
+describe('AddChore — a11y: frequency group is not contradictorily aria-disabled', () => {
+  it('the frequency radiogroup is NOT marked aria-disabled while its radios remain operable', () => {
+    renderSheet();
+    const group = screen.getByRole('radiogroup', { name: /how often|frequency/i });
+    // It must not claim aria-disabled while children are still clickable/operable
+    // (that contradictory state is the finding). Either truly gated (children not
+    // operable) OR always operable + not aria-disabled — we assert the latter.
+    expect(group).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('selecting a frequency option turns recurrence on and checks that option', () => {
+    renderSheet();
+    const group = screen.getByRole('radiogroup', { name: /how often|frequency/i });
+    fireEvent.click(within(group).getByRole('radio', { name: /every other|biweekly/i }));
+    expect(within(group).getByRole('radio', { name: /every other|biweekly/i })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+});
+
+// =====================================================================
+// A11y — aria-busy on submit while the add action is in flight.
+// =====================================================================
+describe('AddChore — a11y: submit carries aria-busy while adding', () => {
+  it('submit reflects aria-busy while onAdd is pending, then clears', async () => {
+    let resolve!: () => void;
+    const onAdd = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          resolve = r;
+        }),
+    );
+    renderSheet({ onAdd });
+    fireEvent.change(getTitleField(), { target: { value: 'Vacuum' } });
+    fireEvent.click(getSubmit());
+    await waitFor(() => expect(onAdd).toHaveBeenCalled());
+    await waitFor(() => expect(getSubmit()).toHaveAttribute('aria-busy', 'true'));
+    resolve();
+    await waitFor(() => expect(getSubmit()).not.toHaveAttribute('aria-busy', 'true'));
   });
 });

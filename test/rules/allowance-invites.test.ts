@@ -78,15 +78,35 @@ describe('M28: parent update of a member doc — name, isActive, or a non-negati
     );
   });
 
-  it('M28/ADR-0004: same-family parent CAN credit a member allowanceBalance to a HIGHER value (only allowanceBalance changes)', async () => {
-    // Seed balance is 0; crediting to 25 is a non-negative change of ONLY
-    // allowanceBalance, which parentAllowanceCredit permits. The
-    // no-bare-credit-without-an-approved-chore integrity property is enforced by
-    // the approveChore transaction + its tests, NOT by these rules (ADR-0004).
+  it('M28/ADR-0004: same-family parent CAN credit a member allowanceBalance to a HIGHER value in CENTS (only allowanceBalance changes)', async () => {
+    // Seed balance is 0 cents; crediting to 2500 cents ($25.00) is a non-negative
+    // change of ONLY allowanceBalance, which parentAllowanceCredit permits. Money
+    // is integer cents everywhere (Finding 7). The no-bare-credit-without-an-
+    // approved-chore integrity property is enforced by the approveChore
+    // transaction + its tests, NOT by these rules (ADR-0004).
     const db = env.authenticatedContext(UID.parentA).firestore();
     const { doc, updateDoc } = await import('firebase/firestore');
     await assertSucceeds(
-      updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 25 }),
+      updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 2500 }),
+    );
+  });
+
+  // MONEY → INTEGER CENTS (Finding 7): allowanceBalance is whole cents, so a
+  // FRACTIONAL credit (2550.5) and an OVER-MAX credit (> $1,000,000) are denied,
+  // even though they are non-negative increases.
+  it('M28/Finding 7: same-family parent CANNOT credit a FRACTIONAL allowanceBalance (2550.5 — not whole cents)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 2550.5 }),
+    );
+  });
+
+  it('M28/Finding 7: same-family parent CANNOT credit an allowanceBalance OVER the max ($1,000,000 + 1 cent)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 100000001 }),
     );
   });
 

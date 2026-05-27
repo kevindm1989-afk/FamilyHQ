@@ -49,11 +49,13 @@ let env: Awaited<ReturnType<typeof getEnv>>;
 // pre-existing ledger doc, so the credit/ledger counts are unambiguous.
 const CHORE_A = 'chore-approval-a';
 const CHORE_B = `chore-${FAMILY_B}`;
-const CHORE_DOLLAR_VALUE = 3;
+// MONEY IS INTEGER CENTS (second-opinion #4 / Finding 7). A $3.00 chore reward is
+// 300 cents: the balance increments by 300 and the ledger `amount` equals 300.
+const CHORE_DOLLAR_VALUE = 300; // $3.00 in integer cents
 
 /** Seed the dedicated approval chore (family A, assignedTo memberA, pending,
- * dollarValue 3) with rules disabled. No ledger doc references its choreId, so
- * countTxnsForChore(CHORE_A) starts at 0. */
+ * dollarValue 300 cents = $3.00) with rules disabled. No ledger doc references
+ * its choreId, so countTxnsForChore(CHORE_A) starts at 0. */
 async function seedApprovalChore(): Promise<void> {
   await env.withSecurityRulesDisabled(async (ctx) => {
     const { doc, setDoc } = await import('firebase/firestore');
@@ -61,8 +63,8 @@ async function seedApprovalChore(): Promise<void> {
       title: 'Take out the trash',
       assignedTo: UID.memberA,
       dueDate: '2026-05-30',
-      pointValue: 10,
-      dollarValue: CHORE_DOLLAR_VALUE,
+      pointValue: 10, // integer POINTS
+      dollarValue: CHORE_DOLLAR_VALUE, // integer CENTS
       status: 'pending',
       familyId: FAMILY_A,
       createdBy: UID.parentA,
@@ -171,15 +173,16 @@ describe('M27/ADR-0004 happy path: approving a complete chore credits EXACTLY th
     await assertSucceeds(runApproval(UID.parentA, CHORE_A, 'txn-approve-1'));
   });
 
-  it('the assignee balance increases by EXACTLY dollarValue (3), from 0 to 3', async () => {
+  it('the assignee balance increases by EXACTLY dollarValue cents (300), from 0 to 300 ($3.00)', async () => {
     await memberCompletesChoreA();
     const before = await readBalance(UID.memberA);
-    expect(before, 'seed balance is 0').toBe(0);
+    expect(before, 'seed balance is 0 cents').toBe(0);
     await runApproval(UID.parentA, CHORE_A, 'txn-approve-1');
     const after = await readBalance(UID.memberA);
-    expect(after, 'balance must increase by exactly the chore dollarValue').toBe(
-      before + CHORE_DOLLAR_VALUE,
-    );
+    expect(
+      after,
+      'balance must increase by exactly the chore dollarValue in CENTS (0 -> 300)',
+    ).toBe(before + CHORE_DOLLAR_VALUE);
   });
 
   it('EXACTLY ONE transaction ledger doc is written for the approved chore', async () => {
@@ -219,7 +222,7 @@ describe('F4/M27 idempotency: double-approve credits EXACTLY once (the status gu
     expect(await countTxnsForChore(CHORE_A), 'the second approve writes no ledger doc').toBe(1);
   });
 
-  it('after a double-approve the balance reflects EXACTLY one credit (3, never 6)', async () => {
+  it('after a double-approve the balance reflects EXACTLY one credit (300 cents, never 600)', async () => {
     await memberCompletesChoreA();
     await runApproval(UID.parentA, CHORE_A, 'txn-approve-1');
     // Second attempt aborts; balance must NOT move again.
@@ -457,6 +460,57 @@ describe('transactions: shape-lock, type/amount validation, append-only, scoped 
         choreId: CHORE_A,
         choreTitle: 'Take out trash',
         amount: -3,
+        type: 'earning',
+        familyId: FAMILY_A,
+        createdAt: Date.now(),
+      }),
+    );
+  });
+
+  // MONEY → INTEGER CENTS (Finding 7): the ledger `amount` is whole cents, so a
+  // fractional amount and an over-max amount are denied; a valid integer-cents
+  // amount equal to the approved chore's dollarValue (300) is allowed.
+  it('a transaction with a FRACTIONAL amount (2.5 — not whole cents) is denied (is int)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(doc(db, 'transactions', 'frac-amount'), {
+        uid: UID.memberA,
+        choreId: CHORE_A,
+        choreTitle: 'Take out trash',
+        amount: 2.5,
+        type: 'earning',
+        familyId: FAMILY_A,
+        createdAt: Date.now(),
+      }),
+    );
+  });
+
+  it('a transaction with an amount OVER the max ($1,000,000 + 1 cent) is denied (<= cap)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(doc(db, 'transactions', 'over-max-amount'), {
+        uid: UID.memberA,
+        choreId: CHORE_A,
+        choreTitle: 'Take out trash',
+        amount: 100000001,
+        type: 'earning',
+        familyId: FAMILY_A,
+        createdAt: Date.now(),
+      }),
+    );
+  });
+
+  it('a transaction with a valid integer-cents amount (300 = $3.00) is ALLOWED', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertSucceeds(
+      setDoc(doc(db, 'transactions', 'cents-amount'), {
+        uid: UID.memberA,
+        choreId: CHORE_A,
+        choreTitle: 'Take out trash',
+        amount: 300,
         type: 'earning',
         familyId: FAMILY_A,
         createdAt: Date.now(),
