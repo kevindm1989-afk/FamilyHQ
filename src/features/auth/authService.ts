@@ -211,6 +211,19 @@ export async function signOutAndClearCache(deps: SignOutDeps): Promise<void> {
  * The marker is persisted in localStorage by the wiring (the implementer);
  * get/set are injected here so the unit test needs no real storage or IndexedDB.
  * Pinned by clearCacheIfUserChanged.test.ts.
+ *
+ * Finding A (HIGH) — FAIL-CLOSED contract. The Firestore client is already
+ * started at module load (config.ts enables persistentLocalCache), so
+ * clearIndexedDbPersistence REJECTS on a running client. The mismatch path MUST
+ * therefore `terminate(db)` BEFORE `clearIndexedDbPersistence(db)`. Two
+ * obligations follow:
+ *  - The function RETURNS `{ reloadRequired }` — `true` on a uid mismatch — so
+ *    the caller can guarantee a full page reload (a fresh Firestore client)
+ *    before any feature reads Firestore. On same-uid / cold-start it is `false`.
+ *  - If `terminate` or `clearIndexedDbPersistence` REJECTS, the rejection MUST
+ *    propagate (the function fails closed); the caller must still force the
+ *    reload and must NOT release the session to a readable state. A swallowed
+ *    rejection that lets the session proceed is the bug being fixed.
  */
 export interface ClearCacheIfUserChangedDeps {
   db: Firestore;
@@ -219,18 +232,25 @@ export interface ClearCacheIfUserChangedDeps {
   setLastUid: (uid: string) => void;
 }
 
-export async function clearCacheIfUserChanged(deps: ClearCacheIfUserChangedDeps): Promise<void> {
+export interface ClearCacheResult {
+  /** True when the authenticated uid differed from the persisted marker. */
+  reloadRequired: boolean;
+}
+
+export async function clearCacheIfUserChanged(
+  deps: ClearCacheIfUserChangedDeps,
+): Promise<ClearCacheResult> {
   const { db, currentUid, getLastUid, setLastUid } = deps;
   const lastUid = getLastUid();
 
-  // A recorded prior uid that differs from the now-authenticated uid means the
-  // on-device cache may hold the PRIOR user's family PI (the previous session
-  // ended without routing through signOutAndClearCache). Wipe it BEFORE
-  // recording the new marker, so the cache is clean before the session is
-  // confirmed. A null marker (cold start) or a matching uid (same user, warm
-  // cache) must NOT clear.
+  // NOTE: this body is the PRE-fix behavior and is left for the implementer to
+  // correct (Finding A). It clears WITHOUT terminating first (so the clear
+  // rejects on a running client) and does NOT yet signal reloadRequired. The
+  // tests in clearCacheIfUserChanged.test.ts and useAuth.startupGuard.test.tsx
+  // pin the required fail-closed contract.
   if (lastUid !== null && lastUid !== currentUid) {
     await clearIndexedDbPersistence(db);
   }
   setLastUid(currentUid);
+  return { reloadRequired: false };
 }

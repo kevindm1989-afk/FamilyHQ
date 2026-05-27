@@ -285,6 +285,33 @@ describe('userPrivate write authority', () => {
     );
   });
 
+  it('Finding C (M26): a DEACTIVATED established member CANNOT create their own userPrivate', async () => {
+    // deactivatedNoPrivateA has users/{uid} with familyId == FAMILY_A and
+    // isActive:false, and NO userPrivate yet -> a genuine CREATE. The userPrivate
+    // create rule must require isActive() (consistent with the get rule), so a
+    // deactivated user creating their own private doc is DENIED even though the
+    // familyId matches their own family.
+    const db = env.authenticatedContext(UID.deactivatedNoPrivateA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(doc(db, 'userPrivate', UID.deactivatedNoPrivateA), {
+        email: 'deactivated@example.test',
+        familyId: FAMILY_A,
+      }),
+    );
+  });
+
+  it('Finding C (M26): a DEACTIVATED established member CANNOT update their own userPrivate email', async () => {
+    // deactivatedA has a seeded userPrivate (FAMILY_A). Updating its email must
+    // be DENIED because the update rule must require isActive() (M26): a
+    // deactivated user can no longer mutate their own private data.
+    const db = env.authenticatedContext(UID.deactivatedA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(db, 'userPrivate', UID.deactivatedA), { email: 'reactivated@example.test' }),
+    );
+  });
+
   it('a member CANNOT write ANOTHER member userPrivate', async () => {
     const db = env.authenticatedContext(UID.memberA).firestore();
     const { doc, updateDoc } = await import('firebase/firestore');

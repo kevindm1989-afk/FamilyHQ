@@ -24,15 +24,26 @@
  *
  * Isolation: mocks reset per test; injected get/set are local to each test.
  *
- * FAILS today: clearCacheIfUserChanged is a contract stub that throws.
+ * Finding A (HIGH) — the cache is on a STARTED Firestore client (config.ts
+ * enables persistentLocalCache at module load), so clearIndexedDbPersistence
+ * REJECTS unless the client is terminated first. This file additionally pins:
+ *  - terminate(db) is called BEFORE clearIndexedDbPersistence(db) on a mismatch;
+ *  - same-uid / cold-start paths NEVER terminate or clear;
+ *  - the function returns { reloadRequired: true } on a mismatch so the caller
+ *    can guarantee a fresh-client reload, and { reloadRequired: false } else;
+ *  - FAIL-CLOSED: if terminate OR clearIndexedDbPersistence rejects, the
+ *    rejection PROPAGATES (the function does not resolve to a "safe to proceed"
+ *    value), so a failed clear can never silently leave a foreign cache
+ *    readable.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const clearIndexedDbPersistence = vi.fn((..._a: unknown[]): Promise<void> => Promise.resolve());
+const terminate = vi.fn((..._a: unknown[]): Promise<void> => Promise.resolve());
 
 vi.mock('firebase/firestore', () => ({
   clearIndexedDbPersistence: (...a: unknown[]) => clearIndexedDbPersistence(...a),
-  terminate: vi.fn(),
+  terminate: (...a: unknown[]) => terminate(...a),
   doc: vi.fn(),
   writeBatch: vi.fn(),
 }));
@@ -53,6 +64,7 @@ beforeEach(() => {
   clearIndexedDbPersistence.mockImplementation((..._a: unknown[]): Promise<void> =>
     Promise.resolve(),
   );
+  terminate.mockImplementation((..._a: unknown[]): Promise<void> => Promise.resolve());
 });
 
 describe('clearCacheIfUserChanged — uid differs from the persisted marker', () => {
@@ -99,6 +111,39 @@ describe('clearCacheIfUserChanged — uid differs from the persisted marker', ()
     });
     expect(order).toEqual(['clear', 'setLastUid']);
   });
+
+  it('Finding A: terminates the Firestore client BEFORE clearing (clear rejects on a running client)', async () => {
+    const order: string[] = [];
+    terminate.mockImplementation((..._a: unknown[]): Promise<void> => {
+      order.push('terminate');
+      return Promise.resolve();
+    });
+    clearIndexedDbPersistence.mockImplementation((..._a: unknown[]): Promise<void> => {
+      order.push('clear');
+      return Promise.resolve();
+    });
+    await clearCacheIfUserChanged({
+      db,
+      currentUid: 'uid-new-user',
+      getLastUid: () => 'uid-prev-user',
+      setLastUid: vi.fn(),
+    });
+    expect(
+      order,
+      'terminate(db) must run before clearIndexedDbPersistence(db) so the clear succeeds on the started client',
+    ).toEqual(['terminate', 'clear']);
+    expect(terminate).toHaveBeenCalledWith(db);
+  });
+
+  it('Finding A: returns { reloadRequired: true } on a mismatch so the caller can force a fresh client', async () => {
+    const result = await clearCacheIfUserChanged({
+      db,
+      currentUid: 'uid-new-user',
+      getLastUid: () => 'uid-prev-user',
+      setLastUid: vi.fn(),
+    });
+    expect(result).toEqual({ reloadRequired: true });
+  });
 });
 
 describe('clearCacheIfUserChanged — same uid as the marker', () => {
@@ -114,6 +159,29 @@ describe('clearCacheIfUserChanged — same uid as the marker', () => {
       clearIndexedDbPersistence,
       'the same user re-opening must keep their own warm cache',
     ).not.toHaveBeenCalled();
+  });
+
+  it('Finding A: does NOT terminate the Firestore client when the uid matches (no needless client teardown)', async () => {
+    await clearCacheIfUserChanged({
+      db,
+      currentUid: 'uid-same-user',
+      getLastUid: () => 'uid-same-user',
+      setLastUid: vi.fn(),
+    });
+    expect(
+      terminate,
+      'the same user must not have their live Firestore client torn down',
+    ).not.toHaveBeenCalled();
+  });
+
+  it('Finding A: returns { reloadRequired: false } when the uid matches (no reload needed)', async () => {
+    const result = await clearCacheIfUserChanged({
+      db,
+      currentUid: 'uid-same-user',
+      getLastUid: () => 'uid-same-user',
+      setLastUid: vi.fn(),
+    });
+    expect(result).toEqual({ reloadRequired: false });
   });
 });
 
@@ -141,5 +209,79 @@ describe('clearCacheIfUserChanged — no prior marker (cold start)', () => {
       setLastUid,
     });
     expect(setLastUid).toHaveBeenCalledWith('uid-first-user');
+  });
+
+  it('Finding A: does NOT terminate the Firestore client on a cold start', async () => {
+    await clearCacheIfUserChanged({
+      db,
+      currentUid: 'uid-first-user',
+      getLastUid: () => null,
+      setLastUid: vi.fn(),
+    });
+    expect(
+      terminate,
+      'a cold start with no foreign cache must not tear down the client',
+    ).not.toHaveBeenCalled();
+  });
+
+  it('Finding A: returns { reloadRequired: false } on a cold start (no reload needed)', async () => {
+    const result = await clearCacheIfUserChanged({
+      db,
+      currentUid: 'uid-first-user',
+      getLastUid: () => null,
+      setLastUid: vi.fn(),
+    });
+    expect(result).toEqual({ reloadRequired: false });
+  });
+});
+
+describe('clearCacheIfUserChanged — FAIL CLOSED when the clear cannot complete (Finding A)', () => {
+  it('propagates (rejects) when clearIndexedDbPersistence rejects, so the caller cannot treat the cache as cleared', async () => {
+    clearIndexedDbPersistence.mockImplementation((..._a: unknown[]): Promise<void> =>
+      Promise.reject(new Error('clear failed')),
+    );
+    await expect(
+      clearCacheIfUserChanged({
+        db,
+        currentUid: 'uid-new-user',
+        getLastUid: () => 'uid-prev-user',
+        setLastUid: vi.fn(),
+      }),
+      'a failed clear must reject — it must NOT resolve to a value the caller can read as "safe to proceed"',
+    ).rejects.toThrow('clear failed');
+  });
+
+  it('propagates (rejects) when terminate rejects (the client never stopped, so the cache is still live)', async () => {
+    terminate.mockImplementation((..._a: unknown[]): Promise<void> =>
+      Promise.reject(new Error('terminate failed')),
+    );
+    await expect(
+      clearCacheIfUserChanged({
+        db,
+        currentUid: 'uid-new-user',
+        getLastUid: () => 'uid-prev-user',
+        setLastUid: vi.fn(),
+      }),
+      'a failed terminate must reject — a live client means the foreign cache is still readable',
+    ).rejects.toThrow('terminate failed');
+  });
+
+  it('does NOT record the new uid marker when the clear rejects (the session was never safely confirmed)', async () => {
+    clearIndexedDbPersistence.mockImplementation((..._a: unknown[]): Promise<void> =>
+      Promise.reject(new Error('clear failed')),
+    );
+    const setLastUid = vi.fn();
+    await clearCacheIfUserChanged({
+      db,
+      currentUid: 'uid-new-user',
+      getLastUid: () => 'uid-prev-user',
+      setLastUid,
+    }).catch(() => {
+      /* expected rejection — assertion is on the marker not advancing */
+    });
+    expect(
+      setLastUid,
+      'a failed clear must not advance the marker to the new uid, or the next start would treat the dirty cache as confirmed',
+    ).not.toHaveBeenCalled();
   });
 });
