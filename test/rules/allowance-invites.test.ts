@@ -29,19 +29,26 @@ afterEach(async () => {
 });
 
 /**
- * SECURITY FINDING 1/3 — a same-family parent doing a BARE updateDoc on a
- * member's users doc may update ONLY `name` and `isActive`. allowanceBalance is
- * a tracked-money field whose only legitimate write path is the Phase-3
- * approval runTransaction (M28); a direct bare balance write at the rules layer
- * is DENIED (previously this passed — tightened to denied here). role, email,
- * and familyId are never parent-writable on a member doc either.
+ * SECURITY FINDING 1/3 (revised per ADR-0004) — a same-family ACTIVE parent
+ * doing an updateDoc on a member's users doc may change `name`, `isActive`, OR
+ * `allowanceBalance`. Per ADR-0004 (client-transaction allowance model), the
+ * `parentAllowanceCredit` rule MUST permit a same-family parent to write
+ * `allowanceBalance` because Firestore rules cannot distinguish the approval
+ * `runTransaction`'s balance write from a bare write. The rule constrains that
+ * write to a NON-NEGATIVE change of ONLY `allowanceBalance`.
  *
- * NOTE: balance changes are deferred to the Phase-3 approval runTransaction
- * (M27/M28). No direct balanceWrite is permitted at the rules layer — the
- * transaction enforces the chore-status guard + matching ledger doc; a bare
- * update cannot.
+ * INTEGRITY NOTE (ADR-0004 limitation): the property "balance only grows via an
+ * approved chore + a matching ledger doc" is NOT a rules guarantee. It is
+ * enforced by the `approveChore` transaction's status guard plus the approval
+ * tests (allowance-approval.test.ts), not by these rules. So a bare credit
+ * here is ALLOWED by the rules; the no-bare-credit-without-an-approved-chore
+ * property lives at the transaction layer.
+ *
+ * role, email, and familyId are never parent-writable on a member doc, a
+ * DECREASE is denied, and a balance change bundled with any other field is
+ * denied (allowanceBalance must be the only affected key).
  */
-describe('M28: parent bare-update of a member doc is limited to name + isActive', () => {
+describe('M28: parent update of a member doc — name, isActive, or a non-negative allowanceBalance credit', () => {
   it('same-family parent CAN set a member name', async () => {
     const db = env.authenticatedContext(UID.parentA).firestore();
     const { doc, updateDoc } = await import('firebase/firestore');
@@ -71,19 +78,75 @@ describe('M28: parent bare-update of a member doc is limited to name + isActive'
     );
   });
 
-  it('M28: same-family parent CANNOT bare-write a member allowanceBalance (deferred to Phase-3 txn)', async () => {
+  it('M28/ADR-0004: same-family parent CAN credit a member allowanceBalance to a HIGHER value in CENTS (only allowanceBalance changes)', async () => {
+    // Seed balance is 0 cents; crediting to 2500 cents ($25.00) is a non-negative
+    // change of ONLY allowanceBalance, which parentAllowanceCredit permits. Money
+    // is integer cents everywhere (Finding 7). The no-bare-credit-without-an-
+    // approved-chore integrity property is enforced by the approveChore
+    // transaction + its tests, NOT by these rules (ADR-0004).
     const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertSucceeds(
+      updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 2500 }),
+    );
+  });
+
+  // MONEY → INTEGER CENTS (Finding 7): allowanceBalance is whole cents, so a
+  // FRACTIONAL credit (2550.5) and an OVER-MAX credit (> $1,000,000) are denied,
+  // even though they are non-negative increases.
+  it('M28/Finding 7: same-family parent CANNOT credit a FRACTIONAL allowanceBalance (2550.5 — not whole cents)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 2550.5 }),
+    );
+  });
+
+  it('M28/Finding 7: same-family parent CANNOT credit an allowanceBalance OVER the max ($1,000,000 + 1 cent)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 100000001 }),
+    );
+  });
+
+  it('M28/ADR-0004: same-family parent CANNOT DECREASE a member allowanceBalance (new < old denied)', async () => {
+    // Raise the balance to 25 first (with rules disabled), then a parent write
+    // to 10 is a decrease — parentAllowanceCredit requires new >= old, so deny.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const { doc, updateDoc } = await import('firebase/firestore');
+      await updateDoc(doc(ctx.firestore(), 'users', UID.memberA), { allowanceBalance: 25 });
+    });
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 10 }),
+    );
+  });
+
+  it('M28/ADR-0004: a member CANNOT write their OWN allowanceBalance (self-credit denied)', async () => {
+    const db = env.authenticatedContext(UID.memberA).firestore();
     const { doc, updateDoc } = await import('firebase/firestore');
     await assertFails(
       updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 25 }),
     );
   });
 
-  it('M28: same-family parent CANNOT bare-write allowanceBalance to 0 either (no direct balance writes)', async () => {
-    const db = env.authenticatedContext(UID.parentA).firestore();
+  it('M28/ADR-0004: a CROSS-FAMILY parent CANNOT credit a member allowanceBalance (tenant isolation)', async () => {
+    const db = env.authenticatedContext(UID.parentB).firestore();
     const { doc, updateDoc } = await import('firebase/firestore');
     await assertFails(
-      updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 0 }),
+      updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 25 }),
+    );
+  });
+
+  it('M28/ADR-0004: a DEACTIVATED parent-context actor CANNOT credit a member allowanceBalance (M26)', async () => {
+    // deactivatedA is a same-family member with isActive:false; isParent() (and
+    // isActive()) both fail, so the credit branch is denied for them.
+    const db = env.authenticatedContext(UID.deactivatedA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 25 }),
     );
   });
 
@@ -107,18 +170,15 @@ describe('M28: parent bare-update of a member doc is limited to name + isActive'
     );
   });
 
-  it('same-family parent CANNOT set name AND allowanceBalance together (mixed write still denied)', async () => {
+  it('same-family parent CANNOT change allowanceBalance bundled with another field (only allowanceBalance may change)', async () => {
+    // parentAllowanceCredit requires affectedKeys().hasOnly(['allowanceBalance']);
+    // a write that also changes `name` affects {name, allowanceBalance}, which is
+    // neither the credit set nor the {name,isActive} bare-update set — denied.
     const db = env.authenticatedContext(UID.parentA).firestore();
     const { doc, updateDoc } = await import('firebase/firestore');
     await assertFails(
       updateDoc(doc(db, 'users', UID.memberA), { name: 'Renamed', allowanceBalance: 99 }),
     );
-  });
-
-  it('member CANNOT directly increment own allowanceBalance', async () => {
-    const db = env.authenticatedContext(UID.memberA).firestore();
-    const { doc, updateDoc } = await import('firebase/firestore');
-    await assertFails(updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 25 }));
   });
 
   it('cross-family parent CANNOT update another family member (name)', async () => {

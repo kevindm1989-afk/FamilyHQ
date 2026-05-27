@@ -87,6 +87,17 @@ service cloud.firestore {
       return isActive() && sameFamily(resource);
     }
 
+    // Money is INTEGER CENTS everywhere (ADR-0009 / second-opinion #4 /
+    // adversarial Finding 7): dollarValue, txn amount, and allowanceBalance are
+    // whole cents, `>= 0`, `<= MONEY_MAX` ($1,000,000); pointValue is whole
+    // integer points (same bound). A fractional value (a float-dollar smuggled
+    // where cents are expected) or an over-cap value is DENIED at the
+    // authorization boundary, not merely in the client form.
+    function MONEY_MAX() { return 100000000; }
+    function isValidMoneyInt(v) {
+      return v is int && v >= 0 && v <= MONEY_MAX();
+    }
+
     // --- users -------------------------------------------------------------
     //
     // read (get): active caller, same family (M1/P7). Reading own doc requires
@@ -180,10 +191,27 @@ service cloud.firestore {
                .affectedKeys().hasOnly(['name', 'isActive']);
       }
 
+      // M28 — allowanceBalance write authority (Task 11, the Phase-3 approval
+      // runTransaction). ONLY a same-family ACTIVE parent may change a member's
+      // balance, and ONLY as a NON-NEGATIVE change: the incoming balance must be
+      // a number >= the existing balance. This permits the approval credit
+      // (increment) while denying ANY decrement, a negative absolute value, or a
+      // member/self writing their own balance. The changed-key set is restricted
+      // to allowanceBalance alone so this branch cannot smuggle a role/familyId/
+      // name change; tenant + active gating reuse the same predicates.
+      function parentAllowanceCredit() {
+        return isParent()
+          && sameFamily(resource)
+          && incomingSameFamily()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['allowanceBalance'])
+          && isValidMoneyInt(request.resource.data.allowanceBalance)
+          && request.resource.data.allowanceBalance >= resource.data.allowanceBalance;
+      }
+
       allow get: if isActive() && sameFamily(resource);
       allow list: if listScopedToOwnFamily();
       allow create: if isFoundingBootstrap();
-      allow update: if selfUpdateAllowed() || parentUpdateAllowed();
+      allow update: if selfUpdateAllowed() || parentUpdateAllowed() || parentAllowanceCredit();
       allow delete: if false;
     }
 
@@ -365,13 +393,19 @@ service cloud.firestore {
     //   no self-approve). update by parent: any own-family chore (approve/
     //   reject/edit). delete: parent-only.
     match /chores/{choreId} {
+      // Member transition (Task 10 + Task 11 redo loop): a member may move their
+      // OWN chore pending -> complete OR rejected -> complete (the lifecycle
+      // decision's redo). They may NOT self-approve, self-reject, reassign, or
+      // touch any reward/identity/tenant field (so the redo cannot also bump the
+      // dollar/point value — M4/T1.4). The prior-status guard pins exactly which
+      // states may move to complete.
       function memberLegalCompletion() {
         return isMember()
           && sameFamily(resource)
           && incomingSameFamily()
           && resource.data.assignedTo == request.auth.uid
           && request.resource.data.assignedTo == request.auth.uid
-          && resource.data.status == 'pending'
+          && (resource.data.status == 'pending' || resource.data.status == 'rejected')
           && request.resource.data.status == 'complete'
           && immutable('familyId')
           && immutable('assignedTo')
@@ -379,11 +413,55 @@ service cloud.firestore {
           && immutable('dollarValue')
           && immutable('createdBy');
       }
+      // Parent transition (Task 11): a parent may move a complete chore to
+      // approved OR to rejected (+rejectionReason) within their own family. The
+      // approve transition pairs with the allowance credit transaction; the
+      // reject transition changes NO balance and writes NO ledger doc. familyId
+      // (and the reward/identity fields, via the bare incomingSameFamily +
+      // immutable familyId) stay tenant-locked. The from->to status guard keeps
+      // the credit path tied to a complete chore (defence in depth with the
+      // approval transaction's own in-transaction status re-read).
       function parentChoreUpdate() {
         return isParent()
           && sameFamily(resource)
           && incomingSameFamily()
-          && immutable('familyId');
+          && immutable('familyId')
+          && resource.data.status == 'complete'
+          && (request.resource.data.status == 'approved'
+              || request.resource.data.status == 'rejected');
+      }
+
+      // CREATE hardening (Task 11): a parent create must be the EXACT well-formed
+      // chore shape, status pending, createdBy bound to the caller, assignedTo a
+      // same-family user that EXISTS, numeric reward values >= 0, a boolean
+      // isRecurring and an enum recurrenceFrequency, and a string dueDate. The
+      // key set is locked to the create-time chore fields — rejectionReason is
+      // OPTIONAL and must be ABSENT on a fresh create (it is set only by the
+      // parent reject transition).
+      function assigneeIsSameFamilyUser() {
+        return exists(/databases/$(database)/documents/users/$(request.resource.data.assignedTo))
+          && get(/databases/$(database)/documents/users/$(request.resource.data.assignedTo)).data.familyId
+               == callerFamily();
+      }
+      function choreCreateHardened() {
+        return isParent()
+          && incomingSameFamily()
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.keys().hasOnly(
+               ['title', 'assignedTo', 'dueDate', 'pointValue', 'dollarValue',
+                'status', 'familyId', 'createdBy', 'createdAt', 'isRecurring',
+                'recurrenceFrequency'])
+          && request.resource.data.keys().hasAll(
+               ['title', 'assignedTo', 'dueDate', 'pointValue', 'dollarValue',
+                'status', 'familyId', 'createdBy', 'createdAt', 'isRecurring',
+                'recurrenceFrequency'])
+          && isValidMoneyInt(request.resource.data.pointValue)
+          && isValidMoneyInt(request.resource.data.dollarValue)
+          && request.resource.data.isRecurring is bool
+          && request.resource.data.recurrenceFrequency in ['none', 'weekly', 'biweekly']
+          && request.resource.data.dueDate is string
+          && assigneeIsSameFamilyUser();
       }
 
       // Read scoping (SECURITY-CRITICAL, M1/own-assignee): a MEMBER reads ONLY
@@ -404,7 +482,7 @@ service cloud.firestore {
 
       allow get: if memberOwnsOrIsParent();
       allow list: if memberOwnsOrIsParent();
-      allow create: if isParent() && incomingSameFamily();
+      allow create: if choreCreateHardened();
       allow update: if memberLegalCompletion() || parentChoreUpdate();
       allow delete: if isParent() && sameFamily(resource);
     }
@@ -415,9 +493,43 @@ service cloud.firestore {
     //   approving parent / the approval transaction). No update or delete ever
     //   — the ledger is immutable (T1.6 repudiation).
     match /transactions/{txnId} {
-      allow get: if isActive() && sameFamily(resource);
-      allow list: if listScopedToOwnFamily();
-      allow create: if isParent() && incomingSameFamily();
+      // CREATE (Task 11, SECURITY-CRITICAL): only a same-family PARENT may append
+      // an earning ledger doc (written by the approval transaction). The doc is
+      // shape-locked to EXACTLY the 7 Transaction fields, type must be 'earning',
+      // amount must be a number >= 0, and `uid` must resolve to a SAME-FAMILY
+      // user — so a parent cannot credit a foreign uid or smuggle an extra field.
+      function txnUidIsSameFamilyUser() {
+        return exists(/databases/$(database)/documents/users/$(request.resource.data.uid))
+          && get(/databases/$(database)/documents/users/$(request.resource.data.uid)).data.familyId
+               == callerFamily();
+      }
+      function txnCreateHardened() {
+        return isParent()
+          && incomingSameFamily()
+          && request.resource.data.keys().hasOnly(
+               ['uid', 'choreId', 'choreTitle', 'amount', 'type', 'familyId', 'createdAt'])
+          && request.resource.data.keys().hasAll(
+               ['uid', 'choreId', 'choreTitle', 'amount', 'type', 'familyId', 'createdAt'])
+          && request.resource.data.type == 'earning'
+          && isValidMoneyInt(request.resource.data.amount)
+          && txnUidIsSameFamilyUser();
+      }
+
+      // READ (M1/M6/own-or-parent, mirrors chores): the SUBJECT member (uid ==
+      // auth.uid) OR a same-family PARENT, and the caller must be ACTIVE +
+      // same-family. A non-subject peer member, a cross-tenant caller, and a
+      // deactivated caller are all denied. For `list`, Firestore evaluates this
+      // per returned doc: a member's own-uid query is allowed, a peer/unconstrained
+      // query that would surface a non-subject doc is denied.
+      function txnSubjectOrParent() {
+        return isActive()
+          && sameFamily(resource)
+          && (isParent() || resource.data.uid == request.auth.uid);
+      }
+
+      allow get: if txnSubjectOrParent();
+      allow list: if txnSubjectOrParent();
+      allow create: if txnCreateHardened();
       allow update: if false;
       allow delete: if false;
     }

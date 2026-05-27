@@ -95,7 +95,17 @@ describe('P2/P12/M7: list queries must carry the own-family filter', () => {
       // them here; we only exclude chores from this member-own-family-list
       // assertion. (The unconstrained-denied and cross-family-denied chore
       // iterations above still apply and must keep running.)
-      if (col === 'chores') return;
+      //
+      // transactions are own-or-parent read-scoped per ADR-0004 (same pattern
+      // as chores): a MEMBER's family-only transactions list WITHOUT a
+      // where('uid','==',uid) filter would surface a peer's doc and is now
+      // intentionally DENIED. The dedicated allow/deny cases for member
+      // transaction lists live in allowance-approval.test.ts (the
+      // "transactions read scoping" describe), so we don't duplicate them here;
+      // we only exclude transactions from this member-own-family-list assertion.
+      // (The unconstrained-denied and cross-family-denied transactions
+      // iterations above still apply and must keep running.)
+      if (col === 'chores' || col === 'transactions') return;
       const aDb = env.authenticatedContext(UID.memberA).firestore();
       const { collection, getDocs, query, where } = await import('firebase/firestore');
       await assertSucceeds(
