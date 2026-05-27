@@ -14,6 +14,7 @@ export type ScreenId =
   | 'calendar'
   | 'board'
   | 'chores'
+  | 'allowance'
   | 'family'
   | 'add_chore'
   | 'add_event'
@@ -37,6 +38,14 @@ export const ROUTES: Record<ScreenId, RouteMeta> = {
   },
   board: { id: 'board', path: '/board', isModal: false, parentOnly: false },
   chores: { id: 'chores', path: '/chores', isModal: false, parentOnly: false },
+  // Allowance History — a read-only ledger view. Non-modal (shows the nav) and
+  // NOT parent-only (a member sees their own ledger; a parent picks a child).
+  allowance: {
+    id: 'allowance',
+    path: '/allowance',
+    isModal: false,
+    parentOnly: false,
+  },
   family: { id: 'family', path: '/family', isModal: false, parentOnly: true },
   add_chore: {
     id: 'add_chore',

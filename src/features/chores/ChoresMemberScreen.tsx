@@ -50,6 +50,12 @@ export interface ChoresMemberScreenProps {
   };
   /** Injected mark-complete action (wired to choresMemberService.markComplete + toast). */
   onMarkComplete: (choreId: string) => Promise<void>;
+  /**
+   * Navigate to the member's Allowance History (Allowance History feature). The
+   * "View history" affordance is now an ENABLED control that invokes this —
+   * superseding the earlier aria-disabled "coming soon" placeholder.
+   */
+  onViewHistory: () => void;
 }
 
 const CURRENCY = new Intl.NumberFormat('en-CA', {

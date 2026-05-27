@@ -69,6 +69,7 @@ function renderScreen(overrides: Partial<ChoresMemberScreenProps> = {}) {
       refresh: vi.fn().mockResolvedValue(undefined),
     },
     onMarkComplete: vi.fn().mockResolvedValue(undefined),
+    onViewHistory: vi.fn(),
     ...overrides,
   };
   render(
@@ -657,14 +658,28 @@ describe('ChoresMemberScreen — accessibility (a11y findings)', () => {
     ).toBeInTheDocument();
   });
 
-  it('the "View history" placeholder is aria-disabled (coming soon), not an actionable no-op', () => {
+  it('the "View history" control is now ENABLED (no longer the aria-disabled "coming soon" placeholder)', () => {
+    // Allowance History shipped: the deferred placeholder becomes a live control.
     renderScreen();
     const viewHistory = screen.getByText(/view history/i);
     const el = viewHistory.closest('button, a') ?? viewHistory;
+    // Must NOT be aria-disabled and must NOT be a disabled <button>.
     expect(
       el.getAttribute('aria-disabled'),
-      '"View history" must be aria-disabled (coming soon) so it is not a silent no-op',
-    ).toBe('true');
+      '"View history" must no longer be aria-disabled once Allowance History ships',
+    ).not.toBe('true');
+    if (el.tagName === 'BUTTON') {
+      expect((el as HTMLButtonElement).disabled).toBe(false);
+    }
+  });
+
+  it('clicking "View history" navigates to allowance history (calls onViewHistory)', () => {
+    const onViewHistory = vi.fn();
+    renderScreen({ onViewHistory });
+    const viewHistory = screen.getByText(/view history/i);
+    const el = (viewHistory.closest('button, a') ?? viewHistory) as HTMLElement;
+    fireEvent.click(el);
+    expect(onViewHistory).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -689,6 +704,7 @@ describe('ChoresMemberScreen — focus after mark-complete (jsdom best-effort; r
             refresh: vi.fn().mockResolvedValue(undefined),
           }}
           onMarkComplete={onMarkComplete}
+          onViewHistory={vi.fn()}
         />
       </ToastProvider>,
     );
@@ -710,6 +726,7 @@ describe('ChoresMemberScreen — focus after mark-complete (jsdom best-effort; r
             refresh: vi.fn().mockResolvedValue(undefined),
           }}
           onMarkComplete={onMarkComplete}
+          onViewHistory={vi.fn()}
         />
       </ToastProvider>,
     );
@@ -796,6 +813,7 @@ describe('ChoresMemberScreen — "Try again" redo on a rejected chore (rejected 
             refresh: vi.fn().mockResolvedValue(undefined),
           }}
           onMarkComplete={onMarkComplete}
+          onViewHistory={vi.fn()}
         />
       </ToastProvider>,
     );
@@ -814,6 +832,7 @@ describe('ChoresMemberScreen — "Try again" redo on a rejected chore (rejected 
             refresh: vi.fn().mockResolvedValue(undefined),
           }}
           onMarkComplete={onMarkComplete}
+          onViewHistory={vi.fn()}
         />
       </ToastProvider>,
     );

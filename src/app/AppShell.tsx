@@ -286,6 +286,7 @@ function MemberChoresRoute(props: {
   currentUser: ReturnType<typeof useFamily>['currentUser'];
 }): ReactElement {
   const { familyId, currentUser } = props;
+  const navigate = useNavigate();
   const feed = useMyChores(currentUser?.id ?? null, familyId);
 
   if (!currentUser || !familyId) {
@@ -310,6 +311,7 @@ function MemberChoresRoute(props: {
       viewer={viewer}
       feed={feed}
       onMarkComplete={handleMarkComplete}
+      onViewHistory={() => navigate(ROUTES.allowance.path)}
     />
   );
 }
