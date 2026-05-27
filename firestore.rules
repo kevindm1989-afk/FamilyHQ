@@ -289,10 +289,26 @@ service cloud.firestore {
     match /posts/{postId} {
       allow get: if isActive() && sameFamily(resource);
       allow list: if listScopedToOwnFamily();
-      allow create: if isActive() && incomingSameFamily();
+      // create (Task 9, Finding A, SECURITY-CRITICAL): active + own-family AND
+      // identity bound to the caller (authorId == auth.uid, authorName == the
+      // caller's own users/{uid}.name) AND an exact shape lock so no extra/
+      // smuggled field is accepted. This blocks authorship/name spoofing
+      // (impersonating another member or a parent) and field injection.
+      allow create: if isActive()
+        && incomingSameFamily()
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.authorName == callerDoc().data.name
+        && request.resource.data.keys().hasOnly(
+             ['content', 'authorId', 'authorName', 'familyId', 'createdAt']);
       allow update: if isActive() && sameFamily(resource)
         && incomingSameFamily() && immutable('familyId');
-      allow delete: if isActive() && sameFamily(resource);
+      // delete (Task 9, security-critical): same-family AND (a parent of that
+      // family OR the post's own author), AND active. A member may delete only
+      // their OWN post; a parent may delete ANY post in their family. Cross-
+      // family and deactivated callers are denied (isActive() + sameFamily()).
+      allow delete: if isActive()
+        && sameFamily(resource)
+        && (isParent() || resource.data.authorId == request.auth.uid);
     }
 
     // --- chores ------------------------------------------------------------
