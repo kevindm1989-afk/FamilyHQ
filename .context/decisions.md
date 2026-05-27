@@ -383,3 +383,47 @@ dark palette blocks full dark-mode delivery until the designer fills it.
 **Compliance check:** AODA/WCAG 2.1 AA contrast must be re-audited after
 reconciliation in both light and dark (the JSON's contrast audit is currently
 light-only and based on the wrong palette). No data/privacy impact.
+
+---
+
+## ADR-0008 — Adult email moves out of the family-readable `users` doc into `userPrivate/{uid}`
+
+**Status:** Accepted (implemented Phases 1-2; arose from the privacy review)
+**Date:** 2026-05-27
+**Decider(s):** orchestrator (proposed from privacy-reviewer finding); user (PR gate)
+
+**Context:** The original model put `email` on `users/{uid}`, which is readable
+by every active member of a family (the member list, "The Fam" row, etc.).
+Firestore rules are document-level, not field-level, so a child member's client
+would receive every adult's full `users` doc — including their email **[PI]**.
+The privacy review flagged this as over-disclosure of adult PI to children
+(PIPEDA Principles 4/5; constraints §Children's-data). The exploit becomes real
+once child members exist (Phase 3), but the model seam is set now.
+
+**Decision:** Remove `email` from the family-readable `users` doc. Store it in a
+new `userPrivate/{uid}` collection, written atomically in the same signup batch.
+Rules: a `userPrivate` doc is readable only by (a) the subject themselves
+(active) or (b) a same-family parent; `list` is denied; `create` is self-keyed
+(works for the founding-parent bootstrap, who has no `users` doc yet); `update`
+is self-keyed with immutable `familyId`; `delete` denied. Firebase Auth still
+holds the email for login, so `users` does not need it. Parent-only features
+that must show member emails (Family Management, Phase 3) read `userPrivate`.
+
+**Rationale:** Data minimization by construction — children's clients never
+receive adult email. Cheaper to set the seam now (only the founding parent
+exists) than to migrate after child accounts are created. Keeps document-level
+rules sufficient (no need for field-level masking that Firestore can't do).
+
+**Reversibility:** Medium — it is a collection split; reverting after data
+exists is a migration. Done before any child data exists, so cost is near-zero
+now.
+
+**Consequences:** (+) adult PI not exposed to child members; (+) clean
+parent-only read path for emails. (-) one extra doc per user; (-) `email` is now
+absent on `User`, so any future feature needing it on the member list must
+re-justify the purpose (and must not expose it to children).
+
+**Compliance check:** PIPEDA minimization/limiting-disclosure satisfied;
+constraints §Children's-data honored. The child-credential model (ADR-0006 Q3 —
+whether children even have an email) remains an open invite-phase decision; this
+ADR only governs where an adult's email lives.
