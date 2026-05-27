@@ -451,10 +451,16 @@ describe('ChoresMemberScreen — rejected chore gets its OWN section (not "To do
     expect(screen.getByText(/Socks are still on the floor/)).toBeInTheDocument();
   });
 
-  it('a rejected chore does NOT get a Mark done button (re-submit flow is deferred)', () => {
+  it('a rejected chore gets a "Try again" redo button (NOT the "Mark done" pending affordance)', () => {
+    // Lifecycle decision (Phase 3, Task 11): a member CAN redo a rejected chore
+    // (rejected -> complete). The rejected section now carries a "Try again"
+    // button — distinct from the pending section's "Mark done" so the two
+    // affordances are not conflated.
     renderRejected('Socks are still on the floor');
+    expect(screen.getByRole('button', { name: /try again|redo|resubmit/i })).toBeInTheDocument();
+    // It is NOT labelled "Mark done" (that label belongs to the pending bucket).
     expect(
-      screen.queryByRole('button', { name: /mark .*done|mark complete/i }),
+      screen.queryByRole('button', { name: /^mark done$|^mark complete$/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -710,5 +716,119 @@ describe('ChoresMemberScreen — focus after mark-complete (jsdom best-effort; r
 
     const waitingHeading = screen.getByRole('heading', { name: /waiting for approval/i });
     await waitFor(() => expect(waitingHeading).toHaveFocus());
+  });
+});
+
+/**
+ * The redo loop (Phase 3, Task 11; lifecycle decision): a member CAN re-attempt
+ * a REJECTED chore (rejected -> complete). The rejected section gains a "Try
+ * again" button that calls onMarkComplete (the SAME action the pending bucket
+ * uses — the rules now permit BOTH pending->complete and rejected->complete) and
+ * toasts; after the redo the chore moves to the waiting-for-approval section.
+ * The rejection reason stays visible. These FAIL today: the rejected section is
+ * currently action-less (the member screen pre-dates this decision).
+ */
+describe('ChoresMemberScreen — "Try again" redo on a rejected chore (rejected -> complete)', () => {
+  function renderRejected(onMarkComplete = vi.fn().mockResolvedValue(undefined)) {
+    renderScreen({
+      onMarkComplete,
+      feed: {
+        chores: [
+          mkChore({
+            id: 'rej',
+            title: 'Fold laundry',
+            status: 'rejected',
+            rejectionReason: 'Socks are still on the floor',
+          }),
+        ],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    return onMarkComplete;
+  }
+
+  it('shows a "Try again" button on a rejected chore', () => {
+    renderRejected();
+    expect(screen.getByRole('button', { name: /try again|redo|resubmit/i })).toBeInTheDocument();
+  });
+
+  it('clicking "Try again" calls onMarkComplete with the chore id (rejected -> complete)', async () => {
+    const onMarkComplete = renderRejected();
+    fireEvent.click(screen.getByRole('button', { name: /try again|redo|resubmit/i }));
+    await waitFor(() => expect(onMarkComplete).toHaveBeenCalledWith('rej'));
+  });
+
+  it('toasts the complete-success copy after a successful redo (toast-everything)', async () => {
+    renderRejected(vi.fn().mockResolvedValue(undefined));
+    fireEvent.click(screen.getByRole('button', { name: /try again|redo|resubmit/i }));
+    await waitFor(() => expect(screen.getByText(CHORE_COMPLETE_SUCCESS)).toBeInTheDocument());
+  });
+
+  it('keeps the rejection reason visible alongside the "Try again" affordance', () => {
+    renderRejected();
+    expect(screen.getByText(/Socks are still on the floor/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /try again|redo|resubmit/i })).toBeInTheDocument();
+  });
+
+  it('after a redo the chore is shown under "Waiting for approval", not the rejected section', async () => {
+    // The feed flips the chore to complete after the redo resolves (the hook
+    // re-snapshots in production); the screen must move it into the waiting
+    // bucket and out of the rejected section.
+    const onMarkComplete = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <ToastProvider>
+        <ChoresMemberScreen
+          familyId="fam-A"
+          viewer={VIEWER}
+          feed={{
+            chores: [
+              mkChore({
+                id: 'rej',
+                title: 'Fold laundry',
+                status: 'rejected',
+                rejectionReason: 'Socks are still on the floor',
+              }),
+            ],
+            loading: false,
+            error: null,
+            refresh: vi.fn().mockResolvedValue(undefined),
+          }}
+          onMarkComplete={onMarkComplete}
+        />
+      </ToastProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /try again|redo|resubmit/i }));
+    await waitFor(() => expect(onMarkComplete).toHaveBeenCalledWith('rej'));
+
+    rerender(
+      <ToastProvider>
+        <ChoresMemberScreen
+          familyId="fam-A"
+          viewer={VIEWER}
+          feed={{
+            chores: [mkChore({ id: 'rej', title: 'Fold laundry', status: 'complete' })],
+            loading: false,
+            error: null,
+            refresh: vi.fn().mockResolvedValue(undefined),
+          }}
+          onMarkComplete={onMarkComplete}
+        />
+      </ToastProvider>,
+    );
+    expect(screen.getByText(/waiting for approval/i)).toBeInTheDocument();
+    expect(screen.getByText('Fold laundry')).toBeInTheDocument();
+    // The rejected section heading is gone (no rejected chore remains).
+    expect(
+      screen.queryByRole('heading', { name: /needs another try|sent back|^rejected$/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('the "Try again" button accessible name identifies the chore (not a bare "Try again")', () => {
+    renderRejected();
+    expect(
+      screen.getByRole('button', { name: /try again.*fold laundry|fold laundry.*try again/i }),
+    ).toBeInTheDocument();
   });
 });

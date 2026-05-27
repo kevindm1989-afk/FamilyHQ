@@ -100,6 +100,16 @@ describe('markComplete — happy path: writes ONLY the pending->complete status'
     expect(updated[0]!.data.status).not.toBe('approved');
     expect(updated[0]!.data.status).not.toBe('rejected');
   });
+
+  // Redo loop (Phase 3, Task 11 lifecycle decision): the SAME markComplete drives
+  // both pending->complete and rejected->complete — it only ever writes the
+  // status='complete' field, so it is reused verbatim for the "Try again"
+  // affordance. The transition-legality (which prior states may move to complete)
+  // is enforced server-side and pinned in test/rules/chores-create-hardening.ts.
+  it('the redo path uses the SAME write (status:"complete" only) — reusable for rejected -> complete', async () => {
+    await markComplete({ db }, 'rejected-chore');
+    expect(updated[0]!.data).toEqual({ status: 'complete' });
+  });
 });
 
 describe('markComplete — error path (security/privacy): raw Firestore errors never surface', () => {
