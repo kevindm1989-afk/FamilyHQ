@@ -1,28 +1,31 @@
 /**
- * CONTRACT STUB — board feed hook (Phase 3, Task 9; handoff #04 BoardScreen).
+ * Board feed hook (Phase 3, Task 9; handoff #04 BoardScreen, threat-model
+ * P2/M7).
  *
- * Signature only, no logic. The implementer writes the body to satisfy
- * useFamilyPosts.test.tsx.
- *
- * Contract:
- *  - Subscribes to `posts` scoped to the caller's family with the ONLY query the
- *    rules allow: `where('familyId','==', familyId)` ordered `createdAt` desc
- *    (newest first). Never an unconstrained or cross-family query (threat-model
- *    P2/M7).
- *  - Returns `{ posts, loading, error }`. `posts` is `PostWithId[]`. While the
- *    first snapshot is pending, `loading` is true and `posts` is `[]`. On a
- *    snapshot error, `error` is set (user-safe) and `loading` is false.
- *  - When there is no family yet (familyId null), it does not query: `loading`
- *    false, `posts` empty.
- *  - Exposes a `refresh()` callback for pull-to-refresh (Board is one of the two
- *    pull-to-refresh screens, preferences.md) that forces a server re-fetch. The
- *    test asserts the contract (a callable refresh that triggers a fetch), not
- *    the gesture.
+ * Subscribes to `posts` scoped to the caller's family with the ONLY query the
+ * rules allow: `where('familyId','==', familyId)` ordered `createdAt` desc
+ * (newest first). Never an unconstrained or cross-family query. Returns
+ * `{ posts, loading, error, refresh }`; `refresh()` forces a server re-fetch
+ * (pull-to-refresh; Board is a pull-to-refresh screen, preferences.md).
  *
  * DATA-MODEL NOTE: no read/unread field exists on `Post`; this hook neither
  * sorts nor styles by read-state. All posts are returned uniformly.
  */
+import { useCallback, useEffect, useState } from 'react';
+import {
+  collection,
+  getDocsFromServer,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
+  type Firestore,
+  type QueryDocumentSnapshot,
+} from 'firebase/firestore';
+import type { Post } from '../../lib/types';
 import type { PostWithId } from './boardService';
+
+const POST_LOAD_ERROR = 'We could not load the board. Please try again.';
 
 export interface UseFamilyPostsResult {
   posts: PostWithId[];
@@ -31,4 +34,70 @@ export interface UseFamilyPostsResult {
   refresh: () => Promise<void>;
 }
 
-export declare function useFamilyPosts(familyId: string | null): UseFamilyPostsResult;
+function buildPostsQuery(db: Firestore, familyId: string) {
+  return query(
+    collection(db, 'posts'),
+    where('familyId', '==', familyId),
+    orderBy('createdAt', 'desc'),
+  );
+}
+
+function toPost(snap: QueryDocumentSnapshot): PostWithId {
+  return { id: snap.id, ...(snap.data() as Post) };
+}
+
+export function useFamilyPosts(familyId: string | null): UseFamilyPostsResult {
+  const [posts, setPosts] = useState<PostWithId[]>([]);
+  // No family yet -> never query; not loading, empty list.
+  const [loading, setLoading] = useState<boolean>(familyId !== null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Firebase config is imported lazily so this module's top level stays SDK-
+  // free (mirrors useFamily) — App.test.tsx renders the shell without a live
+  // Firebase project.
+  useEffect(() => {
+    if (familyId === null) {
+      setPosts([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    let unsub: (() => void) | undefined;
+    let cancelled = false;
+    void import('../../firebase/config').then(({ db }) => {
+      if (cancelled) return;
+      unsub = onSnapshot(
+        buildPostsQuery(db, familyId),
+        (snap) => {
+          setPosts((snap as { docs: QueryDocumentSnapshot[] }).docs.map(toPost));
+          setLoading(false);
+        },
+        () => {
+          // Never surface a raw Firebase code / PII.
+          setError(POST_LOAD_ERROR);
+          setLoading(false);
+        },
+      );
+    });
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [familyId]);
+
+  const refresh = useCallback(async (): Promise<void> => {
+    if (familyId === null) return;
+    try {
+      const { db } = await import('../../firebase/config');
+      const snap = await getDocsFromServer(buildPostsQuery(db, familyId));
+      setPosts((snap as { docs: QueryDocumentSnapshot[] }).docs.map(toPost));
+      setError(null);
+    } catch {
+      setError(POST_LOAD_ERROR);
+    }
+  }, [familyId]);
+
+  return { posts, loading, error, refresh };
+}

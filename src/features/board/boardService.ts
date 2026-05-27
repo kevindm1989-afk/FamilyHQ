@@ -1,23 +1,25 @@
 /**
- * CONTRACT STUB — Bulletin Board service (Phase 3, Task 9; ADR-0001/0002).
+ * Bulletin Board service (Phase 3, Task 9; ADR-0001/0002).
  *
- * Signatures only, no logic. Authored by the test-writer to PIN the shape the
- * implementer must fulfill; the colocated *.test.ts files import these. The
- * implementer writes the bodies — they must NOT change these signatures, field
- * names, or the error type without updating the tests + the threat model.
- *
- * Authority (who may create/delete a post) is enforced SERVER-SIDE in
- * firestore.rules and proven by test/rules/posts.test.ts. This service is the
- * well-behaved client: it shapes the payload, derives UI-level permission
- * affordances, and maps raw errors to user-safe, PII-free toast copy
+ * The well-behaved client: it shapes the `posts` payload, derives UI-level
+ * permission affordances, and maps raw errors to user-safe, PII-free toast copy
  * (constraints "No PII in error messages"; threat-model T1.8/M8).
  *
- * DATA-MODEL NOTE (do not "fix" by inventing a field): the `Post` schema has NO
- * read/unread field. This service neither reads nor writes read-state. The
- * Dashboard "Unread Posts" count is a separate, later decision and must NOT be
- * implemented as a per-post boolean here.
+ * Authority (who may create/delete a post) is enforced SERVER-SIDE in
+ * firestore.rules and proven by test/rules/posts.test.ts. The pure derivations
+ * here are cosmetic affordances; the server rule is authoritative.
+ *
+ * DATA-MODEL NOTE: the `Post` schema has NO read/unread field. This service
+ * neither reads nor writes read-state.
  */
-import type { Firestore } from 'firebase/firestore';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  serverTimestamp,
+  type Firestore,
+} from 'firebase/firestore';
 import type { Post, Role } from '../../lib/types';
 
 /** A post enriched with its document id for list rendering + delete. */
@@ -26,17 +28,24 @@ export interface PostWithId extends Post {
 }
 
 /** A generic, user-safe error — never leaks a raw Firebase code or PII. */
-export declare class BoardActionError extends Error {}
+export class BoardActionError extends Error {
+  constructor(message: string = POST_GENERIC_ERROR) {
+    super(message);
+    this.name = 'BoardActionError';
+  }
+}
 
 /** User-safe copy the service surfaces; asserted by the tests. */
-export declare const POST_CREATE_SUCCESS: string;
-export declare const POST_DELETE_SUCCESS: string;
-export declare const POST_GENERIC_ERROR: string;
+export const POST_CREATE_SUCCESS = 'Posted to the board.';
+export const POST_DELETE_SUCCESS = 'Post deleted.';
+export const POST_GENERIC_ERROR = 'Something went wrong. Please try again.';
+
+const POSTS_COLLECTION = 'posts';
 
 /**
- * Input to create a post. The service fills `authorId`, `authorName`,
- * `familyId`, and `createdAt` from the supplied identity — the caller passes
- * only the content + identity, never a forged familyId/authorId.
+ * Input to create a post. The service fills `createdAt` and writes exactly the
+ * supplied identity — the caller passes only the content + its own identity,
+ * never a forged familyId/authorId.
  */
 export interface CreatePostInput {
   content: string;
@@ -52,31 +61,52 @@ export interface CreatePostInput {
  * with a BoardActionError BEFORE any write. Maps any Firestore failure to
  * POST_GENERIC_ERROR (no raw error / PII surfaced).
  */
-export declare function createPost(
-  deps: { db: Firestore },
-  input: CreatePostInput,
-): Promise<void>;
+export async function createPost(deps: { db: Firestore }, input: CreatePostInput): Promise<void> {
+  const content = input.content.trim();
+  if (content.length === 0) {
+    // Reject before any write — empty/whitespace-only content is never stored.
+    throw new BoardActionError();
+  }
+
+  try {
+    await addDoc(collection(deps.db, POSTS_COLLECTION), {
+      content,
+      authorId: input.authorId,
+      authorName: input.authorName,
+      familyId: input.familyId,
+      createdAt: serverTimestamp(),
+    });
+  } catch {
+    // Never surface a raw Firebase code / PII to the caller.
+    throw new BoardActionError();
+  }
+}
 
 /**
  * Delete a `posts` doc by id. UI offers this only where permitted (see
  * `canDeletePost`); the rule is the real boundary. Maps failures to
  * POST_GENERIC_ERROR.
  */
-export declare function deletePost(
-  deps: { db: Firestore },
-  postId: string,
-): Promise<void>;
+export async function deletePost(deps: { db: Firestore }, postId: string): Promise<void> {
+  try {
+    await deleteDoc(doc(deps.db, POSTS_COLLECTION, postId));
+  } catch {
+    throw new BoardActionError();
+  }
+}
 
 /**
- * Pure UI-permission derivation (mirrors the firestore.rules posts delete rule
- * the implementer must write): a PARENT may delete ANY post in their family; a
- * MEMBER may delete ONLY their own post (`authorId === viewerUid`). This is a
- * cosmetic affordance — the server rule is authoritative.
+ * Pure UI-permission derivation (mirrors the firestore.rules posts delete rule):
+ * a PARENT may delete ANY post in their family; a MEMBER may delete ONLY their
+ * own post (`authorId === viewerUid`). Cosmetic affordance — the server rule is
+ * authoritative.
  */
-export declare function canDeletePost(
+export function canDeletePost(
   viewer: { uid: string; role: Role },
   post: Pick<Post, 'authorId'>,
-): boolean;
+): boolean {
+  return viewer.role === 'parent' || post.authorId === viewer.uid;
+}
 
 /**
  * Pure derivation of an author's CURRENT role from the live family member list
@@ -84,7 +114,9 @@ export declare function canDeletePost(
  * derived from the members list, never read off the post). Returns 'member'
  * when the author is no longer an active member (no crown for a non-member).
  */
-export declare function authorRole(
+export function authorRole(
   members: ReadonlyArray<{ id: string; role: Role }>,
   authorId: string,
-): Role;
+): Role {
+  return members.find((m) => m.id === authorId)?.role ?? 'member';
+}

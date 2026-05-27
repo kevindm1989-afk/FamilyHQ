@@ -1,32 +1,33 @@
 /**
- * CONTRACT STUB — Bulletin Board screen (Phase 3, Task 9; handoff #04
- * BoardScreen).
+ * Bulletin Board screen (Phase 3, Task 9; handoff #04 BoardScreen).
  *
- * Signature only, no implementation. The implementer writes the body to satisfy
- * BoardScreen.test.tsx. Throws on render so the component tests FAIL for the
- * right reason (not built yet) rather than passing vacuously.
- *
- * Contract (handoff #04 + preferences "empty + loading states", "dynamic
- * family", "toast-everything"):
- *  - LOADING: while the feed hook is loading, renders the Skeleton
- *    (role="status").
+ *  - LOADING: while the feed is loading, renders the Skeleton (role="status").
  *  - EMPTY: when loaded with zero posts, renders a friendly EmptyState message.
- *  - POPULATED: renders one Card per post, NEWEST FIRST, each with the author
- *    avatar (role-derived from the live member list — crown for a parent
- *    author), author name, a relative timestamp, and the content.
+ *  - POPULATED: renders one Card per post, NEWEST FIRST (feed order), each with
+ *    the author avatar (role derived from the live member list — crown for a
+ *    parent author), author name, a relative timestamp, and the content.
  *  - DELETE affordance is shown ONLY where permitted (canDeletePost); deleting
  *    fires a toast.
  *  - A FAB opens the ComposePost sheet.
- *  - Pull-to-refresh is wired to the hook's refresh() (Board is a
- *    pull-to-refresh screen).
+ *  - Pull-to-refresh is wired to the feed's refresh().
  *
  * DATA-MODEL NOTE: posts render UNIFORMLY — there is NO read/unread accent or
- * tracking, because the `Post` schema has no read-state field. The Dashboard
- * "Unread Posts" count is a separate later decision; do NOT add a read flag here.
+ * tracking, because the `Post` schema has no read-state field.
  */
-import type { ReactElement } from 'react';
-import type { PostWithId } from './boardService';
+import { useState, type ReactElement } from 'react';
+import { Avatar, Card, EmptyState, Fab, Skeleton } from '../../components';
+import { ToastViewport } from '../../app/ToastViewport';
+import { useToast } from '../../hooks/useToast';
 import type { Role, UserWithId } from '../../lib/types';
+import {
+  authorRole,
+  canDeletePost,
+  POST_DELETE_SUCCESS,
+  POST_GENERIC_ERROR,
+  type PostWithId,
+} from './boardService';
+import { ComposePost } from './ComposePost';
+import { relativeTime } from './relativeTime';
 
 export interface BoardScreenProps {
   /** Caller's family (drives the feed query). Null until known. */
@@ -47,8 +48,135 @@ export interface BoardScreenProps {
   };
   /** Injected delete action (wired to boardService.deletePost + toast). */
   onDeletePost: (postId: string) => Promise<void>;
+  /** Injected create action (wired to boardService.createPost + toast). */
+  onCreatePost?: (content: string) => Promise<void>;
 }
 
-export function BoardScreen(_props: BoardScreenProps): ReactElement {
-  throw new Error('BoardScreen not implemented (contract stub — Task 9)');
+export function BoardScreen(props: BoardScreenProps): ReactElement {
+  const { viewer, members, feed, onDeletePost, onCreatePost } = props;
+  const { showToast } = useToast();
+  const [composeOpen, setComposeOpen] = useState(false);
+
+  const handleDelete = (postId: string): void => {
+    void onDeletePost(postId)
+      .then(() => showToast(POST_DELETE_SUCCESS))
+      .catch(() => showToast(POST_GENERIC_ERROR));
+  };
+
+  const handleCreate = async (content: string): Promise<void> => {
+    if (onCreatePost) {
+      await onCreatePost(content);
+    }
+  };
+
+  const now = Date.now();
+
+  return (
+    <section className="flex flex-col gap-16 px-16 pt-4 pb-24">
+      <div className="flex items-center justify-between">
+        <h1 className="text-display font-display font-extrabold text-ink">Board</h1>
+        <button
+          type="button"
+          data-testid="board-refresh"
+          aria-label="Refresh the board"
+          onClick={() => void feed.refresh()}
+          className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+        >
+          <RefreshIcon />
+        </button>
+      </div>
+
+      {feed.loading ? (
+        <Skeleton label="Loading the board…" />
+      ) : feed.posts.length === 0 ? (
+        <EmptyState message="No posts yet — share something with the family." />
+      ) : (
+        <ul className="flex flex-col gap-12">
+          {feed.posts.map((post) => {
+            const role = authorRole(members, post.authorId);
+            const showDelete = canDeletePost(viewer, post);
+            return (
+              <li key={post.id}>
+                <Card>
+                  <article className="flex flex-col gap-8">
+                    <header className="flex items-center gap-12">
+                      <Avatar name={post.authorName} role={role} size="default" showRoleForA11y />
+                      <div className="flex flex-1 flex-col">
+                        <span className="text-body font-semibold text-ink">{post.authorName}</span>
+                        <span className="text-meta text-ink-mute">
+                          {relativeTime(post.createdAt, now)}
+                        </span>
+                      </div>
+                      {showDelete && (
+                        <button
+                          type="button"
+                          aria-label={`Delete post by ${post.authorName}`}
+                          onClick={() => handleDelete(post.id)}
+                          className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute hover:text-status-danger-text focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+                        >
+                          <TrashIcon />
+                        </button>
+                      )}
+                    </header>
+                    <p className="text-body text-ink">{post.content}</p>
+                  </article>
+                </Card>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <div className="fixed bottom-fab-from-bottom right-16 z-fab">
+        <Fab label="New post" onClick={() => setComposeOpen(true)} />
+      </div>
+
+      <ComposePost
+        open={composeOpen}
+        onClose={() => setComposeOpen(false)}
+        author={viewer}
+        onCreate={handleCreate}
+      />
+
+      <ToastViewport />
+    </section>
+  );
+}
+
+function RefreshIcon(): ReactElement {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-24 w-24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+    >
+      <path
+        d="M20 11a8 8 0 10-2.3 5.7M20 11V5m0 6h-6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function TrashIcon(): ReactElement {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-20 w-20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+    >
+      <path
+        d="M4 7h16M9 7V5a1 1 0 011-1h4a1 1 0 011 1v2m-9 0v12a1 1 0 001 1h8a1 1 0 001-1V7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }

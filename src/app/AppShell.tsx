@@ -5,6 +5,9 @@ import type { NavTab } from '../components';
 import { useAuth } from '../hooks/useAuth';
 import { useFamily } from '../hooks/useFamily';
 import { useToast } from '../hooks/useToast';
+import { BoardScreen } from '../features/board/BoardScreen';
+import { useFamilyPosts } from '../features/board/useFamilyPosts';
+import { createPost, deletePost, type CreatePostInput } from '../features/board/boardService';
 import { ROUTES, canAccess, hidesBottomNav, type RouteMeta, type ScreenId } from './routes';
 
 const MAIN_CONTENT_ID = 'main-content';
@@ -80,7 +83,7 @@ export function AppShell(): ReactElement {
             }
           />
           <Route path={ROUTES.calendar.path} element={<Placeholder title="Calendar" />} />
-          <Route path={ROUTES.board.path} element={<Placeholder title="Board" />} />
+          <Route path={ROUTES.board.path} element={<BoardRoute />} />
           <Route path={ROUTES.chores.path} element={<Placeholder title="Chores" />} />
           <Route
             path={ROUTES.family.path}
@@ -131,6 +134,55 @@ function AccountScreen(): ReactElement {
         Sign out
       </Button>
     </section>
+  );
+}
+
+/**
+ * Bulletin Board route — wires the screen to live data. The feed comes from
+ * useFamilyPosts(familyId) (the only query the rules allow); create/delete are
+ * the boardService actions bound to the real Firestore. The screen itself
+ * derives the author crown from the live member list and toasts every action.
+ */
+function BoardRoute(): ReactElement {
+  const { familyId, currentUser, members } = useFamily();
+  const feed = useFamilyPosts(familyId);
+
+  if (!currentUser || !familyId) {
+    return <Placeholder title="Board" />;
+  }
+
+  const viewer = {
+    uid: currentUser.id,
+    name: currentUser.name,
+    role: currentUser.role,
+  };
+
+  // Firebase config is imported lazily (mirrors useFamily / useFamilyPosts) so
+  // the shell module stays SDK-free at the top level.
+  const handleDelete = async (postId: string): Promise<void> => {
+    const { db } = await import('../firebase/config');
+    await deletePost({ db }, postId);
+  };
+  const handleCreate = async (content: string): Promise<void> => {
+    const { db } = await import('../firebase/config');
+    const input: CreatePostInput = {
+      content,
+      authorId: viewer.uid,
+      authorName: viewer.name,
+      familyId,
+    };
+    await createPost({ db }, input);
+  };
+
+  return (
+    <BoardScreen
+      familyId={familyId}
+      viewer={viewer}
+      members={members}
+      feed={feed}
+      onDeletePost={handleDelete}
+      onCreatePost={handleCreate}
+    />
   );
 }
 

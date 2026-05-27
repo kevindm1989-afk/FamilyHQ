@@ -292,7 +292,13 @@ service cloud.firestore {
       allow create: if isActive() && incomingSameFamily();
       allow update: if isActive() && sameFamily(resource)
         && incomingSameFamily() && immutable('familyId');
-      allow delete: if isActive() && sameFamily(resource);
+      // delete (Task 9, security-critical): same-family AND (a parent of that
+      // family OR the post's own author), AND active. A member may delete only
+      // their OWN post; a parent may delete ANY post in their family. Cross-
+      // family and deactivated callers are denied (isActive() + sameFamily()).
+      allow delete: if isActive()
+        && sameFamily(resource)
+        && (isParent() || resource.data.authorId == request.auth.uid);
     }
 
     // --- chores ------------------------------------------------------------
