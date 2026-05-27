@@ -3,7 +3,7 @@
  *
  * Pure data/functions so the guard + nav-hiding logic is unit-testable without
  * rendering the router. add_chore/add_event/compose are MODAL routes that hide
- * the BottomNav. add_chore and family management are parent-only (a member is
+ * the BottomNav. add_chore, add_event, and family management are parent-only (a member is
  * bounced to the dashboard). UI gating is cosmetic — firestore.rules is the
  * real authority boundary.
  */
@@ -48,7 +48,7 @@ export const ROUTES: Record<ScreenId, RouteMeta> = {
     id: 'add_event',
     path: '/calendar/new',
     isModal: true,
-    parentOnly: false,
+    parentOnly: true,
   },
   compose: {
     id: 'compose',

@@ -13,7 +13,7 @@ import { ROUTES, canAccess, hidesBottomNav, type ScreenId } from './routes';
 
 const MODAL_SCREENS: ScreenId[] = ['add_chore', 'add_event', 'compose'];
 const NAV_SCREENS: ScreenId[] = ['dashboard', 'calendar', 'board', 'chores'];
-const PARENT_ONLY: ScreenId[] = ['add_chore', 'family'];
+const PARENT_ONLY: ScreenId[] = ['add_chore', 'add_event', 'family'];
 
 describe('route metadata', () => {
   it('defines a route for every screen id', () => {
@@ -74,8 +74,7 @@ describe('parent-only route guards (member is bounced)', () => {
     expect(canAccess('dashboard', 'member')).toBe(true);
   });
 
-  it('allows a member onto add_event and compose (not parent-only)', () => {
-    expect(canAccess('add_event', 'member')).toBe(true);
+  it('allows a member onto compose (not parent-only)', () => {
     expect(canAccess('compose', 'member')).toBe(true);
   });
 });

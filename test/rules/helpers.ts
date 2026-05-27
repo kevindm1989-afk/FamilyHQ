@@ -132,7 +132,12 @@ export async function seedBaseline(env: RulesTestEnvironment): Promise<void> {
       await setDoc(doc(db, 'events', `event-${fid}`), {
         title: 'Event',
         description: '',
-        date: '2026-05-26',
+        // ISO DATETIME (Finding C value validation): the events create/update
+        // rule now requires `date` to match an ISO datetime, so the seeded
+        // fixture must too — otherwise a valid title-only UPDATE would re-fail
+        // validation on the unchanged date. The grid/agenda already parse the
+        // literal Y-M-D/H:M, so a time-of-day is harmless to read/list/bucket.
+        date: '2026-05-26T09:00:00.000Z',
         tag: 'family',
         familyId: fid,
         createdBy: ownerUid,
