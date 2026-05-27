@@ -8,6 +8,14 @@ import { useToast } from '../hooks/useToast';
 import { BoardScreen } from '../features/board/BoardScreen';
 import { useFamilyPosts } from '../features/board/useFamilyPosts';
 import { createPost, deletePost, type CreatePostInput } from '../features/board/boardService';
+import { CalendarScreen } from '../features/calendar/CalendarScreen';
+import { useFamilyEvents } from '../features/calendar/useFamilyEvents';
+import {
+  createEvent,
+  deleteEvent,
+  type CreateEventInput,
+} from '../features/calendar/calendarService';
+import type { EventTag } from '../lib/types';
 import { ROUTES, canAccess, hidesBottomNav, type RouteMeta, type ScreenId } from './routes';
 
 const MAIN_CONTENT_ID = 'main-content';
@@ -82,7 +90,7 @@ export function AppShell(): ReactElement {
               />
             }
           />
-          <Route path={ROUTES.calendar.path} element={<Placeholder title="Calendar" />} />
+          <Route path={ROUTES.calendar.path} element={<CalendarRoute />} />
           <Route path={ROUTES.board.path} element={<BoardRoute />} />
           <Route path={ROUTES.chores.path} element={<Placeholder title="Chores" />} />
           <Route
@@ -93,7 +101,7 @@ export function AppShell(): ReactElement {
             path={ROUTES.add_chore.path}
             element={guard('add_chore', <Placeholder title="Add Chore" />)}
           />
-          <Route path={ROUTES.add_event.path} element={<Placeholder title="Add Event" />} />
+          <Route path={ROUTES.add_event.path} element={<CalendarRoute />} />
           <Route path={ROUTES.compose.path} element={<Placeholder title="New Post" />} />
           <Route path={ROUTES.account_switcher.path} element={<AccountScreen />} />
           <Route path="*" element={<Navigate to={ROUTES.dashboard.path} replace />} />
@@ -182,6 +190,66 @@ function BoardRoute(): ReactElement {
       feed={feed}
       onDeletePost={handleDelete}
       onCreatePost={handleCreate}
+    />
+  );
+}
+
+/**
+ * Calendar route — wires the screen to live data. The feed comes from
+ * useFamilyEvents(familyId) (the only query the rules allow); create/delete are
+ * the calendarService actions bound to the real Firestore. Event CRUD is
+ * parent-only: the screen renders the + FAB and edit/delete affordances only for
+ * a parent, and firestore.rules is the authoritative boundary.
+ */
+function CalendarRoute(): ReactElement {
+  const { familyId, currentUser, members } = useFamily();
+  const feed = useFamilyEvents(familyId);
+
+  if (!currentUser || !familyId) {
+    return <Placeholder title="Calendar" />;
+  }
+
+  const viewer = {
+    uid: currentUser.id,
+    name: currentUser.name,
+    role: currentUser.role,
+  };
+
+  // The reference "today" derived from the real clock (the screen takes it as a
+  // prop so its grid/highlight stay deterministic under test).
+  const now = new Date();
+  const today = { year: now.getFullYear(), month: now.getMonth(), day: now.getDate() };
+
+  // Firebase config is imported lazily (mirrors useFamily / BoardRoute) so the
+  // shell module stays SDK-free at the top level.
+  const handleDelete = async (eventId: string): Promise<void> => {
+    const { db } = await import('../firebase/config');
+    await deleteEvent({ db }, eventId);
+  };
+  const handleCreate = async (value: {
+    title: string;
+    description: string;
+    date: string;
+    tag: EventTag;
+  }): Promise<void> => {
+    const { db } = await import('../firebase/config');
+    const input: CreateEventInput = {
+      ...value,
+      familyId,
+      createdBy: viewer.uid,
+    };
+    await createEvent({ db }, input);
+  };
+
+  return (
+    <CalendarScreen
+      familyId={familyId}
+      viewer={viewer}
+      members={members}
+      feed={feed}
+      today={today}
+      onDeleteEvent={handleDelete}
+      onCreateEvent={handleCreate}
     />
   );
 }

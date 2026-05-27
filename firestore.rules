@@ -274,15 +274,33 @@ service cloud.firestore {
     }
 
     // --- events ------------------------------------------------------------
-    // Any active member reads own-family events; any active member may create/
-    // edit own-family events (shared family calendar). Tenant-scoped throughout.
+    // Any active member READS own-family events (the shared family calendar is
+    // view-only for members). Event CRUD is PARENT-ONLY (Task 13 tightening):
+    // a member can never create/edit/delete an event. Tenant-scoped throughout.
+    //
+    // create (SECURITY-CRITICAL): active same-family PARENT, own family, the
+    //   creator bound to the caller (createdBy == auth.uid), AND an exact shape
+    //   lock so no extra/smuggled field (start/end time, who, location) is
+    //   accepted — mirrors the posts create lock.
+    // update/delete: active same-family PARENT only; update keeps familyId
+    //   immutable. A cross-family parent, a member, a deactivated user, and an
+    //   unauthenticated client are all denied.
     match /events/{eventId} {
       allow get: if isActive() && sameFamily(resource);
       allow list: if listScopedToOwnFamily();
-      allow create: if isActive() && incomingSameFamily();
-      allow update: if isActive() && sameFamily(resource)
-        && incomingSameFamily() && immutable('familyId');
-      allow delete: if isActive() && sameFamily(resource);
+      allow create: if isActive()
+        && isParent()
+        && incomingSameFamily()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.keys().hasOnly(
+             ['title', 'description', 'date', 'tag',
+              'familyId', 'createdBy', 'createdAt'])
+        && request.resource.data.keys().hasAll(
+             ['title', 'description', 'date', 'tag',
+              'familyId', 'createdBy', 'createdAt']);
+      allow update: if isActive() && isParent() && sameFamily(resource)
+        && immutable('familyId');
+      allow delete: if isActive() && isParent() && sameFamily(resource);
     }
 
     // --- posts -------------------------------------------------------------
