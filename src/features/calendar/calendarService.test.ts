@@ -279,6 +279,55 @@ describe('eventTagDotClass — tag maps to its TOKEN dot colour class (no raw he
       expect(cls, 'must not embed a raw hex colour').not.toMatch(/#[0-9a-fA-F]{3,6}/);
     }
   });
+
+  // FINDING A (HIGH) — the dot class MUST come from a STATIC lookup map of full
+  // literal class names. `bg-category-${tag}-dot` (string interpolation) is a
+  // class Tailwind's JIT compiler CANNOT see at build time, so the rule is never
+  // emitted and the dot is invisible in production. jsdom cannot observe Tailwind
+  // emission, so we pin the OBSERVABLE proxy: every output is a member of the
+  // finite set of FULL literal class strings that the static map / Badge.tsx
+  // declare. An interpolation-built string still happens to equal these literals,
+  // so additionally pin the UNKNOWN-tag fallback below, which interpolation
+  // CANNOT satisfy (it would build `bg-category-???-dot`, not a real token).
+  it('every valid tag maps to one of the FOUR known FULL literal dot classes (static set, not interpolation-shaped)', () => {
+    const KNOWN_LITERALS = new Set([
+      'bg-category-school-dot',
+      'bg-category-sports-dot',
+      'bg-category-family-dot',
+      'bg-category-work-dot',
+    ]);
+    for (const tag of ['school', 'sports', 'family', 'work'] as const) {
+      expect(
+        KNOWN_LITERALS.has(eventTagDotClass(tag)),
+        `${tag} must map to a known full literal token class (a static map member, not interpolated)`,
+      ).toBe(true);
+    }
+  });
+
+  it('an UNKNOWN/invalid tag returns a SAFE fallback literal — never undefined, empty, or an interpolated non-token', () => {
+    // An invalid tag can arrive from stale cache / a future schema value. The
+    // function must fail SAFE to a real, JIT-visible token class — NOT
+    // `bg-category-undefined-dot` (what interpolation produces) and NOT '' /
+    // undefined (which would render no colour and could break the class string).
+    const KNOWN_LITERALS = new Set([
+      'bg-category-school-dot',
+      'bg-category-sports-dot',
+      'bg-category-family-dot',
+      'bg-category-work-dot',
+    ]);
+    const fallback = eventTagDotClass('totally-unknown-tag' as never);
+    expect(typeof fallback, 'fallback must be a string').toBe('string');
+    expect(fallback.length, 'fallback must be non-empty').toBeGreaterThan(0);
+    expect(
+      fallback,
+      'fallback must not be the interpolation artefact for an unknown tag',
+    ).not.toBe('bg-category-totally-unknown-tag-dot');
+    expect(fallback).not.toMatch(/undefined|null/);
+    expect(
+      KNOWN_LITERALS.has(fallback),
+      'fallback must be one of the four known full literal token classes',
+    ).toBe(true);
+  });
 });
 
 describe('toast copy — success + error messages defined for the toast-everything rule', () => {

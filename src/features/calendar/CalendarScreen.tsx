@@ -2,8 +2,14 @@
  * Calendar screen (Phase 3, Task 13; handoff #03 CalendarScreen).
  *
  *  - LOADING: while the feed is loading, renders the Skeleton (role="status").
- *  - MONTH GRID: a 6x7 grid with a month header (prev/next), a day-of-week
- *    strip, and the today cell marked aria-current="date".
+ *  - MONTH GRID: a labelled LIST (role="list"/<ul> with listitem day-cell
+ *    buttons — NOT a bare role="grid", Finding E) with a month header (prev/next),
+ *    a day-of-week strip, the today cell marked aria-current="date", and the
+ *    selected day exposed via aria-pressed. Each day-cell button carries min-w-tap
+ *    (44px target) and an accessible name that includes the full date (month +
+ *    year). A dedicated visually-hidden role="status"/aria-live="polite" region
+ *    (data-testid="month-status") announces the displayed "Month YYYY" on
+ *    prev/next — the heading itself is NOT aria-live.
  *  - EVENT DOTS: a day with events shows up to 3 category-coloured dots (tokens).
  *  - AGENDA: the selected day's events (time + title + tag) below the grid; tap
  *    a day to select it. A friendly EMPTY state for a day with no events.
@@ -82,6 +88,15 @@ const TIME_FORMAT = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'UTC',
 });
 
+/**
+ * Format the time-of-day shown in the agenda.
+ *
+ * FINDING B (timezone consistency): must read the LITERAL H:M (floating wall-
+ * clock) from the `date` string — the SAME literal Y-M-D/H:M that monthGrid's
+ * `eventsForDay` uses to bucket the day — NOT reinterpret `new Date(iso)` as an
+ * instant under a fixed `timeZone:'UTC'`. Otherwise a non-UTC user sees a shifted
+ * time that can disagree with the grid day the event is filed under.
+ */
 function formatTime(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? '' : TIME_FORMAT.format(d);

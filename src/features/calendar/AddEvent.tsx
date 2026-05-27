@@ -3,11 +3,14 @@
  * preferences "toast-everything", "errors are user-safe").
  *
  * Renders inside a BottomSheet titled "Add Event". Collects ONLY the locked-
- * schema-relevant fields: title (autofocus, required), optional description,
- * date (chip row Today / Tomorrow / Pick date — produces an ISO datetime
- * string), and category/tag (segmented control: School / Sports / Family /
- * Work, each with its token colour dot). The submit is aria-disabled
- * (focusable) while the trimmed title is empty.
+ * schema-relevant fields: title (autofocus, aria-required; on an empty-title
+ * submit attempt becomes aria-invalid with an aria-describedby error region),
+ * optional description, date (a role="radiogroup" of Today / Tomorrow radios
+ * plus a SEPARATE aria-disabled "Pick date" placeholder that must NOT change the
+ * selected day), and category/tag (a role="radiogroup" of School / Sports /
+ * Family / Work radios with aria-checked, each with its token colour dot). The
+ * submit is aria-disabled (focusable) while the trimmed title is empty, and a
+ * click while disabled is a no-op (does not call onCreate). (Finding E a11y.)
  *
  * On submit: calls the injected `onCreate` with the collected value, then on
  * success closes the sheet and fires a success toast; on failure fires a

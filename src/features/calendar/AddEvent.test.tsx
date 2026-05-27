@@ -24,7 +24,7 @@
  * the reference "today" is injected so the Today/Tomorrow chips are
  * deterministic. No network/RNG; each test re-creates props.
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../hooks/useToast';
 import { AddEvent, type AddEventProps, type AddEventValue } from './AddEvent';
@@ -71,16 +71,19 @@ describe('AddEvent — structure + a11y', () => {
   });
 
   it('renders a category control with all four options (School / Sports / Family / Work)', () => {
+    // Finding E: the category control is a radiogroup, so its options are radios
+    // (REPLACES the prior aria-pressed-button query).
     renderSheet();
     for (const label of [/school/i, /sports/i, /family/i, /work/i]) {
-      expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: label })).toBeInTheDocument();
     }
   });
 
-  it('renders the date chip row (Today / Tomorrow / Pick date)', () => {
+  it('renders the date chips (Today / Tomorrow as radios) + a Pick date button', () => {
     renderSheet();
-    expect(screen.getByRole('button', { name: /today/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /tomorrow/i })).toBeInTheDocument();
+    // Today/Tomorrow are radios in the date radiogroup; Pick date is NOT.
+    expect(screen.getByRole('radio', { name: /today/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /tomorrow/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /pick date/i })).toBeInTheDocument();
   });
 });
@@ -131,8 +134,8 @@ describe('AddEvent — submit (happy): builds EXACTLY the schema-relevant value'
     const onCreate = vi.fn().mockResolvedValue(undefined);
     renderSheet({ onCreate });
     fireEvent.change(getTitleField(), { target: { value: '  Recital  ' } });
-    fireEvent.click(screen.getByRole('button', { name: /sports/i }));
-    fireEvent.click(screen.getByRole('button', { name: /tomorrow/i }));
+    fireEvent.click(screen.getByRole('radio', { name: /sports/i }));
+    fireEvent.click(screen.getByRole('radio', { name: /tomorrow/i }));
     fireEvent.click(getSubmit());
 
     await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
@@ -151,7 +154,7 @@ describe('AddEvent — submit (happy): builds EXACTLY the schema-relevant value'
     const onCreate = vi.fn().mockResolvedValue(undefined);
     renderSheet({ onCreate });
     fireEvent.change(getTitleField(), { target: { value: 'Standup' } });
-    fireEvent.click(screen.getByRole('button', { name: /today/i }));
+    fireEvent.click(screen.getByRole('radio', { name: /today/i }));
     fireEvent.click(getSubmit());
     await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
     const value = onCreate.mock.calls[0]![0] as AddEventValue;
@@ -184,6 +187,112 @@ describe('AddEvent — submit error (error path / privacy)', () => {
     expect(toast.textContent ?? '').not.toMatch(/permission-denied/);
     expect(toast.textContent?.length ?? 0).toBeGreaterThan(0);
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe('AddEvent — Category + Date are radiogroups (Finding E a11y)', () => {
+  it('the Category control is a role=radiogroup named by its legend', () => {
+    renderSheet();
+    expect(screen.getByRole('radiogroup', { name: /category/i })).toBeInTheDocument();
+  });
+
+  it('the Date control is a role=radiogroup named by its legend', () => {
+    renderSheet();
+    expect(screen.getByRole('radiogroup', { name: /date/i })).toBeInTheDocument();
+  });
+
+  it('category options use role=radio + aria-checked, mutually exclusive (one checked at a time)', () => {
+    renderSheet();
+    const group = screen.getByRole('radiogroup', { name: /category/i });
+    const radios = within(group).getAllByRole('radio');
+    expect(radios.length, 'School/Sports/Family/Work').toBe(4);
+    fireEvent.click(screen.getByRole('radio', { name: /sports/i }));
+    const checked = within(group)
+      .getAllByRole('radio')
+      .filter((r) => r.getAttribute('aria-checked') === 'true');
+    expect(checked, 'exactly one category radio is checked').toHaveLength(1);
+    expect(checked[0]!).toHaveAccessibleName(/sports/i);
+  });
+
+  it('date options use role=radio + aria-checked, mutually exclusive (Today vs Tomorrow)', () => {
+    renderSheet();
+    const group = screen.getByRole('radiogroup', { name: /date/i });
+    fireEvent.click(screen.getByRole('radio', { name: /tomorrow/i }));
+    const checked = within(group)
+      .getAllByRole('radio')
+      .filter((r) => r.getAttribute('aria-checked') === 'true');
+    expect(checked, 'exactly one date radio is checked').toHaveLength(1);
+    expect(checked[0]!).toHaveAccessibleName(/tomorrow/i);
+  });
+
+  it('"Pick date" is NOT inside the date radiogroup', () => {
+    renderSheet();
+    const group = screen.getByRole('radiogroup', { name: /date/i });
+    expect(
+      within(group).queryByRole('button', { name: /pick date/i }),
+      'Pick date is a placeholder affordance, not a radio option',
+    ).not.toBeInTheDocument();
+    expect(within(group).queryByText(/pick date/i)).not.toBeInTheDocument();
+  });
+
+  it('"Pick date" is aria-disabled (no real picker yet)', () => {
+    renderSheet();
+    const pick = screen.getByRole('button', { name: /pick date/i });
+    expect(pick).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('clicking "Pick date" does NOT silently change the selected day (dayChoice unchanged)', async () => {
+    // The default selected day is Today (the reference). Clicking the disabled
+    // Pick date must NOT mutate the choice — proven by the submitted ISO day
+    // staying on Today, not jumping to anything else.
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    renderSheet({ onCreate });
+    fireEvent.change(getTitleField(), { target: { value: 'Standup' } });
+    fireEvent.click(screen.getByRole('button', { name: /pick date/i }));
+    fireEvent.click(getSubmit());
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+    const value = onCreate.mock.calls[0]![0] as AddEventValue;
+    expect(
+      value.date,
+      'Pick date must leave the selected day on Today (2026-05-27), not change it',
+    ).toContain('2026-05-27');
+    // And the Today radio is still the checked one.
+    const dateGroup = screen.getByRole('radiogroup', { name: /date/i });
+    const checked = within(dateGroup)
+      .getAllByRole('radio')
+      .filter((r) => r.getAttribute('aria-checked') === 'true');
+    expect(checked[0]!).toHaveAccessibleName(/today/i);
+  });
+});
+
+describe('AddEvent — title field validation a11y (Finding E)', () => {
+  it('the title field is aria-required', () => {
+    renderSheet();
+    expect(getTitleField()).toHaveAttribute('aria-required', 'true');
+  });
+
+  it('a submit attempt with an EMPTY title marks the title aria-invalid and shows associated error text', () => {
+    renderSheet();
+    // Title is empty; activating the (aria-disabled) submit is a validation
+    // attempt and must surface an accessible error on the field.
+    fireEvent.click(getSubmit());
+    const title = getTitleField();
+    expect(title, 'empty title must be flagged invalid for AT').toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    const describedBy = title.getAttribute('aria-describedby');
+    expect(describedBy, 'the title must point at its error/help text via aria-describedby').toBeTruthy();
+    const errorEl = document.getElementById(describedBy!.split(/\s+/)[0]!);
+    expect(errorEl, 'the aria-describedby target must exist in the DOM').not.toBeNull();
+    expect((errorEl?.textContent ?? '').length, 'the error text must be non-empty').toBeGreaterThan(0);
+  });
+
+  it('a valid title is NOT marked aria-invalid', () => {
+    renderSheet();
+    fireEvent.change(getTitleField(), { target: { value: 'Recital' } });
+    const title = getTitleField();
+    expect(title.getAttribute('aria-invalid')).not.toBe('true');
   });
 });
 

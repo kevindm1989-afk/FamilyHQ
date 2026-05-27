@@ -153,7 +153,13 @@ export function canManageEvents(viewer: { role: Role }): boolean {
  * Pure mapping from a category/tag to its token DOT colour class (style-guide
  * §category colours; tokens, never raw hex):
  *   school -> blue, sports -> green, family -> indigo, work -> grey.
- * Returns the Tailwind token class (e.g. `bg-category-school-dot`).
+ *
+ * MUST return one of FOUR exact STATIC literal class strings via a static lookup
+ * map (mirrors Badge.tsx's `TONE_CLASS`) — NEVER string interpolation. A
+ * `bg-category-${tag}-dot` template is invisible to Tailwind's JIT, so the rule
+ * is never emitted and the dot disappears in production (Finding A, HIGH). An
+ * UNKNOWN/invalid tag must fall SAFE to a real literal token class, never
+ * `undefined`, empty, or an interpolated non-token.
  */
 export function eventTagDotClass(tag: EventTag): string {
   return `bg-category-${tag}-dot`;

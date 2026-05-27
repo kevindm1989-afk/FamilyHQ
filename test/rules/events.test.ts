@@ -246,6 +246,125 @@ describe('events UPDATE — PARENT-ONLY, own family, familyId immutable (Task 13
     const { doc, updateDoc } = await import('firebase/firestore');
     await assertFails(updateDoc(doc(db, 'events', EVENT_A), { title: 'deactivated edit' }));
   });
+
+  // FINDING C — authorship/creation are IMMUTABLE on update, mirroring the create
+  // binding (createdBy == auth.uid). An edit may change content (title/description/
+  // date/tag) but must NEVER rewrite who created the event or when.
+  it('a same-family PARENT changing createdBy is DENIED (authorship immutable)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(updateDoc(doc(db, 'events', EVENT_A), { createdBy: UID.memberA }));
+  });
+
+  it('a same-family PARENT changing createdBy to THEMSELVES is still DENIED (createdBy is write-once)', async () => {
+    // Even a no-op-looking self re-assert must be denied — createdBy is immutable
+    // after create, not merely "must equal the caller".
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(updateDoc(doc(db, 'events', EVENT_A), { createdBy: UID.parentA }));
+  });
+
+  it('a same-family PARENT changing createdAt is DENIED (creation time immutable)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(updateDoc(doc(db, 'events', EVENT_A), { createdAt: 12345 }));
+  });
+
+  it('a same-family PARENT may update title + description + date + tag together (content stays editable)', async () => {
+    // Guards against an over-tightening that accidentally freezes the editable
+    // content fields along with createdBy/createdAt/familyId.
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertSucceeds(
+      updateDoc(doc(db, 'events', EVENT_A), {
+        title: 'Soccer (rescheduled)',
+        description: 'New venue',
+        date: '2026-06-03T18:30:00.000Z',
+        tag: 'sports',
+      }),
+    );
+  });
+});
+
+describe('events VALUE VALIDATION — tag enum + ISO datetime date, on CREATE and UPDATE (Finding C)', () => {
+  const VALID_TAGS = ['school', 'sports', 'family', 'work'] as const;
+
+  it('CREATE with each VALID tag is allowed (no false rejection of the enum)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    for (const tag of VALID_TAGS) {
+      await assertSucceeds(
+        setDoc(doc(db, 'events', `valid-tag-${tag}`), eventDoc({ createdBy: UID.parentA, tag })),
+      );
+    }
+  });
+
+  it('CREATE with a tag OUTSIDE the enum is DENIED', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(doc(db, 'events', 'bad-tag'), eventDoc({ createdBy: UID.parentA, tag: 'chores' })),
+    );
+  });
+
+  it('CREATE with an empty-string tag is DENIED', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(doc(db, 'events', 'empty-tag'), eventDoc({ createdBy: UID.parentA, tag: '' })),
+    );
+  });
+
+  it('CREATE with a date that is NOT an ISO datetime is DENIED (e.g. date-only / free text)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    // Date-only (no time component) — does not match YYYY-MM-DDTHH:MM:SS...Z.
+    await assertFails(
+      setDoc(doc(db, 'events', 'date-only'), eventDoc({ createdBy: UID.parentA, date: '2026-06-01' })),
+    );
+    // Free-text garbage.
+    await assertFails(
+      setDoc(
+        doc(db, 'events', 'date-garbage'),
+        eventDoc({ createdBy: UID.parentA, date: 'next Tuesday' }),
+      ),
+    );
+  });
+
+  it('CREATE with a well-formed ISO datetime date is allowed', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertSucceeds(
+      setDoc(
+        doc(db, 'events', 'good-date'),
+        eventDoc({ createdBy: UID.parentA, date: '2026-06-01T17:30:00.000Z' }),
+      ),
+    );
+  });
+
+  it('UPDATE setting tag OUTSIDE the enum is DENIED', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(updateDoc(doc(db, 'events', EVENT_A), { tag: 'not-a-tag' }));
+  });
+
+  it('UPDATE setting tag to a VALID enum value is allowed', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertSucceeds(updateDoc(doc(db, 'events', EVENT_A), { tag: 'work' }));
+  });
+
+  it('UPDATE setting date to a NON-ISO-datetime value is DENIED', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(updateDoc(doc(db, 'events', EVENT_A), { date: '2026-06-01' }));
+  });
+
+  it('UPDATE setting date to a well-formed ISO datetime is allowed', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertSucceeds(updateDoc(doc(db, 'events', EVENT_A), { date: '2026-06-02T08:15:00.000Z' }));
+  });
 });
 
 describe('events DELETE — PARENT-ONLY, own family (Task 13 tightening)', () => {
