@@ -1,0 +1,15 @@
+# Vendored design reference — the HTML prototype + uncompiled source under
+# design/handoff/ is reference material, NOT product code (the handoff README
+# states tweaks-panel.jsx is "NOT part of the product"). We do not ship,
+# import, or own it, so it must not gate CI. Our app code under src/ IS scanned.
+design/handoff/
+
+# --- Standard excludes ---
+# A project .semgrepignore REPLACES semgrep's built-in defaults, so the usual
+# noise/build dirs are re-listed here.
+node_modules/
+dist/
+build/
+coverage/
+.git/
+*.min.js
