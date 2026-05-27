@@ -182,6 +182,12 @@ export async function signOutAndClearCache(deps: SignOutDeps): Promise<void> {
   await terminate(db);
   await clearIndexedDbPersistence(db);
 
+  // Finding 2: force a full page reload AFTER the cache is cleared so a FRESH
+  // Firestore client is constructed — the terminated singleton is unusable and
+  // must never be reused. The reload fires even on the clean-clear path; the
+  // captured signOut rejection is surfaced afterward.
+  deps.reload();
+
   if (signOutError !== undefined) {
     throw signOutError;
   }
@@ -213,11 +219,18 @@ export interface ClearCacheIfUserChangedDeps {
   setLastUid: (uid: string) => void;
 }
 
-export async function clearCacheIfUserChanged(
-  _deps: ClearCacheIfUserChangedDeps,
-): Promise<void> {
-  // Contract stub only — implemented by the implementer to satisfy
-  // clearCacheIfUserChanged.test.ts. Intentionally throws so the
-  // not-yet-implemented path is never silently a no-op.
-  throw new Error('clearCacheIfUserChanged not implemented');
+export async function clearCacheIfUserChanged(deps: ClearCacheIfUserChangedDeps): Promise<void> {
+  const { db, currentUid, getLastUid, setLastUid } = deps;
+  const lastUid = getLastUid();
+
+  // A recorded prior uid that differs from the now-authenticated uid means the
+  // on-device cache may hold the PRIOR user's family PI (the previous session
+  // ended without routing through signOutAndClearCache). Wipe it BEFORE
+  // recording the new marker, so the cache is clean before the session is
+  // confirmed. A null marker (cold start) or a matching uid (same user, warm
+  // cache) must NOT clear.
+  if (lastUid !== null && lastUid !== currentUid) {
+    await clearIndexedDbPersistence(db);
+  }
+  setLastUid(currentUid);
 }

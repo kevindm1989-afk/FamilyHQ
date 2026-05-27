@@ -156,10 +156,22 @@ service cloud.firestore {
       // against a balance already 0: that write changes no value, so its
       // affectedKeys is empty — and an empty change is not an authorized
       // name/isActive edit. There are NO direct balance writes at this layer.
+      //
+      // Finding 7 (MEDIUM) — no parent self-lockout. A parent may deactivate /
+      // reactivate OTHER members, but must NOT set isActive:false on their OWN
+      // users doc: the (only/founding) parent stranding the family with no
+      // active parent is a footgun. We deny only the self + isActive:false case;
+      // a parent self-rename (name only) still flows through selfUpdateAllowed,
+      // and reactivating another member is unaffected.
+      function notSelfDeactivation() {
+        return !(request.auth.uid == userId
+          && request.resource.data.isActive == false);
+      }
       function parentUpdateAllowed() {
         return isParent()
           && sameFamily(resource)
           && incomingSameFamily()
+          && notSelfDeactivation()
           && request.resource.data.diff(resource.data).affectedKeys().size() > 0
           && request.resource.data.diff(resource.data)
                .affectedKeys().hasOnly(['name', 'isActive']);
@@ -200,10 +212,34 @@ service cloud.firestore {
           && resource.data.familyId == callerFamily();
       }
 
+      // Bounded create (Finding 1, HIGH). The legitimate paths are:
+      //  (a) ESTABLISHED member — a users/{uid} doc already exists; the
+      //      userPrivate.familyId MUST equal the caller's real family
+      //      (callerFamily()). A foreign familyId is rejected.
+      //  (b) FOUNDING-PARENT bootstrap — there is NO users/{uid} doc yet (it is
+      //      written in the SAME batch), so callerFamily() is unreadable.
+      //      Bind familyId to the family of the same-batch users/{uid} doc via
+      //      getAfter() (mirrors the users bootstrap's same-batch family read),
+      //      so an arbitrary client-supplied tenant cannot be claimed.
+      // In BOTH paths the doc shape is exactly {email, familyId} (no smuggled
+      // fields) and the doc is self-keyed. A clobbering re-create of an existing
+      // doc is an `update` at the rules layer (familyId immutable there), so it
+      // is denied by the update rule, not this one.
+      function isBoundPrivateCreate() {
+        return isPrivateSubject()
+          && request.resource.data.keys().hasOnly(['email', 'familyId'])
+          && (
+            callerExists()
+              ? request.resource.data.familyId == callerFamily()
+              : request.resource.data.familyId
+                  == getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.familyId
+          );
+      }
+
       allow get: if (isPrivateSubject() && isActive())
         || isSameFamilyParentOf();
       allow list: if false;
-      allow create: if isPrivateSubject();
+      allow create: if isBoundPrivateCreate();
       allow update: if isPrivateSubject()
         && immutable('familyId');
       allow delete: if false;

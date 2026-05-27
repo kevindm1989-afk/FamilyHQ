@@ -65,7 +65,7 @@ const db = { __db: true } as unknown as import('firebase/firestore').Firestore;
 
 // Injected reload (Finding 2): a synchronous full-page reload trigger. Pushing
 // to the same ordered log lets us assert it fires AFTER the cache clear.
-let reload: ReturnType<typeof vi.fn>;
+let reload: ReturnType<typeof vi.fn<[], void>>;
 
 beforeEach(() => {
   vi.clearAllMocks();

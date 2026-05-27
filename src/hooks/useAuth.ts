@@ -31,6 +31,12 @@ export interface AuthState {
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
 
+// localStorage marker for the startup uid-guard (Finding 3). Compares the
+// authenticated uid against the last cached uid so a session that ended WITHOUT
+// signOutAndClearCache (crash / tab kill / token expiry on a shared device)
+// cannot leave the prior user's family PI readable from the IndexedDB cache.
+const LAST_UID_KEY = 'familyhq.lastCachedUid';
+
 // Single lazy loader for the Firebase config so the module stays SDK-free at
 // load time (Firebase init throws on a missing API key under tests). Both the
 // auth listener and sign-out share ONE import promise, so they always see the
@@ -51,9 +57,31 @@ export function AuthProvider(props: { children: ReactNode }): ReactElement {
     let unsub: (() => void) | undefined;
     let cancelled = false;
     void loadFirebaseConfig()
-      .then(({ auth }) => {
+      .then(({ auth, db }) => {
         if (cancelled) return;
         unsub = onAuthStateChanged(auth, (user) => {
+          // Finding 3 — startup uid-guard. On a CONFIRMED authenticated session,
+          // before the app uses Firestore for that session, wipe the IndexedDB
+          // cache if the authenticated uid differs from the last cached uid.
+          // clearIndexedDbPersistence requires a not-yet-used client; the auth
+          // listener firing is the first-load gate before any feature read, so
+          // this is the safe window. After a mismatch clear the terminated
+          // client is unusable, so we reload to obtain a fresh Firestore client
+          // (consistent with the sign-out path's reload).
+          if (user) {
+            void import('../features/auth/authService').then(({ clearCacheIfUserChanged }) => {
+              const lastUid = localStorage.getItem(LAST_UID_KEY);
+              const mismatch = lastUid !== null && lastUid !== user.uid;
+              return clearCacheIfUserChanged({
+                db,
+                currentUid: user.uid,
+                getLastUid: () => lastUid,
+                setLastUid: (u) => localStorage.setItem(LAST_UID_KEY, u),
+              }).then(() => {
+                if (mismatch) window.location.reload();
+              });
+            });
+          }
           setAuthUser(user);
           setLoading(false);
         });
@@ -76,7 +104,9 @@ export function AuthProvider(props: { children: ReactNode }): ReactElement {
   const signOut = async (): Promise<void> => {
     const { auth, db } = await loadFirebaseConfig();
     const { signOutAndClearCache } = await import('../features/auth/authService');
-    await signOutAndClearCache({ auth, db });
+    // Inject a full-page reload (Finding 2) so the service rebuilds a fresh
+    // Firestore client after the terminated client + cache clear.
+    await signOutAndClearCache({ auth, db, reload: () => window.location.reload() });
   };
 
   const value = useMemo<AuthState>(() => ({ authUser, loading, signOut }), [authUser, loading]);

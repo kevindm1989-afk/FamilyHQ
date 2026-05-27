@@ -37,7 +37,7 @@ const FOCUSABLE_SELECTOR =
  * Enter motion is opacity + slide-up (reduced-motion: opacity-only).
  */
 export function BottomSheet(props: BottomSheetProps): ReactElement | null {
-  const { open, title, onClose, children } = props;
+  const { open, title, onClose, children, fallbackFocusRef } = props;
   const sheetRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   // The element that had focus before the sheet opened, restored on close.
@@ -81,17 +81,41 @@ export function BottomSheet(props: BottomSheetProps): ReactElement | null {
     return () => document.removeEventListener('keydown', onKey);
   }, [open, onClose, focusables]);
 
-  // Move focus into the sheet on open; restore it to the opener on close.
+  // Move focus into the sheet on open; restore it on close. Capture the sheet
+  // node at open time so the cleanup can use an in-dialog anchor even after the
+  // ref has been nulled by unmount.
   useEffect(() => {
     if (!open) return;
+    const active = document.activeElement;
+    // Treat document.body as "no opener": when the trigger unmounts in the same
+    // render that opens the sheet, activeElement is already body by the time
+    // this effect runs — restoring to body would strand focus (Finding 4).
     previouslyFocused.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      active instanceof HTMLElement && active !== document.body ? active : null;
     const items = focusables();
+    // Initial focus: the first focusable body control, else the dialog itself
+    // (tabIndex=-1) so focus is always INSIDE the dialog, never on body, even
+    // when the content is empty/async (Finding 5).
     (items[0] ?? sheetRef.current)?.focus();
+    // Capture the fallback node at open time (not in cleanup) per the ref-in-
+    // cleanup lint guidance; the fallback anchor is a stable, in-app element.
+    const fallbackNode = fallbackFocusRef?.current ?? null;
     return () => {
-      previouslyFocused.current?.focus();
+      // Finding 4 — focus-restore fallback. If the opener is gone (detached /
+      // unmounted) by close time, restoring to it would silently drop focus to
+      // document.body. Land focus on the provided fallbackFocusRef if it is
+      // still in the document, otherwise leave focus where the trap last put it
+      // inside the (closing) dialog — never blindly focus a disconnected node.
+      const opener = previouslyFocused.current;
+      if (opener && opener.isConnected) {
+        opener.focus();
+        return;
+      }
+      if (fallbackNode && fallbackNode.isConnected) {
+        fallbackNode.focus();
+      }
     };
-  }, [open, focusables]);
+  }, [open, focusables, fallbackFocusRef]);
 
   // Make sibling background content inert + aria-hidden while open (WCAG 4.1.2).
   useEffect(() => {
