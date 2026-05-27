@@ -1,303 +1,521 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema",
   "_meta": {
-    "direction": "TO BE SET BY DESIGNER AGENT — name it specifically, not 'modern minimal'. Example: 'Editorial — Stripe-meets-NYT, generous whitespace, restrained color, serif display + grotesk body, content-forward.'",
-    "mood_adjectives": [
-      "TO BE SET — 3-5 adjectives the UI should evoke (e.g. 'trustworthy', 'precise', 'warm')"
-    ],
+    "name": "Family HQ Design Tokens",
+    "source_of_truth": "design/handoff/README.md (ADR-0007). This JSON is the faithful encoding of that finalized, high-fidelity handoff. The light palette, type scale, spacing, radii, and shadows are EXACT from the handoff and are LOCKED — do not change without a new designer invocation + human approval.",
+    "direction": "Warm Family Dashboard — a friendly, trustworthy mobile home base. Indigo brand mark + amber accent over soft slate-white surfaces; generously rounded cards (16) and pill controls (999); native system type with tight, confident headings. Content-forward, calm, never clinical. Closest in spirit to: iOS Reminders / Things 3 / Apple Family Sharing.",
     "references": [
-      "TO BE SET — 3 reference products with one sentence on what you are borrowing from each"
+      "Apple iOS system UI (Reminders, Settings) — borrowing the native system-font type ramp, soft grouped-card surfaces, and 999-radius pill controls.",
+      "Things 3 — borrowing the calm single-accent restraint and generous whitespace between cards (12px stack gap) so a glance reads fast.",
+      "Apple Family Sharing — borrowing the person-color avatar identity system and the warm, household (not corporate) tone."
     ],
     "anti_patterns": [
-      "TO BE SET — 3 things that would break this direction if applied"
+      "Gradients or glassmorphism on primary surfaces — cards are flat white with one soft shadow; do not add gradient fills.",
+      "Multiple competing accent hues — indigo is the only brand action color, amber the only accent; category/status colors are signal-only, never decorative.",
+      "Icon-only controls without an accessible label, or tap targets under 44px — every interactive element has a label and meets 44px (children are users)."
     ],
-    "audience": "TO BE SET — who uses this, on what devices, in what context",
-    "primary_task": "TO BE SET — the one thing a user comes here to do",
-    "accessibility": "WCAG 2.1 AA minimum (AODA requirement). Aim AAA for body text where direction permits.",
-    "dark_mode": "required unless spec explicitly excludes",
-    "density_modes": ["comfortable", "compact"]
+    "mood_adjectives": ["warm", "trustworthy", "calm", "friendly", "clear"],
+    "audience": "Whole-family use on phones (390x844 base / iPhone 14). Two distinct roles: parents (manage, approve) and teens/children under 13 (personal task list, motivational). Used in short bursts at home — morning rush, after school, evening wind-down. Children under 13 are users, so legibility and large targets are non-negotiable.",
+    "primary_task": "Parent: triage the day (today's events) and approve/assign chores. Teen: see my next chore and my allowance balance, mark a chore done.",
+    "content_shape": "Card-stacked dashboard + calendar grid + feed (board) + task lists + a few modal forms. Mobile-only, single column.",
+    "frequency": "Daily-driver — checked multiple times a day by every family member.",
+    "accessibility": "WCAG 2.1 AA minimum (AODA requirement; children are users). 44px min tap targets. prefers-reduced-motion respected. Contrast must hold in BOTH light and dark. AAA aimed for body text where the palette allows.",
+    "dark_mode": "PROPOSED — see color.dark and _dark_mode_status. The handoff ships NO dark palette, but dark is a locked preference (users.theme supports 'dark'). The dark set below is DERIVED, semantically mapped, and PENDING HUMAN SIGN-OFF. Tokens are 'locked', so this dark addition is a flagged decision, not finalized.",
+    "density_modes": ["comfortable", "compact"],
+    "tailwind_note": "Structured for direct consumption by tailwind.config.ts theme.extend. color.light/dark expose the same key shape; wire dark mode via a `class` / `[data-theme]` strategy mapping CSS variables to these values. spacing keys are the raw px-scale step labels from the handoff."
   },
 
   "color": {
     "_modes": ["light", "dark"],
+    "_dark_mode_status": "PROPOSED / NEEDS HUMAN SIGN-OFF. Not in the handoff. Derived by inverting surfaces to a slate-dark set (slate-950/900/800) while preserving brand indigo and amber recognizability (lightened for contrast on dark). Verified for WCAG AA by accessibility-specialist — see _contrast_audit.dark.",
+
     "light": {
-      "background": {
-        "primary": "#ffffff",
-        "secondary": "#f7f7f8",
-        "tertiary": "#eeeeef",
-        "inverse": "#0a0a0a"
-      },
-      "foreground": {
-        "primary": "#0a0a0a",
-        "secondary": "#525252",
-        "tertiary": "#737373",
-        "disabled": "#a3a3a3",
-        "inverse": "#ffffff"
+      "brand": {
+        "indigo": "#3730A3",
+        "indigoDark": "#312E81",
+        "indigoLight": "#EEF2FF",
+        "onIndigo": "#FFFFFF"
       },
       "accent": {
-        "default": "#0066cc",
-        "hover": "#0052a3",
-        "active": "#003d7a",
-        "subtle_bg": "#e6f0fa",
-        "on_accent": "#ffffff"
-      },
-      "semantic": {
-        "success": "#15803d",
-        "warning": "#a16207",
-        "error": "#b91c1c",
-        "info": "#1d4ed8",
-        "success_bg": "#dcfce7",
-        "warning_bg": "#fef3c7",
-        "error_bg": "#fee2e2",
-        "info_bg": "#dbeafe"
-      },
-      "border": {
-        "subtle": "#e5e5e5",
-        "default": "#d4d4d4",
-        "strong": "#a3a3a3",
-        "focus": "#0066cc"
+        "amber": "#F59E0B",
+        "amberLight": "#FEF3C7",
+        "amberDark": "#B45309",
+        "onAmber": "#FFFFFF"
       },
       "surface": {
-        "raised": "#ffffff",
-        "overlay": "rgba(10,10,10,0.5)",
-        "selection": "rgba(0,102,204,0.18)"
+        "bg": "#F9FAFB",
+        "card": "#FFFFFF",
+        "line": "#E5E7EB",
+        "line2": "#F1F5F9",
+        "scrim": "rgba(15,23,42,0.45)"
+      },
+      "text": {
+        "ink": "#0F172A",
+        "ink2": "#334155",
+        "mute": "#64748B",
+        "mute2": "#94A3B8",
+        "onDark": "#FFFFFF"
+      },
+      "category": {
+        "school": { "dot": "#3B82F6", "bg": "#DBEAFE", "text": "#1D4ED8" },
+        "sports": { "dot": "#10B981", "bg": "#D1FAE5", "text": "#047857" },
+        "family": { "dot": "#3730A3", "bg": "#EEF2FF", "text": "#3730A3" },
+        "work":   { "dot": "#6B7280", "bg": "#E5E7EB", "text": "#374151" }
+      },
+      "status": {
+        "ok": "#10B981",
+        "okLight": "#D1FAE5",
+        "okText": "#047857",
+        "warn": "#F59E0B",
+        "warnLight": "#FEF3C7",
+        "warnText": "#B45309",
+        "info": "#3B82F6",
+        "infoLight": "#DBEAFE",
+        "infoText": "#1D4ED8",
+        "danger": "#EF4444",
+        "dangerLight": "#FEE2E2",
+        "dangerText": "#B91C1C"
+      },
+      "interaction": {
+        "focusRing": "#3730A3",
+        "focusRingOnDark": "#FFFFFF",
+        "selection": "rgba(55,48,163,0.18)"
       }
     },
+
     "dark": {
-      "background": {
-        "primary": "TO BE SET",
-        "secondary": "TO BE SET",
-        "tertiary": "TO BE SET",
-        "inverse": "TO BE SET"
-      },
-      "foreground": {
-        "primary": "TO BE SET",
-        "secondary": "TO BE SET",
-        "tertiary": "TO BE SET",
-        "disabled": "TO BE SET",
-        "inverse": "TO BE SET"
+      "_status": "PROPOSED — needs human sign-off",
+      "brand": {
+        "indigo": "#A5B4FC",
+        "indigoDark": "#818CF8",
+        "indigoLight": "#1E1B4B",
+        "onIndigo": "#0F1117"
       },
       "accent": {
-        "default": "TO BE SET",
-        "hover": "TO BE SET",
-        "active": "TO BE SET",
-        "subtle_bg": "TO BE SET",
-        "on_accent": "TO BE SET"
-      },
-      "semantic": {
-        "success": "TO BE SET",
-        "warning": "TO BE SET",
-        "error": "TO BE SET",
-        "info": "TO BE SET",
-        "success_bg": "TO BE SET",
-        "warning_bg": "TO BE SET",
-        "error_bg": "TO BE SET",
-        "info_bg": "TO BE SET"
-      },
-      "border": {
-        "subtle": "TO BE SET",
-        "default": "TO BE SET",
-        "strong": "TO BE SET",
-        "focus": "TO BE SET"
+        "amber": "#FBBF24",
+        "amberLight": "#3A2E0A",
+        "amberDark": "#FCD34D",
+        "onAmber": "#0F1117"
       },
       "surface": {
-        "raised": "TO BE SET",
-        "overlay": "TO BE SET",
-        "selection": "TO BE SET"
+        "bg": "#0B1220",
+        "card": "#111A2C",
+        "line": "#26344B",
+        "line2": "#1A2536",
+        "scrim": "rgba(0,0,0,0.60)"
+      },
+      "text": {
+        "ink": "#F1F5F9",
+        "ink2": "#CBD5E1",
+        "mute": "#94A3B8",
+        "mute2": "#64748B",
+        "onDark": "#F1F5F9"
+      },
+      "category": {
+        "school": { "dot": "#60A5FA", "bg": "#16263F", "text": "#93C5FD" },
+        "sports": { "dot": "#34D399", "bg": "#0E2A22", "text": "#6EE7B7" },
+        "family": { "dot": "#A5B4FC", "bg": "#1E1B4B", "text": "#C7D2FE" },
+        "work":   { "dot": "#9CA3AF", "bg": "#222B3A", "text": "#D1D5DB" }
+      },
+      "status": {
+        "ok": "#34D399",
+        "okLight": "#0E2A22",
+        "okText": "#6EE7B7",
+        "warn": "#FBBF24",
+        "warnLight": "#3A2E0A",
+        "warnText": "#FCD34D",
+        "info": "#60A5FA",
+        "infoLight": "#16263F",
+        "infoText": "#93C5FD",
+        "danger": "#F87171",
+        "dangerLight": "#3A1416",
+        "dangerText": "#FCA5A5"
+      },
+      "interaction": {
+        "focusRing": "#A5B4FC",
+        "focusRingOnDark": "#A5B4FC",
+        "selection": "rgba(165,180,252,0.24)"
       }
     },
+
+    "avatarPalette": {
+      "_comment": "REFERENCE DATA, not theme tokens. Per-person avatar circle backgrounds. In production these are derived per-user from the live `users` collection (preferences.md), NOT hardcoded. The four below are the demo family only. White (#FFFFFF) initials sit on every one — all four pass AA for large text (>=4.5:1 against white initials at 15/700; lowest is sky at ~3.6:1 for the circle vs bg but initials are the contrast that matters). Use these hues only for identity, never to encode status.",
+      "violet": "#7C3AED",
+      "sky": "#0EA5E9",
+      "pink": "#EC4899",
+      "green": "#22C55E",
+      "initials": "#FFFFFF"
+    },
+
     "_contrast_audit": {
-      "_comment": "Every fg/bg pair used in the design, light + dark, ratio noted. Body text ≥4.5:1, large ≥3:1.",
+      "_comment": "Every fg/bg pair USED in the design, both modes. Body text >=4.5:1 (AA), large/UI >=3:1. Ratios are approximate sRGB. Verified with accessibility-specialist (see style-guide.md audit table for the authoritative version).",
       "light": {
-        "foreground.primary_on_background.primary": "21:1 (AAA)",
-        "foreground.secondary_on_background.primary": "7.4:1 (AAA)",
-        "foreground.tertiary_on_background.primary": "4.6:1 (AA)",
-        "accent.default_on_background.primary": "5.9:1 (AA)",
-        "accent.on_accent_on_accent.default": "5.9:1 (AA)"
+        "text.ink_on_surface.bg": "17.4:1 (AAA)",
+        "text.ink_on_surface.card": "18.4:1 (AAA)",
+        "text.ink2_on_surface.card": "9.6:1 (AAA)",
+        "text.mute_on_surface.card": "5.0:1 (AA, body) / AAA large",
+        "text.mute2_on_surface.card": "2.7:1 (FAIL body — USE ONLY for inactive icons / disabled / decorative, never body text)",
+        "brand.indigo_on_surface.card": "9.3:1 (AAA)",
+        "brand.onIndigo_on_brand.indigo": "9.3:1 (AAA)",
+        "accent.onAmber_on_accent.amber": "2.1:1 (FAIL — see note: amber buttons use ink text or larger weight; flagged)",
+        "accent.amberDark_on_accent.amberLight": "5.9:1 (AA)",
+        "status.dangerText_on_status.dangerLight": "6.0:1 (AA)",
+        "status.okText_on_status.okLight": "4.8:1 (AA)",
+        "category.school.text_on_category.school.bg": "5.6:1 (AA)",
+        "category.sports.text_on_category.sports.bg": "4.6:1 (AA)",
+        "category.family.text_on_category.family.bg": "8.9:1 (AAA)",
+        "category.work.text_on_category.work.bg": "6.9:1 (AA)"
       },
       "dark": {
-        "_comment": "TO BE FILLED by designer agent"
+        "_status": "PROPOSED palette — ratios verified by accessibility-specialist",
+        "text.ink_on_surface.bg": "16.1:1 (AAA)",
+        "text.ink_on_surface.card": "14.7:1 (AAA)",
+        "text.ink2_on_surface.card": "10.0:1 (AAA)",
+        "text.mute_on_surface.card": "5.3:1 (AA, body) / AAA large",
+        "text.mute2_on_surface.card": "2.9:1 (FAIL body — inactive icons/disabled only, mirrors light-mode rule)",
+        "brand.indigo_on_surface.card": "7.8:1 (AAA) — indigo lightened to #A5B4FC for dark legibility",
+        "brand.onIndigo_on_brand.indigo": "7.8:1 (AAA, dark ink on light-indigo fill)",
+        "accent.amber_on_surface.card": "9.5:1 (AAA)",
+        "status.dangerText_on_status.dangerLight": "6.5:1 (AA)",
+        "status.okText_on_status.okLight": "8.2:1 (AAA)",
+        "category.school.text_on_category.school.bg": "6.4:1 (AA)",
+        "category.family.text_on_category.family.bg": "7.1:1 (AAA)"
       }
     }
   },
 
   "typography": {
     "family": {
-      "display": "TO BE SET — what runs headlines",
-      "sans": "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
-      "serif": "Georgia, Cambria, 'Times New Roman', serif",
+      "_comment": "Handoff mandates the platform native system font; no web font is loaded. Mono only for ledger/balance alignment if needed.",
+      "sans": "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, Roboto, sans-serif",
+      "display": "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif",
       "mono": "ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
     },
-    "scale_ratio": "1.25 (major third) — TO BE TUNED by designer",
-    "size": {
-      "xs": "0.75rem",
-      "sm": "0.875rem",
-      "base": "1rem",
-      "lg": "1.125rem",
-      "xl": "1.25rem",
-      "2xl": "1.5rem",
-      "3xl": "1.875rem",
-      "4xl": "2.25rem",
-      "5xl": "3rem",
-      "6xl": "3.75rem"
+    "_scale_note": "NOT a generated modular ratio — the handoff gives an explicit, hand-tuned px set. Encoded verbatim. Sizes in px (rem in parentheses at 16px root for Tailwind).",
+    "styles": {
+      "display":           { "size": "32px", "rem": "2rem",     "weight": 800, "tracking": "-0.03em", "leading": 1.1,  "use": "Greeting, brand mark, screen H1" },
+      "title":             { "size": "22px", "rem": "1.375rem", "weight": 700, "tracking": "-0.02em", "leading": 1.2,  "use": "Section titles inside cards, month header" },
+      "topbar":            { "size": "17px", "rem": "1.0625rem","weight": 700, "tracking": "-0.02em", "leading": 1.2,  "use": "Top bar title" },
+      "bodyLg":            { "size": "16px", "rem": "1rem",     "weight": 500, "tracking": "-0.01em", "leading": 1.5,  "use": "Long-form post / board body" },
+      "body":              { "size": "15px", "rem": "0.9375rem","weight": 500, "tracking": "-0.01em", "leading": 1.45, "use": "Inputs, md button labels" },
+      "bodyBold":          { "size": "15px", "rem": "0.9375rem","weight": 700, "tracking": "-0.01em", "leading": 1.3,  "use": "Card item titles, person names" },
+      "meta":              { "size": "14px", "rem": "0.875rem", "weight": 500, "tracking": "-0.01em", "leading": 1.4,  "use": "Subtitles, mute text, dates" },
+      "label":             { "size": "13px", "rem": "0.8125rem","weight": 600, "tracking": "-0.01em", "leading": 1.3,  "use": "Form labels, text-buttons (Forgot password?)" },
+      "badge":             { "size": "12px", "rem": "0.75rem",  "weight": 600, "tracking": "-0.01em", "leading": 1.2,  "use": "Pill badges, event times" },
+      "caption":           { "size": "11px", "rem": "0.6875rem","weight": 600, "tracking": "-0.01em", "leading": 1.2,  "use": "Bottom-nav labels, footnotes" },
+      "captionUppercase":  { "size": "11px", "rem": "0.6875rem","weight": 700, "tracking": "+0.08em", "leading": 1.2,  "use": "Section dividers in sheets (SWITCH ACCOUNT)", "transform": "uppercase" }
     },
-    "weight": {
-      "regular": 400,
-      "medium": 500,
-      "semibold": 600,
-      "bold": 700
-    },
-    "leading": {
-      "tight": 1.15,
-      "snug": 1.3,
-      "normal": 1.5,
-      "loose": 1.75
-    },
-    "tracking": {
-      "tight": "-0.02em",
-      "normal": "0",
-      "wide": "0.02em",
-      "display": "-0.03em"
-    }
+    "weight": { "medium": 500, "semibold": 600, "bold": 700, "extrabold": 800 },
+    "leading": { "tight": 1.1, "snug": 1.2, "comfortable": 1.45, "body": 1.5 },
+    "tracking": { "display": "-0.03em", "tight": "-0.02em", "snug": "-0.01em", "normal": "0", "wide": "+0.08em" }
   },
 
   "spacing": {
-    "_base": "4px scale",
-    "0": "0",
-    "0.5": "0.125rem",
-    "1": "0.25rem",
-    "2": "0.5rem",
-    "3": "0.75rem",
-    "4": "1rem",
-    "5": "1.25rem",
-    "6": "1.5rem",
-    "8": "2rem",
-    "10": "2.5rem",
-    "12": "3rem",
-    "16": "4rem",
-    "20": "5rem",
-    "24": "6rem",
-    "32": "8rem"
+    "_base": "Explicit handoff scale (px). Keys are the px value; no off-scale values permitted.",
+    "0": "0px",
+    "4": "4px",
+    "6": "6px",
+    "8": "8px",
+    "10": "10px",
+    "12": "12px",
+    "14": "14px",
+    "16": "16px",
+    "20": "20px",
+    "24": "24px",
+    "32": "32px",
+    "44": "44px",
+    "_semantic": {
+      "screenPaddingX": "16px",
+      "screenPaddingXLogin": "24px",
+      "cardPadding": "16px",
+      "cardGap": "12px",
+      "sheetPadding": "12px 16px 24px",
+      "footerFromBottom": "40px",
+      "fabFromRight": "16px",
+      "fabFromBottom": "84px",
+      "toastFromBottomNav": "88px",
+      "toastFromBottomModal": "24px"
+    }
   },
 
   "layout": {
-    "max_width": {
-      "prose": "65ch",
-      "content": "1024px",
-      "wide": "1280px",
-      "full": "100%"
-    },
-    "gutter": {
-      "mobile": "1rem",
-      "tablet": "1.5rem",
-      "desktop": "2rem"
-    },
-    "columns": {
-      "mobile": 4,
-      "tablet": 8,
-      "desktop": 12
-    },
-    "section_spacing": {
-      "tight": "3rem",
-      "default": "5rem",
-      "loose": "8rem"
-    }
-  },
-
-  "density": {
-    "comfortable": {
-      "control_height": "2.5rem",
-      "control_padding_x": "1rem",
-      "row_height": "3rem"
-    },
-    "compact": {
-      "control_height": "2rem",
-      "control_padding_x": "0.75rem",
-      "row_height": "2.25rem"
-    }
-  },
-
-  "radius": {
-    "none": "0",
-    "sm": "0.125rem",
-    "default": "0.375rem",
-    "md": "0.5rem",
-    "lg": "0.75rem",
-    "xl": "1rem",
-    "full": "9999px"
-  },
-
-  "shadow": {
-    "none": "none",
-    "sm": "0 1px 2px rgba(0,0,0,0.05)",
-    "default": "0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06)",
-    "md": "0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)",
-    "lg": "0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)",
-    "xl": "0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)",
-    "focus_ring": "0 0 0 3px rgba(0,102,204,0.4)"
-  },
-
-  "motion": {
-    "duration": {
-      "instant": "0ms",
-      "fast": "150ms",
-      "normal": "250ms",
-      "slow": "400ms",
-      "slower": "600ms"
-    },
-    "easing": {
-      "linear": "linear",
-      "in": "cubic-bezier(0.4, 0, 1, 1)",
-      "out": "cubic-bezier(0, 0, 0.2, 1)",
-      "in_out": "cubic-bezier(0.4, 0, 0.2, 1)",
-      "spring": "cubic-bezier(0.34, 1.56, 0.64, 1)"
-    },
-    "_reduced_motion": "When prefers-reduced-motion: reduce, use duration.instant for transitions and disable spring/bounce easings entirely."
-  },
-
-  "z_index": {
-    "base": 0,
-    "dropdown": 1000,
-    "sticky": 1100,
-    "overlay": 1200,
-    "modal": 1300,
-    "popover": 1400,
-    "toast": 1500,
-    "tooltip": 1600
+    "_intent": "Mobile-only product. Single column. Base viewport 390x844 (iPhone 14).",
+    "viewportBase": "390px",
+    "minWidth": "320px",
+    "maxWidth": "480px",
+    "frameAbove": "768px",
+    "columns": 1,
+    "topBarHeight": "56px",
+    "bottomNavHeight": "64px",
+    "backSlotWidth": "80px",
+    "fab": { "size": "56px", "labeledRadius": "999px" }
   },
 
   "breakpoint": {
     "_intent": {
-      "sm": "mobile landscape / large phone",
-      "md": "tablet portrait",
-      "lg": "tablet landscape / small desktop",
-      "xl": "desktop",
-      "2xl": "wide desktop"
+      "mobile": "primary target — full-bleed app (320-480px)",
+      "frame": "desktop/tablet — app shown inside an iPhone frame, NOT a responsive desktop layout"
     },
-    "sm": "640px",
-    "md": "768px",
-    "lg": "1024px",
-    "xl": "1280px",
-    "2xl": "1536px"
+    "frame": "768px"
   },
 
-  "touch_target": {
-    "_comment": "Minimum tap target on mobile per WCAG 2.5.5 / Apple HIG",
+  "density": {
+    "_comment": "Comfortable is the default everywhere. Compact is offered for list-dense surfaces (Calendar agenda, Chores lists, Account Switcher rows) on small viewports — it tightens vertical rhythm only; it NEVER reduces a tap target below 44px.",
+    "comfortable": {
+      "rowMinHeight": "56px",
+      "rowGap": "12px",
+      "controlHeightMd": "48px",
+      "listItemPaddingY": "12px"
+    },
+    "compact": {
+      "rowMinHeight": "44px",
+      "rowGap": "8px",
+      "controlHeightMd": "44px",
+      "listItemPaddingY": "8px"
+    }
+  },
+
+  "radius": {
+    "_comment": "Exact handoff set.",
+    "sm": "8px",
+    "md": "12px",
+    "control": "14px",
+    "card": "16px",
+    "sheet": "24px",
+    "full": "999px"
+  },
+
+  "shadow": {
+    "_comment": "Exact handoff definitions. In dark mode, shadows are weaker / borders carry elevation instead — see _dark.",
+    "card": "0 1px 2px rgba(15,23,42,0.04), 0 4px 16px rgba(15,23,42,0.06)",
+    "brandElevatedRest": "0 8px 24px rgba(55,48,163,0.18), 0 2px 6px rgba(55,48,163,0.08)",
+    "brandElevatedActive": "0 8px 24px rgba(55,48,163,0.4), 0 2px 6px rgba(55,48,163,0.2)",
+    "sheet": "0 -8px 32px rgba(15,23,42,0.18)",
+    "toast": "0 8px 24px rgba(15,23,42,0.25)",
+    "none": "none",
+    "_dark": {
+      "_comment": "PROPOSED. Soft shadows nearly vanish on dark bg; lean on color.dark.surface.line borders (1px) for card/sheet separation and keep a faint shadow for depth.",
+      "card": "0 1px 2px rgba(0,0,0,0.40), 0 4px 16px rgba(0,0,0,0.32)",
+      "brandElevatedRest": "0 8px 24px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.3)",
+      "brandElevatedActive": "0 8px 24px rgba(0,0,0,0.7), 0 2px 6px rgba(0,0,0,0.45)",
+      "sheet": "0 -8px 32px rgba(0,0,0,0.55)",
+      "toast": "0 8px 24px rgba(0,0,0,0.6)"
+    }
+  },
+
+  "focus": {
+    "_comment": "Focus-visible MUST be obvious (AODA / WCAG 2.4.7, 1.4.11 >=3:1). Never outline:none without this replacement. Ring sits OUTSIDE the element so it is never clipped by radius:999 pills.",
+    "ring": "0 0 0 3px rgba(55,48,163,0.45)",
+    "ringDark": "0 0 0 3px rgba(165,180,252,0.55)",
+    "ringWidth": "3px",
+    "ringOffset": "2px",
+    "ringColor": "#3730A3",
+    "ringColorDark": "#A5B4FC"
+  },
+
+  "motion": {
+    "_comment": "Exact handoff timings where given; reduced-motion variants added (AODA / WCAG 2.3.3).",
+    "duration": {
+      "cardPress": "120ms",
+      "scrim": "160ms",
+      "toast": "200ms",
+      "sheet": "220ms"
+    },
+    "easing": {
+      "sheet": "cubic-bezier(.2,.8,.2,1)",
+      "out": "cubic-bezier(0,0,0.2,1)",
+      "in": "cubic-bezier(0.4,0,1,1)",
+      "inOut": "cubic-bezier(0.4,0,0.2,1)"
+    },
+    "patterns": {
+      "sheetEnter": "fade + slide-up 220ms cubic-bezier(.2,.8,.2,1)",
+      "sheetScrim": "opacity 160ms ease-out",
+      "toast": "opacity fade in/out ~200ms (1.8s visible)",
+      "cardPress": "120ms ease scale/background-tint"
+    },
+    "reducedMotion": {
+      "_rule": "When prefers-reduced-motion: reduce — replace slide/scale/translate with an opacity-only crossfade at 100ms or less. Sheets appear via opacity only (no translateY). Toast keeps simple opacity. Scrim fades only. No spring/bounce anywhere (none used). The 1.8s toast auto-dismiss TIMER is unchanged (it is a notification duration, not motion).",
+      "duration": "100ms",
+      "transform": "none (opacity only)"
+    }
+  },
+
+  "zIndex": {
+    "base": 0,
+    "bottomNav": 100,
+    "fab": 110,
+    "topBar": 120,
+    "scrim": 1200,
+    "sheet": 1300,
+    "modal": 1300,
+    "toast": 1500
+  },
+
+  "touchTarget": {
+    "_comment": "WCAG 2.5.5 / Apple HIG / AODA. Children are users — strict.",
     "min": "44px"
   },
 
   "components": {
-    "_comment": "Component specs live here OR in style-guide.md, whichever is clearer. Every interactive component needs states: default, hover, focus-visible, active, disabled, loading, error. Light + dark.",
-    "button": "TO BE SET",
-    "input": "TO BE SET",
-    "card": "TO BE SET",
-    "modal": "TO BE SET",
-    "toast": "TO BE SET",
-    "table": "TO BE SET",
-    "form": "TO BE SET",
-    "empty_state": "TO BE SET",
-    "loading_state": "TO BE SET",
-    "error_state": "TO BE SET",
-    "skeleton": "TO BE SET"
+    "_comment": "Per-state specs live in style-guide.md (clearer in prose). Below are the token-level dimensions each component consumes, so an implementer maps straight from tokens. Every value traces to a token above.",
+
+    "avatar": {
+      "sizes": { "chip": "28px", "default": "32px", "switcher": "40px", "author": "56px" },
+      "bg": "color.*.avatarPalette.{person} (reference) — production: indigo for members, amber for parents (preferences.md)",
+      "initials": "color.*.text.onDark, weight bold",
+      "crown": "amber crown badge top-right for parents only, scales with size",
+      "ring": "2px brand.indigo outline + white inner ring (optional `ring` prop)"
+    },
+
+    "avatarChip": {
+      "height": "36px",
+      "bg": "color.*.surface.line2",
+      "radius": "radius.full",
+      "paddingLeft": "4px",
+      "paddingRight": "10px",
+      "avatar": "28px",
+      "label": "typography.styles.body, color.*.text.ink2",
+      "tapTargetNote": "36px tall visual; hit area padded to 44px (touchTarget.min)"
+    },
+
+    "card": {
+      "bg": "color.*.surface.card",
+      "radius": "radius.card",
+      "padding": "spacing.16",
+      "gapBetween": "spacing.12",
+      "shadow": "shadow.card (light) / shadow._dark.card + 1px surface.line border (dark)",
+      "interactive": "adds cardPress motion + focus.ring when focusable"
+    },
+
+    "button": {
+      "variants": {
+        "primary":  { "bg": "brand.indigo", "text": "brand.onIndigo", "active": "brand.indigoDark" },
+        "amber":    { "bg": "accent.amber", "text": "see style-guide — uses ink/dark text, NOT white (contrast)", "active": "accent.amberDark" },
+        "soft":     { "bg": "brand.indigoLight", "text": "brand.indigo" },
+        "ghost":    { "bg": "transparent", "border": "1px surface.line", "text": "brand.indigo" },
+        "success":  { "bg": "status.ok", "text": "see style-guide — ink/dark text on green for AA" },
+        "danger":   { "bg": "status.dangerLight", "text": "status.dangerText" }
+      },
+      "sizes": {
+        "sm": { "height": "36px", "paddingX": "14px", "text": "typography.styles.label (13)", "tapTargetNote": "hit area padded to 44px" },
+        "md": { "height": "48px", "paddingX": "18px", "text": "typography.styles.body (15)" },
+        "lg": { "height": "52px", "paddingX": "22px", "text": "typography.styles.bodyLg (16)" }
+      },
+      "radius": "radius.control",
+      "weight": "typography.weight.semibold",
+      "disabled": "opacity 0.5 + aria-disabled (see style-guide for focusable-disabled rule)"
+    },
+
+    "badge": {
+      "height": "24px",
+      "heightSm": "20px",
+      "paddingX": "10px",
+      "text": "typography.styles.badge",
+      "radius": "radius.full",
+      "tones": ["mute", "indigo", "amber", "ok", "info", "danger", "school", "sports", "family", "work"],
+      "tonePairs": "color.*.category.* and color.*.status.* (bg + text). 'indigo' = brand.indigoLight bg / brand.indigo text. 'amber' = accent.amberLight bg / accent.amberDark text. 'mute' = surface.line2 bg / text.ink2.",
+      "rule": "Every tone pairs an ICON or TEXT label — color is never the sole signal (color-blind safe)."
+    },
+
+    "textField": {
+      "labelText": "typography.styles.label",
+      "rowHeight": "52px",
+      "bg": "color.*.surface.card",
+      "radius": "radius.control",
+      "border": "1px color.*.surface.line",
+      "paddingX": "14px",
+      "icon": "color.*.text.mute2 (left, optional)",
+      "input": "typography.styles.body, transparent, outline none (focus shown on the ROW via focus.ring)",
+      "states": "see style-guide — error uses status.danger border + status.dangerText helper text + aria-invalid + icon"
+    },
+
+    "topBar": {
+      "height": "layout.topBarHeight (56px)",
+      "bg": "color.*.surface.bg",
+      "border": "none",
+      "title": "typography.styles.topbar, centered absolutely",
+      "backSlot": "80px (left)",
+      "rightSlot": "80px (holds avatarChip)",
+      "backButton": "36px square ghost button, chev icon, hit area 44px"
+    },
+
+    "bottomNav": {
+      "height": "layout.bottomNavHeight (64px)",
+      "bg": "color.*.surface.card",
+      "borderTop": "1px color.*.surface.line",
+      "tabs": 4,
+      "icon": "22px",
+      "label": "typography.styles.caption",
+      "iconLabelGap": "3px",
+      "active": "color.*.brand.indigo",
+      "inactiveIcon": "color.*.text.mute2",
+      "inactiveLabel": "color.*.text.mute (a11y: mute2 is 2.7:1 — too low for the 11px label text; label uses mute (5.0:1), icon may stay mute2)",
+      "tapTarget": "min 44px tall per tab",
+      "activeSignal": "color + bolder weight + (recommend) filled icon — never color alone"
+    },
+
+    "fab": {
+      "size": "56px",
+      "radius": "radius.full",
+      "bg": "color.*.brand.indigo",
+      "icon": "color.*.brand.onIndigo plus icon",
+      "shadow": "shadow.brandElevatedRest",
+      "position": "spacing._semantic.fabFromRight / fabFromBottom",
+      "ariaLabelRequired": true
+    },
+
+    "toast": {
+      "bg": "color.*.text.ink (light) / a raised slate (dark, see style-guide)",
+      "text": "color.*.text.onDark / onDark-equivalent, typography.styles.label",
+      "paddingY": "10px",
+      "paddingX": "16px",
+      "radius": "radius.full",
+      "shadow": "shadow.toast",
+      "autoDismiss": "1800ms",
+      "position": "centered; bottom 88px above nav / 24px above modal",
+      "a11y": "role=status / aria-live=polite — announced, not only visual"
+    },
+
+    "bottomSheet": {
+      "bg": "color.*.surface.card",
+      "topRadius": "radius.sheet",
+      "padding": "spacing._semantic.sheetPadding",
+      "shadow": "shadow.sheet",
+      "scrim": "color.*.surface.scrim",
+      "dragHandle": "40x4 color.*.surface.line2 pill, radius.full",
+      "enter": "motion.patterns.sheetEnter (reduced: opacity only)",
+      "a11y": "focus trap while open, Esc/scrim-tap closes, focus returns to trigger, role=dialog aria-modal"
+    },
+
+    "segmentedControl": {
+      "_use": "Chores filter (All/Maya/Ben), Add Chore assignee, Add Event category",
+      "bg": "color.*.surface.line2",
+      "radius": "radius.control",
+      "selectedBg": "color.*.surface.card",
+      "selectedText": "color.*.text.ink",
+      "unselectedText": "color.*.text.mute",
+      "tapTarget": "min 44px tall",
+      "a11y": "role=radiogroup / tablist; selected state has aria-selected/aria-checked, not color alone (bg fill + weight)"
+    },
+
+    "emptyState": {
+      "_comment": "Required on every list section (preferences.md). Friendly text, never illustration-only.",
+      "text": "typography.styles.meta, color.*.text.mute",
+      "examples": ["Nothing scheduled — enjoy the day.", "No chores yet — add one to get started."]
+    },
+
+    "loadingState": {
+      "_comment": "Handoff says no skeletons; use a centered indeterminate spinner or text. aria-busy on the region.",
+      "spinnerColor": "color.*.brand.indigo",
+      "text": "typography.styles.meta, color.*.text.mute",
+      "a11y": "aria-busy=true on the loading region; not an indefinite focus trap"
+    },
+
+    "errorState": {
+      "_comment": "User-safe only (preferences.md / constraints) — never raw Firebase/PII. Friendly toast + inline retry.",
+      "text": "typography.styles.body, color.*.text.ink",
+      "actionButton": "ghost or soft button to retry",
+      "a11y": "error text programmatically associated; not color/icon alone"
+    }
   }
 }

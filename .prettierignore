@@ -1,0 +1,22 @@
+dist
+dev-dist
+coverage
+node_modules
+package-lock.json
+design-tokens.json
+*.md
+
+# Design handoff artifacts (authored by the designer; not app source — do not reformat).
+design/
+
+# Pre-existing pack workflow files not authored in Phase 0 scaffolding.
+.github/workflows/deploy.yml
+.github/workflows/security-scan.yml
+
+# Test specs + the rules harness are authored by the test-writer and are
+# read-only to the implementer (committed already non-conformant). They are not
+# shipped app source; do not reformat them here.
+test/rules/
+src/**/*.test.ts
+src/**/*.test.tsx
+src/features/auth/authService.test.ts

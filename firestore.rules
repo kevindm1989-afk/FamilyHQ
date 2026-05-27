@@ -1,0 +1,362 @@
+rules_version = '2';
+
+// ===========================================================================
+// Family HQ — Firestore Security Rules (Task 5, ADR-0001/0002/0006).
+//
+// THE authorization boundary for the whole product. Security-critical: no
+// autonomous merge. Implements system-design §2.4 and the threat-model
+// mitigations M1-M28 (cross-tenant isolation, role/familyId immutability, the
+// bounded founding-parent bootstrap, deactivated-user gating, chore role
+// transitions, allowance/invite/family authority).
+//
+// The #1 risk is cross-tenant leakage of children's data (F1). Every
+// tenant-collection rule derives the caller's family SERVER-SIDE from their own
+// users doc (callerFamily()) and never trusts a client-supplied familyId on
+// reads/lists. Lists must carry the own-family equality filter, which the SDK
+// validates against these rules.
+// ===========================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Helper functions (system-design §2.4) -----------------------------
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function callerDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function callerExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function callerFamily() {
+      return callerDoc().data.familyId;
+    }
+
+    // Active gating is part of EVERY authenticated predicate (M26, F3). A caller
+    // with no users doc, or isActive != true, fails this and is denied.
+    function isActive() {
+      return isSignedIn()
+        && callerExists()
+        && callerDoc().data.isActive == true;
+    }
+
+    function isParent() {
+      return isActive() && callerDoc().data.role == 'parent';
+    }
+
+    function isMember() {
+      return isActive() && callerDoc().data.role == 'member';
+    }
+
+    // Family of an EXISTING resource must match the caller's own family.
+    function sameFamily(res) {
+      return res.data.familyId == callerFamily();
+    }
+
+    // Family of an INCOMING (created/updated) doc must match the caller's own
+    // family — blocks writing into another tenant (M22/M23).
+    function incomingSameFamily() {
+      return request.resource.data.familyId == callerFamily();
+    }
+
+    // A field is unchanged between the existing and incoming doc.
+    function immutable(field) {
+      return request.resource.data[field] == resource.data[field];
+    }
+
+    // The incoming doc does NOT introduce `field`. Used for fields that were
+    // removed from a doc's schema (e.g. email left the users doc, privacy
+    // finding 2): a plain immutable() check throws when the field is absent on
+    // BOTH sides, so we assert the key is simply not present on the write.
+    function absent(field) {
+      return !(field in request.resource.data);
+    }
+
+    // List scoping (M7/P2): Firestore evaluates a `list` rule against EVERY
+    // document the query would return. By requiring each returned doc be in the
+    // caller's own family, an unconstrained or cross-family query (which would
+    // surface a foreign-family doc) is denied, while a
+    // `where('familyId','==', ownFamily)` query (which returns only own docs)
+    // is allowed. We do NOT inspect request.query — that is not a reliable
+    // construct; per-resource family scoping is the documented, robust pattern.
+    function listScopedToOwnFamily() {
+      return isActive() && sameFamily(resource);
+    }
+
+    // --- users -------------------------------------------------------------
+    //
+    // read (get): active caller, same family (M1/P7). Reading own doc requires
+    //   the caller be active, so a deactivated user cannot even read their own.
+    // create: ONLY the bounded founding-parent bootstrap (ADR-0006 §4). All
+    //   four conjunctive properties enforced; non-generalizable via !exists().
+    // update: by the subject (name+theme only, every authority field immutable)
+    //   OR by a same-family active parent (e.g. allowanceBalance, isActive).
+    match /users/{userId} {
+      function isSelf() {
+        return isSignedIn() && request.auth.uid == userId;
+      }
+
+      // Founding-parent bootstrap. Conjunctive properties (threat-model §4):
+      //  (1) self-keyed: userId == auth.uid
+      //  (2) no pre-existing users doc for the caller  <-- the linchpin
+      //  (3) the family is created in THIS SAME atomic batch by this caller: it
+      //      must NOT already exist (`!exists`, so you can't attach yourself to
+      //      a pre-existing/other family — Test B), and after the commit its
+      //      createdBy must equal the caller (`getAfter`, so a forged createdBy
+      //      is rejected — Test G). The new user's familyId points at it.
+      //  (4) fixed shape: role=='parent', isActive==true, allowanceBalance==0,
+      //      and exactly the known fields (no smuggled authority fields)
+      //
+      // NOTE: rules `get()`/`exists()` see only the PRE-commit state, so the
+      // family being written in the same batch is invisible to `exists()` (=>
+      // false, which is exactly what we require) and must be read with
+      // `getAfter()` to verify its committed createdBy.
+      function isFoundingBootstrap() {
+        return isSignedIn()
+          && request.auth.uid == userId
+          && !callerExists()
+          && request.resource.data.role == 'parent'
+          && request.resource.data.isActive == true
+          && request.resource.data.allowanceBalance == 0
+          && request.resource.data.keys().hasOnly(
+               ['name', 'role', 'familyId', 'isActive',
+                'allowanceBalance', 'theme'])
+          && !exists(/databases/$(database)/documents/families/$(request.resource.data.familyId))
+          && getAfter(/databases/$(database)/documents/families/$(request.resource.data.familyId)).data.createdBy == request.auth.uid;
+      }
+
+      // Subject may change ONLY name + theme; every authority field immutable
+      // (M3, F2). A mixed write touching any authority field is denied.
+      function selfUpdateAllowed() {
+        return isSelf()
+          && isActive()
+          && immutable('role')
+          && immutable('familyId')
+          && absent('email')
+          && immutable('isActive')
+          && immutable('allowanceBalance');
+      }
+
+      // A same-family active parent doing a BARE update of a member doc may
+      // change ONLY `name` and `isActive` (M28, security finding 1/3). The set
+      // of CHANGED keys must be a subset of {name, isActive}; this denies any
+      // write that touches `role` (no parent-granted elevation), `familyId` (no
+      // tenant reassignment), `allowanceBalance` (deferred to the Phase-3
+      // approval runTransaction — NO direct balance writes at the rules layer,
+      // even setting the same value), `theme` (subject-owned), or `email`
+      // (which left this doc for userPrivate/{uid}). affectedKeys() is what
+      // makes a write that touches allowanceBalance a rejected write.
+      //
+      // The changed-key set must be a NON-EMPTY subset of {name, isActive}.
+      // Requiring non-empty is what denies a bare `allowanceBalance: 0` write
+      // against a balance already 0: that write changes no value, so its
+      // affectedKeys is empty — and an empty change is not an authorized
+      // name/isActive edit. There are NO direct balance writes at this layer.
+      //
+      // Finding 7 (MEDIUM) / Finding B — SELF-deactivation only. This denies
+      // ONLY the self + isActive:false case: a parent cannot deactivate their
+      // OWN users doc. It does NOT, and cannot at the rules layer, prevent one
+      // parent from deactivating the OTHER parent — so it is NOT a full
+      // "≥1 active parent" guarantee. The family-wide last-active-parent
+      // invariant needs an aggregate count of active parents (a Cloud Function /
+      // transaction) and is DEFERRED to Phase 3 (Family Management + the invite
+      // Cloud Function). A parent self-rename (name only) still flows through
+      // selfUpdateAllowed, and (de/re)activating ANOTHER member is unaffected.
+      function notSelfDeactivation() {
+        return !(request.auth.uid == userId
+          && request.resource.data.isActive == false);
+      }
+      function parentUpdateAllowed() {
+        return isParent()
+          && sameFamily(resource)
+          && incomingSameFamily()
+          && notSelfDeactivation()
+          && request.resource.data.diff(resource.data).affectedKeys().size() > 0
+          && request.resource.data.diff(resource.data)
+               .affectedKeys().hasOnly(['name', 'isActive']);
+      }
+
+      allow get: if isActive() && sameFamily(resource);
+      allow list: if listScopedToOwnFamily();
+      allow create: if isFoundingBootstrap();
+      allow update: if selfUpdateAllowed() || parentUpdateAllowed();
+      allow delete: if false;
+    }
+
+    // --- userPrivate (per-subject adult email [PI], privacy finding 2) ------
+    //
+    // Adult email was moved OFF the family-readable users doc onto this
+    // per-subject doc so other members (notably children) can never read an
+    // adult's email (P7).
+    //
+    // read (get): ONLY the subject (active) OR a same-family active PARENT.
+    //   Another MEMBER of the same family is DENIED. Cross-family is DENIED.
+    //   A deactivated subject cannot even read their own (mirrors users get).
+    // list: never — no enumeration of adult emails.
+    // create: the bootstrap path — self-keyed only (userId == auth.uid). The
+    //   founding parent has no users doc yet, so this must NOT require isActive;
+    //   the email is whatever the caller writes for themselves.
+    // update: the subject may correct their own email (PIPEDA principle 6);
+    //   familyId is IMMUTABLE (no tenant reassignment). A peer member or a
+    //   cross-family parent is DENIED (not self-keyed).
+    match /userPrivate/{userId} {
+      function isPrivateSubject() {
+        return isSignedIn() && request.auth.uid == userId;
+      }
+      // Same-family active parent of the SUBJECT: scope via the subject's own
+      // userPrivate.familyId (the only family field on this doc) compared to the
+      // parent caller's family.
+      function isSameFamilyParentOf() {
+        return isParent()
+          && resource.data.familyId == callerFamily();
+      }
+
+      // Bounded create (Finding 1, HIGH). The legitimate paths are:
+      //  (a) ESTABLISHED member — a users/{uid} doc already exists; the
+      //      userPrivate.familyId MUST equal the caller's real family
+      //      (callerFamily()), AND the caller must be active (Finding C / M26:
+      //      a deactivated user can no longer create their own private data,
+      //      consistent with the get rule). A foreign familyId is rejected.
+      //  (b) FOUNDING-PARENT bootstrap — there is NO users/{uid} doc yet (it is
+      //      written in the SAME batch), so callerFamily() is unreadable and
+      //      isActive() (which reads the not-yet-committed users doc) cannot be
+      //      required here — the bootstrap branch intentionally OMITS isActive.
+      //      Bind familyId to the family of the same-batch users/{uid} doc via
+      //      getAfter() (mirrors the users bootstrap's same-batch family read),
+      //      so an arbitrary client-supplied tenant cannot be claimed.
+      // In BOTH paths the doc shape is exactly {email, familyId} (no smuggled
+      // fields) and the doc is self-keyed. A clobbering re-create of an existing
+      // doc is an `update` at the rules layer (familyId immutable there), so it
+      // is denied by the update rule, not this one.
+      function isBoundPrivateCreate() {
+        return isPrivateSubject()
+          && request.resource.data.keys().hasOnly(['email', 'familyId'])
+          && (
+            callerExists()
+              ? isActive() && request.resource.data.familyId == callerFamily()
+              : request.resource.data.familyId
+                  == getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.familyId
+          );
+      }
+
+      allow get: if (isPrivateSubject() && isActive())
+        || isSameFamilyParentOf();
+      allow list: if false;
+      allow create: if isBoundPrivateCreate();
+      // update: the SUBJECT may correct their own email and must be active
+      // (Finding C / M26 — a deactivated user cannot mutate their own private
+      // data, consistent with the get rule); familyId is IMMUTABLE.
+      allow update: if isPrivateSubject()
+        && isActive()
+        && immutable('familyId');
+      allow delete: if false;
+    }
+
+    // --- families ----------------------------------------------------------
+    //
+    // create: founding bootstrap only — self as createdBy (property 3 anchor).
+    //   A pre-existing user cannot create a family (linchpin via !callerExists)
+    //   except as part of their own bootstrap (which itself can't fire twice).
+    // read: an active member of THAT family (M24/P8).
+    // update: a parent of THAT family (rename). delete: never from client.
+    match /families/{familyId} {
+      allow create: if isSignedIn()
+        && request.auth.uid == request.resource.data.createdBy
+        && !callerExists();
+      allow get: if isActive() && callerFamily() == familyId;
+      allow list: if false;
+      allow update: if isParent() && callerFamily() == familyId;
+      allow delete: if false;
+    }
+
+    // --- events ------------------------------------------------------------
+    // Any active member reads own-family events; any active member may create/
+    // edit own-family events (shared family calendar). Tenant-scoped throughout.
+    match /events/{eventId} {
+      allow get: if isActive() && sameFamily(resource);
+      allow list: if listScopedToOwnFamily();
+      allow create: if isActive() && incomingSameFamily();
+      allow update: if isActive() && sameFamily(resource)
+        && incomingSameFamily() && immutable('familyId');
+      allow delete: if isActive() && sameFamily(resource);
+    }
+
+    // --- posts -------------------------------------------------------------
+    match /posts/{postId} {
+      allow get: if isActive() && sameFamily(resource);
+      allow list: if listScopedToOwnFamily();
+      allow create: if isActive() && incomingSameFamily();
+      allow update: if isActive() && sameFamily(resource)
+        && incomingSameFamily() && immutable('familyId');
+      allow delete: if isActive() && sameFamily(resource);
+    }
+
+    // --- chores ------------------------------------------------------------
+    //
+    // create: parent-only, own family (assigning work is a parent act, M4).
+    // update by member: ONLY a chore assigned to them, ONLY the pending ->
+    //   complete transition, and point/dollar values immutable (no self-credit,
+    //   no self-approve). update by parent: any own-family chore (approve/
+    //   reject/edit). delete: parent-only.
+    match /chores/{choreId} {
+      function memberLegalCompletion() {
+        return isMember()
+          && sameFamily(resource)
+          && incomingSameFamily()
+          && resource.data.assignedTo == request.auth.uid
+          && request.resource.data.assignedTo == request.auth.uid
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'complete'
+          && immutable('familyId')
+          && immutable('assignedTo')
+          && immutable('pointValue')
+          && immutable('dollarValue')
+          && immutable('createdBy');
+      }
+      function parentChoreUpdate() {
+        return isParent()
+          && sameFamily(resource)
+          && incomingSameFamily()
+          && immutable('familyId');
+      }
+
+      allow get: if isActive() && sameFamily(resource);
+      allow list: if listScopedToOwnFamily();
+      allow create: if isParent() && incomingSameFamily();
+      allow update: if memberLegalCompletion() || parentChoreUpdate();
+      allow delete: if isParent() && sameFamily(resource);
+    }
+
+    // --- transactions (append-only ledger, M6/M27) -------------------------
+    //
+    // create: parent-only, own family (the allowance credit is written by the
+    //   approving parent / the approval transaction). No update or delete ever
+    //   — the ledger is immutable (T1.6 repudiation).
+    match /transactions/{txnId} {
+      allow get: if isActive() && sameFamily(resource);
+      allow list: if listScopedToOwnFamily();
+      allow create: if isParent() && incomingSameFamily();
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // --- invites (parent-only, family-scoped, adult email PI — M25/P9) ------
+    match /invites/{inviteId} {
+      allow get: if isParent() && sameFamily(resource);
+      allow list: if isParent() && listScopedToOwnFamily();
+      allow create: if isParent() && incomingSameFamily();
+      allow update: if isParent() && sameFamily(resource)
+        && incomingSameFamily() && immutable('familyId');
+      allow delete: if isParent() && sameFamily(resource);
+    }
+
+    // --- default deny ------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

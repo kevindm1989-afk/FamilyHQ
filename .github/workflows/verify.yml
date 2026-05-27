@@ -21,7 +21,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # full history for some tools
+          fetch-depth: 0 # full history for some tools
 
       # --- Language setup (uncomment what applies) ---
 
@@ -88,3 +88,43 @@ jobs:
           else
             echo "::error::Verification gates failed"
           fi
+
+  # ---------------------------------------------------------------------------
+  # Firestore security-rules isolation tests (USER CONDITION 4).
+  #
+  # This is a FIRST-CLASS, REQUIRED gate. It runs on EVERY pull_request and push
+  # with NO `paths:` filter, so it can never be skipped when firestore.rules
+  # changes. The whole point: tenant-isolation tests (the worst failure mode is
+  # cross-tenant leakage of children's data — system-design F1) run on every
+  # change, not just when someone remembers to.
+  #
+  # The real rules + test suite are Task 5 (Phase 1). The placeholder spec
+  # (test/rules/) keeps this gate green and wired until then.
+  # ---------------------------------------------------------------------------
+  firestore-rules:
+    name: Firestore rules isolation tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      # The Firebase emulator requires a JVM.
+      - name: Setup Java (required by the Firestore emulator)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run rules tests against the Firestore emulator
+        run: npx firebase emulators:exec --only firestore "npm run test:rules"
