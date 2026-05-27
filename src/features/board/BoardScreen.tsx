@@ -14,7 +14,7 @@
  * DATA-MODEL NOTE: posts render UNIFORMLY — there is NO read/unread accent or
  * tracking, because the `Post` schema has no read-state field.
  */
-import { useState, type ReactElement } from 'react';
+import { useId, useState, type ReactElement } from 'react';
 import { Avatar, Card, EmptyState, Fab, Skeleton } from '../../components';
 import { ToastViewport } from '../../app/ToastViewport';
 import { useToast } from '../../hooks/useToast';
@@ -52,10 +52,16 @@ export interface BoardScreenProps {
   onCreatePost?: (content: string) => Promise<void>;
 }
 
+const ABSOLUTE_DATE_FORMAT = new Intl.DateTimeFormat('en-CA', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+});
+
 export function BoardScreen(props: BoardScreenProps): ReactElement {
   const { viewer, members, feed, onDeletePost, onCreatePost } = props;
   const { showToast } = useToast();
   const [composeOpen, setComposeOpen] = useState(false);
+  const labelBase = useId();
 
   const handleDelete = (postId: string): void => {
     void onDeletePost(postId)
@@ -72,74 +78,98 @@ export function BoardScreen(props: BoardScreenProps): ReactElement {
   const now = Date.now();
 
   return (
-    <section className="flex flex-col gap-16 px-16 pt-4 pb-24">
-      <div className="flex items-center justify-between">
-        <h1 className="text-display font-display font-extrabold text-ink">Board</h1>
-        <button
-          type="button"
-          data-testid="board-refresh"
-          aria-label="Refresh the board"
-          onClick={() => void feed.refresh()}
-          className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
-        >
-          <RefreshIcon />
-        </button>
+    <>
+      <section className="flex flex-col gap-16 px-16 pt-4 pb-24">
+        <div className="flex items-center justify-between">
+          <h1 className="text-display font-display font-extrabold text-ink">Board</h1>
+          <button
+            type="button"
+            data-testid="board-refresh"
+            aria-label="Refresh the board"
+            onClick={() => void feed.refresh()}
+            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+          >
+            <RefreshIcon />
+          </button>
+        </div>
+
+        {feed.loading ? (
+          <Skeleton label="Loading the board…" />
+        ) : feed.posts.length === 0 ? (
+          <EmptyState message="No posts yet — share something with the family." />
+        ) : (
+          <ul className="flex flex-col gap-12" aria-label="Family posts">
+            {feed.posts.map((post) => {
+              const role = authorRole(members, post.authorId);
+              const showDelete = canDeletePost(viewer, post);
+              const authorNameId = `${labelBase}-author-${post.id}`;
+              const isoDate = new Date(post.createdAt).toISOString();
+              const absoluteDate = ABSOLUTE_DATE_FORMAT.format(new Date(post.createdAt));
+              return (
+                <li key={post.id}>
+                  <Card>
+                    <article className="flex flex-col gap-8" aria-labelledby={authorNameId}>
+                      <header className="flex items-center gap-12">
+                        <Avatar name={post.authorName} role={role} size="default" showRoleForA11y />
+                        <div className="flex flex-1 flex-col">
+                          <span id={authorNameId} className="text-body font-semibold text-ink">
+                            {post.authorName}
+                          </span>
+                          <time
+                            dateTime={isoDate}
+                            title={absoluteDate}
+                            aria-label={absoluteDate}
+                            className="text-meta text-ink-mute"
+                          >
+                            {relativeTime(post.createdAt, now)}
+                          </time>
+                        </div>
+                        {showDelete && (
+                          <button
+                            type="button"
+                            aria-label={`Delete post by ${post.authorName}`}
+                            onClick={() => handleDelete(post.id)}
+                            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute hover:text-status-danger-text focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+                          >
+                            <TrashIcon />
+                          </button>
+                        )}
+                      </header>
+                      <p className="text-body text-ink">{post.content}</p>
+                    </article>
+                  </Card>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <div className="fixed bottom-fab-from-bottom right-16 z-fab">
+          <Fab label="New post" onClick={() => setComposeOpen(true)} />
+        </div>
+      </section>
+
+      {/* ComposePost lives in its OWN wrapper, OUTSIDE the content <section>, so
+          the BottomSheet's "make my siblings inert" guard never inerts the post
+          list (delete affordances) or the toast region — both must stay reachable
+          while the sheet is open. The wrapper's only child is the sheet, so the
+          sheet has no siblings to inert. */}
+      <div>
+        <ComposePost
+          open={composeOpen}
+          onClose={() => setComposeOpen(false)}
+          author={viewer}
+          onCreate={handleCreate}
+        />
       </div>
 
-      {feed.loading ? (
-        <Skeleton label="Loading the board…" />
-      ) : feed.posts.length === 0 ? (
-        <EmptyState message="No posts yet — share something with the family." />
-      ) : (
-        <ul className="flex flex-col gap-12">
-          {feed.posts.map((post) => {
-            const role = authorRole(members, post.authorId);
-            const showDelete = canDeletePost(viewer, post);
-            return (
-              <li key={post.id}>
-                <Card>
-                  <article className="flex flex-col gap-8">
-                    <header className="flex items-center gap-12">
-                      <Avatar name={post.authorName} role={role} size="default" showRoleForA11y />
-                      <div className="flex flex-1 flex-col">
-                        <span className="text-body font-semibold text-ink">{post.authorName}</span>
-                        <span className="text-meta text-ink-mute">
-                          {relativeTime(post.createdAt, now)}
-                        </span>
-                      </div>
-                      {showDelete && (
-                        <button
-                          type="button"
-                          aria-label={`Delete post by ${post.authorName}`}
-                          onClick={() => handleDelete(post.id)}
-                          className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute hover:text-status-danger-text focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
-                        >
-                          <TrashIcon />
-                        </button>
-                      )}
-                    </header>
-                    <p className="text-body text-ink">{post.content}</p>
-                  </article>
-                </Card>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      <div className="fixed bottom-fab-from-bottom right-16 z-fab">
-        <Fab label="New post" onClick={() => setComposeOpen(true)} />
-      </div>
-
-      <ComposePost
-        open={composeOpen}
-        onClose={() => setComposeOpen(false)}
-        author={viewer}
-        onCreate={handleCreate}
-      />
-
+      {/* The single toast live region for board flows. ComposePost's own
+          ToastViewport instance is inert (global singleton, Finding F) — both
+          create and delete toasts surface through this one region, so a message
+          is never announced twice. Kept outside the section + the sheet wrapper
+          so it is never inerted while the sheet is open. */}
       <ToastViewport />
-    </section>
+    </>
   );
 }
 

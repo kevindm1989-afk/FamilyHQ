@@ -51,7 +51,7 @@ const onSnapshotMock = vi.fn(
     };
   },
 );
-const getDocsFromServerMock = vi.fn(async () => {
+const getDocsFromServerMock = vi.fn(async (): Promise<{ docs: unknown[] }> => {
   cap.getDocsFromServerCalls += 1;
   return { docs: [] };
 });
@@ -304,12 +304,12 @@ describe('useFamilyPosts — refresh() concurrency + import failure (Finding D)'
 
     // Resolve the SECOND (latest) first, then the FIRST (stale) last.
     await act(async () => {
-      deferreds[1].resolve(
+      deferreds[1]!.resolve(
         fakeSnapshot([{ id: 'latest-2', familyId: 'fam-A', createdAtMs: 2000 }]),
       );
     });
     await act(async () => {
-      deferreds[0].resolve(
+      deferreds[0]!.resolve(
         fakeSnapshot([{ id: 'stale-1', familyId: 'fam-A', createdAtMs: 1000 }]),
       );
     });
