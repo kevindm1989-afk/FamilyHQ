@@ -194,7 +194,7 @@ export async function signOutAndClearCache(deps: SignOutDeps): Promise<void> {
 }
 
 /**
- * CONTRACT STUB (M19, P6 — adversarial review Finding 3, startup uid-guard).
+ * Startup uid-guard (M19, P6 — adversarial review Finding 3 + Finding A).
  *
  * Closes the non-graceful-session-end stale-cache leak: if the previous session
  * ended WITHOUT routing through signOutAndClearCache (tab killed, crash, token
@@ -243,14 +243,22 @@ export async function clearCacheIfUserChanged(
   const { db, currentUid, getLastUid, setLastUid } = deps;
   const lastUid = getLastUid();
 
-  // NOTE: this body is the PRE-fix behavior and is left for the implementer to
-  // correct (Finding A). It clears WITHOUT terminating first (so the clear
-  // rejects on a running client) and does NOT yet signal reloadRequired. The
-  // tests in clearCacheIfUserChanged.test.ts and useAuth.startupGuard.test.tsx
-  // pin the required fail-closed contract.
+  // uid MISMATCH: a different user's family PI may sit in the IndexedDB cache.
+  // The Firestore client is already STARTED at module load (config.ts enables
+  // persistentLocalCache), so clearIndexedDbPersistence rejects on a running
+  // client — terminate(db) MUST run first. Fail closed: if either terminate or
+  // the clear rejects, the rejection propagates and the marker is NOT advanced,
+  // so the next start still treats the (uncleared) cache as foreign. The
+  // returned reloadRequired:true tells the caller to swap in a fresh client.
   if (lastUid !== null && lastUid !== currentUid) {
+    await terminate(db);
     await clearIndexedDbPersistence(db);
+    setLastUid(currentUid);
+    return { reloadRequired: true };
   }
+
+  // same-uid (warm cache is the same user's data) or cold-start (no marker,
+  // nothing foreign cached): no terminate, no clear; just record the marker.
   setLastUid(currentUid);
   return { reloadRequired: false };
 }

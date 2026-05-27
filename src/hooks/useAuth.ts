@@ -60,28 +60,53 @@ export function AuthProvider(props: { children: ReactNode }): ReactElement {
       .then(({ auth, db }) => {
         if (cancelled) return;
         unsub = onAuthStateChanged(auth, (user) => {
-          // Finding 3 — startup uid-guard. On a CONFIRMED authenticated session,
-          // before the app uses Firestore for that session, wipe the IndexedDB
-          // cache if the authenticated uid differs from the last cached uid.
-          // clearIndexedDbPersistence requires a not-yet-used client; the auth
-          // listener firing is the first-load gate before any feature read, so
-          // this is the safe window. After a mismatch clear the terminated
-          // client is unusable, so we reload to obtain a fresh Firestore client
-          // (consistent with the sign-out path's reload).
+          // Finding 3 + Finding A — startup uid-guard, FAIL CLOSED. On a
+          // CONFIRMED authenticated session, before the app uses Firestore for
+          // that session, terminate + wipe the IndexedDB cache if the
+          // authenticated uid differs from the last cached uid.
+          //
+          // The guard (clearCacheIfUserChanged) returns { reloadRequired }:
+          //  - reloadRequired:true (uid MISMATCH) — do NOT release the session
+          //    (loading stays true, authUser stays unset) so no feature reads
+          //    the foreign cache; force a full page reload to swap in a fresh
+          //    Firestore client (the terminated singleton is unusable).
+          //  - reloadRequired:false (same-uid / cold-start) — release the
+          //    session normally; no reload.
+          //
+          // FAIL CLOSED: if the guard REJECTS (e.g. the clear failed on a still-
+          // running client), the rejection must NOT be swallowed and must NOT
+          // release the session — we still force the reload so a dirty cache is
+          // never used. The promise is awaited/caught here so there is no
+          // unhandled rejection.
           if (user) {
-            void import('../features/auth/authService').then(({ clearCacheIfUserChanged }) => {
-              const lastUid = localStorage.getItem(LAST_UID_KEY);
-              const mismatch = lastUid !== null && lastUid !== user.uid;
-              return clearCacheIfUserChanged({
+            void import('../features/auth/authService').then(({ clearCacheIfUserChanged }) =>
+              clearCacheIfUserChanged({
                 db,
                 currentUid: user.uid,
-                getLastUid: () => lastUid,
+                getLastUid: () => localStorage.getItem(LAST_UID_KEY),
                 setLastUid: (u) => localStorage.setItem(LAST_UID_KEY, u),
-              }).then(() => {
-                if (mismatch) window.location.reload();
-              });
-            });
+              }).then(
+                ({ reloadRequired }) => {
+                  if (reloadRequired) {
+                    // Mismatch: keep the session gated (loading true, no
+                    // authUser) and force a fresh client.
+                    window.location.reload();
+                    return;
+                  }
+                  // Same-uid / cold-start: safe to release the session.
+                  setAuthUser(user);
+                  setLoading(false);
+                },
+                () => {
+                  // Guard rejected (fail closed): never release the session;
+                  // force the reload so the dirty cache is never read.
+                  window.location.reload();
+                },
+              ),
+            );
+            return;
           }
+          // No user: release the logged-out state.
           setAuthUser(user);
           setLoading(false);
         });

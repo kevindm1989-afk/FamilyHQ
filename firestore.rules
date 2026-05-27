@@ -157,12 +157,15 @@ service cloud.firestore {
       // affectedKeys is empty — and an empty change is not an authorized
       // name/isActive edit. There are NO direct balance writes at this layer.
       //
-      // Finding 7 (MEDIUM) — no parent self-lockout. A parent may deactivate /
-      // reactivate OTHER members, but must NOT set isActive:false on their OWN
-      // users doc: the (only/founding) parent stranding the family with no
-      // active parent is a footgun. We deny only the self + isActive:false case;
-      // a parent self-rename (name only) still flows through selfUpdateAllowed,
-      // and reactivating another member is unaffected.
+      // Finding 7 (MEDIUM) / Finding B — SELF-deactivation only. This denies
+      // ONLY the self + isActive:false case: a parent cannot deactivate their
+      // OWN users doc. It does NOT, and cannot at the rules layer, prevent one
+      // parent from deactivating the OTHER parent — so it is NOT a full
+      // "≥1 active parent" guarantee. The family-wide last-active-parent
+      // invariant needs an aggregate count of active parents (a Cloud Function /
+      // transaction) and is DEFERRED to Phase 3 (Family Management + the invite
+      // Cloud Function). A parent self-rename (name only) still flows through
+      // selfUpdateAllowed, and (de/re)activating ANOTHER member is unaffected.
       function notSelfDeactivation() {
         return !(request.auth.uid == userId
           && request.resource.data.isActive == false);
@@ -215,9 +218,13 @@ service cloud.firestore {
       // Bounded create (Finding 1, HIGH). The legitimate paths are:
       //  (a) ESTABLISHED member — a users/{uid} doc already exists; the
       //      userPrivate.familyId MUST equal the caller's real family
-      //      (callerFamily()). A foreign familyId is rejected.
+      //      (callerFamily()), AND the caller must be active (Finding C / M26:
+      //      a deactivated user can no longer create their own private data,
+      //      consistent with the get rule). A foreign familyId is rejected.
       //  (b) FOUNDING-PARENT bootstrap — there is NO users/{uid} doc yet (it is
-      //      written in the SAME batch), so callerFamily() is unreadable.
+      //      written in the SAME batch), so callerFamily() is unreadable and
+      //      isActive() (which reads the not-yet-committed users doc) cannot be
+      //      required here — the bootstrap branch intentionally OMITS isActive.
       //      Bind familyId to the family of the same-batch users/{uid} doc via
       //      getAfter() (mirrors the users bootstrap's same-batch family read),
       //      so an arbitrary client-supplied tenant cannot be claimed.
@@ -230,7 +237,7 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['email', 'familyId'])
           && (
             callerExists()
-              ? request.resource.data.familyId == callerFamily()
+              ? isActive() && request.resource.data.familyId == callerFamily()
               : request.resource.data.familyId
                   == getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.familyId
           );
@@ -240,7 +247,11 @@ service cloud.firestore {
         || isSameFamilyParentOf();
       allow list: if false;
       allow create: if isBoundPrivateCreate();
+      // update: the SUBJECT may correct their own email and must be active
+      // (Finding C / M26 — a deactivated user cannot mutate their own private
+      // data, consistent with the get rule); familyId is IMMUTABLE.
       allow update: if isPrivateSubject()
+        && isActive()
         && immutable('familyId');
       allow delete: if false;
     }
