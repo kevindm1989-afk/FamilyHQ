@@ -427,3 +427,59 @@ re-justify the purpose (and must not expose it to children).
 constraints §Children's-data honored. The child-credential model (ADR-0006 Q3 —
 whether children even have an email) remains an open invite-phase decision; this
 ADR only governs where an adult's email lives.
+
+---
+
+## ADR-0009 — Allowance money stored as integer cents
+
+**Status:** Accepted (Phase 3, chores-parent feature)
+**Date:** 2026-05-27
+**Decider(s):** orchestrator (from second-opinion + adversarial review); user (approved)
+
+**Context:** The allowance fields (`chores.dollarValue`, `transactions.amount`,
+`users.allowanceBalance`) were initially JS floats (dollars). Independent
+second-opinion and adversarial reviews flagged floating-point drift: repeated
+`increment()`s of values like $0.10 accumulate IEEE-754 error, the stored
+balance can diverge from the ledger sum, and `Intl` formatting cosmetically
+masks it. Fixing the representation after live balances exist is a migration
+over real data.
+
+**Decision:** Store all money as **integer cents** (whole numbers). `pointValue`
+stays integer points. Display formats to "$X.XX" via `formatMoney(cents)`.
+Firestore rules require these fields to be `is int && >= 0 && <= MONEY_MAX_CENTS`
+($1,000,000 cap). The Add Chore form accepts dollars and converts to cents
+(`Math.round(dollars*100)`) at the boundary.
+
+**Rationale:** Integer cents is standard money handling — exact arithmetic, no
+drift. Done now (before any real allowance accumulation) it costs a contained
+refactor; deferred it becomes a live-data migration.
+
+**Reversibility:** Hard once balances accumulate — which is exactly why it was
+done now.
+
+**Consequences:** (+) exact balances/ledger; (-) every money read/write/display
+goes through cents↔dollars conversion; a value cap is enforced.
+
+**Compliance check:** Allowance remains tracked-numbers-only (no real money,
+PCI out of scope, ADR-0004 / constraints unchanged).
+
+---
+
+## ADR-0004 addendum — balance/ledger is not a rules-enforced invariant
+
+**Date:** 2026-05-27 (consequence noted from the second-opinion review)
+
+ADR-0004 chose a client `runTransaction` for chore approval (the Cloud Function
+was deferred with the Blaze gate). Because Firestore rules cannot distinguish
+the approval transaction's `allowanceBalance` write from a bare write, the rule
+(`parentAllowanceCredit`) permits a same-family parent to write
+`allowanceBalance` (non-negative) WITHOUT a matching ledger entry.
+
+**Consequence the owner accepted:** "balance == sum of earning ledger entries"
+is **not** an enforceable invariant. The `transactions` ledger is a record of
+**approval-driven** credits, not an authoritative audit trail of the balance — a
+manually-adjusted balance would show unexplained deltas. Integrity of the
+normal approval path rests on the transaction's status-guard + tests, not rules.
+Revisit if/when the approval moves to a Cloud Function (server-only balance
+writes would let the rules deny all client balance writes). Tracked-numbers-only
+and fully tenant-isolated, so the blast radius is one family's own numbers.
