@@ -10,7 +10,7 @@ export function ToastViewport(): ReactElement | null {
   const { message } = useToast();
   if (!message) return null;
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-44 z-toast flex justify-center px-16">
+    <div className="pointer-events-none fixed inset-x-0 bottom-toast-from-nav z-toast flex justify-center px-16">
       <Toast message={message} />
     </div>
   );

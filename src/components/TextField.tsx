@@ -40,7 +40,7 @@ export function TextField(props: TextFieldProps): ReactElement {
         {required && <span className="text-ink-mute"> (Required)</span>}
       </label>
       <div
-        className={`flex h-field items-center rounded-control border bg-surface-card px-14 focus-within:ring-2 focus-within:ring-brand focus-within:ring-offset-2 ${hasError ? 'border-status-danger' : 'border-surface-line focus-within:border-brand'} ${disabled ? 'opacity-50' : ''}`}
+        className={`flex h-field items-center rounded-control border bg-surface-card px-14 focus-within:ring-focus focus-within:ring-brand focus-within:ring-offset-focus ${hasError ? 'border-status-danger' : 'border-surface-line focus-within:border-brand'} ${disabled ? 'opacity-50' : ''}`}
       >
         <input
           id={inputId}
@@ -56,7 +56,11 @@ export function TextField(props: TextFieldProps): ReactElement {
         />
       </div>
       {hasError && (
-        <p id={errorId} className="flex items-center gap-4 text-meta text-status-danger-text">
+        <p
+          id={errorId}
+          role="alert"
+          className="flex items-center gap-4 text-meta text-status-danger-text"
+        >
           <AlertIcon />
           {error}
         </p>

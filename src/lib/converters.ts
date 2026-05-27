@@ -53,18 +53,10 @@ export const transactionConverter: FirestoreDataConverter<Transaction> =
 export const inviteConverter: FirestoreDataConverter<Invite> = makeConverter<Invite>();
 
 /**
- * CONTRACT STUB (privacy finding 2) — converter for `userPrivate/{uid}`.
- *
- * Declared here so the tests can import the symbol and pin its existence; the
- * implementer replaces this stub with the real converter. Signature only — it
- * MUST throw until implemented so a missing implementation can never silently
- * pass for a converter that shapes adult-email [PI].
+ * Converter for `userPrivate/{uid}` (privacy finding 2). Shapes the adult email
+ * [PI] doc that was moved off the family-readable users doc. Same typed
+ * read/write boundary as every other collection; `familyId` immutability is
+ * enforced server-side in firestore.rules.
  */
-export const userPrivateConverter: FirestoreDataConverter<UserPrivate> = {
-  toFirestore() {
-    throw new Error('userPrivateConverter.toFirestore not implemented');
-  },
-  fromFirestore() {
-    throw new Error('userPrivateConverter.fromFirestore not implemented');
-  },
-};
+export const userPrivateConverter: FirestoreDataConverter<UserPrivate> =
+  makeConverter<UserPrivate>();

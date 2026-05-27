@@ -33,27 +33,33 @@ const SIZE_CLASS: Record<AvatarSize, string> = {
  * Initials are white-on-fill (onDark) — both fills pass AA for the glyph.
  */
 export function Avatar(props: AvatarProps): ReactElement {
-  const { name, role, size = 'default', ring = false } = props;
+  const { name, role, size = 'default', ring = false, showRoleForA11y = false } = props;
   const isParent = role === 'parent';
   const initials = initialsFromName(name);
 
   const bg = isParent ? 'bg-accent' : 'bg-brand';
-  const ringClass = ring ? 'ring-2 ring-brand ring-offset-2' : '';
+  const ringClass = ring ? 'ring-focus ring-brand ring-offset-focus' : '';
 
+  // The avatar glyph + crown are decorative (color/icon only): the initials and
+  // crown are aria-hidden. When the avatar conveys identity (showRoleForA11y),
+  // parent status must reach assistive tech as TEXT, not via the crown alone
+  // (WCAG 1.4.1 / 1.1.1) — render a visually-hidden, NON-aria-hidden "Parent"
+  // label inside the avatar so it joins the accessible name.
   return (
     <span
       className={`relative inline-flex shrink-0 items-center justify-center rounded-full font-bold text-ink-on-dark ${bg} ${SIZE_CLASS[size]} ${ringClass}`}
-      aria-hidden="true"
     >
-      {initials}
+      <span aria-hidden="true">{initials}</span>
       {isParent && (
         <span
           data-testid="avatar-crown"
+          aria-hidden="true"
           className="absolute -right-4 -top-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-accent text-ink-on-dark"
         >
           <CrownIcon />
         </span>
       )}
+      {showRoleForA11y && isParent && <span className="sr-only">Parent</span>}
     </span>
   );
 }

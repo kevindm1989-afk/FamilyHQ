@@ -20,7 +20,7 @@ export function Card(props: CardProps): ReactElement {
       <button
         type="button"
         onClick={onClick}
-        className={`${BASE} transition-colors duration-cardPress ease-out focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 active:bg-surface-line2 motion-reduce:transition-none`}
+        className={`${BASE} transition-colors duration-cardPress ease-out focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus active:bg-surface-line2 motion-reduce:transition-none`}
       >
         {children}
       </button>

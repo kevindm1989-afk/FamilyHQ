@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactElement, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, type ReactElement, type ReactNode } from 'react';
 
 export interface BottomSheetProps {
   open: boolean;
@@ -7,30 +7,107 @@ export interface BottomSheetProps {
   children: ReactNode;
 }
 
+const FOCUSABLE_SELECTOR =
+  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
 /**
  * Bottom sheet modal. Renders nothing when closed. When open it is a
- * role=dialog aria-modal surface over a scrim; Esc or the scrim/close control
- * closes it and focus moves into the sheet. Enter motion is opacity + slide-up
- * (reduced-motion: opacity-only, no translate).
+ * role=dialog aria-modal surface over a scrim. Accessibility (WCAG 2.1 AA):
+ *  - focus is TRAPPED inside the sheet (Tab/Shift+Tab cycle at the boundaries),
+ *  - the element focused before opening is RESTORED on close,
+ *  - Esc closes (no keyboard trap),
+ *  - sibling background content is made `inert` + aria-hidden while open so AT
+ *    cannot reach it.
+ * Enter motion is opacity + slide-up (reduced-motion: opacity-only).
  */
 export function BottomSheet(props: BottomSheetProps): ReactElement | null {
   const { open, title, onClose, children } = props;
   const sheetRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // The element that had focus before the sheet opened, restored on close.
+  const previouslyFocused = useRef<HTMLElement | null>(null);
 
+  const focusables = useCallback((): HTMLElement[] => {
+    const sheet = sheetRef.current;
+    if (!sheet) return [];
+    return Array.from(sheet.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+  }, []);
+
+  // Esc closes; Tab/Shift+Tab are intercepted to cycle focus within the sheet.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key === 'Tab') {
+        const items = focusables();
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (!first || !last) {
+          e.preventDefault();
+          return;
+        }
+        const active = document.activeElement as HTMLElement | null;
+        if (e.shiftKey) {
+          if (active === first || !sheetRef.current?.contains(active)) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else if (active === last || !sheetRef.current?.contains(active)) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.addEventListener('keydown', onKey);
-    sheetRef.current?.focus();
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open, onClose, focusables]);
+
+  // Move focus into the sheet on open; restore it to the opener on close.
+  useEffect(() => {
+    if (!open) return;
+    previouslyFocused.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const items = focusables();
+    (items[0] ?? sheetRef.current)?.focus();
+    return () => {
+      previouslyFocused.current?.focus();
+    };
+  }, [open, focusables]);
+
+  // Make sibling background content inert + aria-hidden while open (WCAG 4.1.2).
+  useEffect(() => {
+    if (!open) return;
+    const root = rootRef.current;
+    const parent = root?.parentElement;
+    if (!parent) return;
+    const siblings = Array.from(parent.children).filter(
+      (el): el is HTMLElement => el instanceof HTMLElement && el !== root,
+    );
+    const previous = siblings.map((el) => ({
+      el,
+      inert: el.hasAttribute('inert'),
+      ariaHidden: el.getAttribute('aria-hidden'),
+    }));
+    for (const el of siblings) {
+      el.setAttribute('inert', '');
+      el.setAttribute('aria-hidden', 'true');
+    }
+    return () => {
+      for (const { el, inert, ariaHidden } of previous) {
+        if (!inert) el.removeAttribute('inert');
+        if (ariaHidden === null) el.removeAttribute('aria-hidden');
+        else el.setAttribute('aria-hidden', ariaHidden);
+      }
+    };
+  }, [open]);
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-modal flex items-end justify-center">
+    <div ref={rootRef} className="fixed inset-0 z-modal flex items-end justify-center">
       <div
         aria-hidden="true"
         onClick={onClose}
@@ -51,7 +128,7 @@ export function BottomSheet(props: BottomSheetProps): ReactElement | null {
             type="button"
             aria-label="Close"
             onClick={onClose}
-            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
           >
             <CloseIcon />
           </button>

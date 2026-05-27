@@ -14,10 +14,17 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
+  signOut,
   type Auth,
   type UserCredential,
 } from 'firebase/auth';
-import { doc, writeBatch, type Firestore } from 'firebase/firestore';
+import {
+  clearIndexedDbPersistence,
+  doc,
+  terminate,
+  writeBatch,
+  type Firestore,
+} from 'firebase/firestore';
 
 export interface SignUpInput {
   familyName: string;
@@ -89,14 +96,20 @@ export async function signUpFoundingParent(
       createdBy: uid,
       createdAt,
     });
+    // Privacy finding 2: the family-readable users doc carries NO email. Adult
+    // email [PI] lives on the per-subject userPrivate/{uid} doc, written in this
+    // SAME atomic batch so there is never an orphaned/missing email.
     batch.set(doc(db, 'users', uid), {
       name: input.name,
-      email: input.email,
       role: 'parent',
       familyId,
       isActive: true,
       allowanceBalance: 0,
       theme: 'light',
+    });
+    batch.set(doc(db, 'userPrivate', uid), {
+      email: input.email,
+      familyId,
     });
     await batch.commit();
   } catch {
@@ -137,15 +150,26 @@ export async function sendPasswordReset(deps: { auth: Auth }, email: string): Pr
  * If `signOut` itself fails, cache clearing MUST STILL run (a failed sign-out
  * must not leave child PI on the device); the rejection is surfaced after the
  * cache is cleared.
- *
- * Signature only here — the implementer writes the body. It throws until then
- * so the test fails for the right reason (no real IndexedDB required; the test
- * mocks firebase/auth + firebase/firestore).
  */
-export async function signOutAndClearCache(deps: {
-  auth: Auth;
-  db: Firestore;
-}): Promise<void> {
-  void deps;
-  throw new Error('signOutAndClearCache not implemented');
+export async function signOutAndClearCache(deps: { auth: Auth; db: Firestore }): Promise<void> {
+  const { auth, db } = deps;
+
+  // Capture (do not yet throw) a sign-out failure: the cache MUST still be
+  // cleared so a failed sign-out never leaves another family's children's PI on
+  // a shared device. The rejection is surfaced after the cache is cleared.
+  let signOutError: unknown;
+  try {
+    await signOut(auth);
+  } catch (e) {
+    signOutError = e;
+  }
+
+  // terminate() stops the Firestore client; clearIndexedDbPersistence rejects
+  // on a running client, so the order is fixed: terminate THEN clear.
+  await terminate(db);
+  await clearIndexedDbPersistence(db);
+
+  if (signOutError !== undefined) {
+    throw signOutError;
+  }
 }

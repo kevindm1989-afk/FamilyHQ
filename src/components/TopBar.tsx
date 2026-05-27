@@ -22,7 +22,7 @@ export function TopBar(props: TopBarProps): ReactElement {
             type="button"
             aria-label="Back"
             onClick={onBack}
-            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-brand focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-brand focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
           >
             <ChevronLeft />
           </button>

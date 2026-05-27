@@ -68,6 +68,14 @@ service cloud.firestore {
       return request.resource.data[field] == resource.data[field];
     }
 
+    // The incoming doc does NOT introduce `field`. Used for fields that were
+    // removed from a doc's schema (e.g. email left the users doc, privacy
+    // finding 2): a plain immutable() check throws when the field is absent on
+    // BOTH sides, so we assert the key is simply not present on the write.
+    function absent(field) {
+      return !(field in request.resource.data);
+    }
+
     // List scoping (M7/P2): Firestore evaluates a `list` rule against EVERY
     // document the query would return. By requiring each returned doc be in the
     // caller's own family, an unconstrained or cross-family query (which would
@@ -115,7 +123,7 @@ service cloud.firestore {
           && request.resource.data.isActive == true
           && request.resource.data.allowanceBalance == 0
           && request.resource.data.keys().hasOnly(
-               ['name', 'email', 'role', 'familyId', 'isActive',
+               ['name', 'role', 'familyId', 'isActive',
                 'allowanceBalance', 'theme'])
           && !exists(/databases/$(database)/documents/families/$(request.resource.data.familyId))
           && getAfter(/databases/$(database)/documents/families/$(request.resource.data.familyId)).data.createdBy == request.auth.uid;
@@ -128,24 +136,76 @@ service cloud.firestore {
           && isActive()
           && immutable('role')
           && immutable('familyId')
-          && immutable('email')
+          && absent('email')
           && immutable('isActive')
           && immutable('allowanceBalance');
       }
 
-      // A same-family active parent may write a member's authority fields
-      // (allowanceBalance, isActive, name) but never the familyId (M5).
+      // A same-family active parent doing a BARE update of a member doc may
+      // change ONLY `name` and `isActive` (M28, security finding 1/3). The set
+      // of CHANGED keys must be a subset of {name, isActive}; this denies any
+      // write that touches `role` (no parent-granted elevation), `familyId` (no
+      // tenant reassignment), `allowanceBalance` (deferred to the Phase-3
+      // approval runTransaction — NO direct balance writes at the rules layer,
+      // even setting the same value), `theme` (subject-owned), or `email`
+      // (which left this doc for userPrivate/{uid}). affectedKeys() is what
+      // makes a write that touches allowanceBalance a rejected write.
+      //
+      // The changed-key set must be a NON-EMPTY subset of {name, isActive}.
+      // Requiring non-empty is what denies a bare `allowanceBalance: 0` write
+      // against a balance already 0: that write changes no value, so its
+      // affectedKeys is empty — and an empty change is not an authorized
+      // name/isActive edit. There are NO direct balance writes at this layer.
       function parentUpdateAllowed() {
         return isParent()
           && sameFamily(resource)
           && incomingSameFamily()
-          && immutable('familyId');
+          && request.resource.data.diff(resource.data).affectedKeys().size() > 0
+          && request.resource.data.diff(resource.data)
+               .affectedKeys().hasOnly(['name', 'isActive']);
       }
 
       allow get: if isActive() && sameFamily(resource);
       allow list: if listScopedToOwnFamily();
       allow create: if isFoundingBootstrap();
       allow update: if selfUpdateAllowed() || parentUpdateAllowed();
+      allow delete: if false;
+    }
+
+    // --- userPrivate (per-subject adult email [PI], privacy finding 2) ------
+    //
+    // Adult email was moved OFF the family-readable users doc onto this
+    // per-subject doc so other members (notably children) can never read an
+    // adult's email (P7).
+    //
+    // read (get): ONLY the subject (active) OR a same-family active PARENT.
+    //   Another MEMBER of the same family is DENIED. Cross-family is DENIED.
+    //   A deactivated subject cannot even read their own (mirrors users get).
+    // list: never — no enumeration of adult emails.
+    // create: the bootstrap path — self-keyed only (userId == auth.uid). The
+    //   founding parent has no users doc yet, so this must NOT require isActive;
+    //   the email is whatever the caller writes for themselves.
+    // update: the subject may correct their own email (PIPEDA principle 6);
+    //   familyId is IMMUTABLE (no tenant reassignment). A peer member or a
+    //   cross-family parent is DENIED (not self-keyed).
+    match /userPrivate/{userId} {
+      function isPrivateSubject() {
+        return isSignedIn() && request.auth.uid == userId;
+      }
+      // Same-family active parent of the SUBJECT: scope via the subject's own
+      // userPrivate.familyId (the only family field on this doc) compared to the
+      // parent caller's family.
+      function isSameFamilyParentOf() {
+        return isParent()
+          && resource.data.familyId == callerFamily();
+      }
+
+      allow get: if (isPrivateSubject() && isActive())
+        || isSameFamilyParentOf();
+      allow list: if false;
+      allow create: if isPrivateSubject();
+      allow update: if isPrivateSubject()
+        && immutable('familyId');
       allow delete: if false;
     }
 

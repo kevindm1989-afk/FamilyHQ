@@ -103,14 +103,14 @@ export function LoginScreen(): ReactElement {
             <>
               <button
                 type="button"
-                className="text-brand focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                className="text-brand focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
                 onClick={() => setMode('signup')}
               >
                 New here? Create a family
               </button>
               <button
                 type="button"
-                className="text-ink-mute focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+                className="text-ink-mute focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
                 onClick={() => setMode('forgot')}
               >
                 Forgot password?
@@ -120,7 +120,7 @@ export function LoginScreen(): ReactElement {
           {mode !== 'signin' && (
             <button
               type="button"
-              className="text-brand focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+              className="text-brand focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
               onClick={() => setMode('signin')}
             >
               Back to sign in

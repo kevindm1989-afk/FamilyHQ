@@ -15,13 +15,17 @@ export interface ButtonProps {
 
 // a11y override (style-guide §2): amber + success use DARK INK text, never
 // white (white-on-amber 2.1:1 / white-on-green 1.9:1 fail AA).
+// Every variant carries an active:* press affordance (a11y finding): colour
+// alone is not a sufficient press signal, so each variant darkens / dims on
+// active in addition to its hover treatment.
 const VARIANT_CLASS: Record<ButtonVariant, string> = {
-  primary: 'bg-brand text-brand-on active:bg-brand-dark hover:bg-brand-dark',
-  amber: 'bg-accent text-onAccent active:bg-accent-dark hover:bg-accent-dark',
-  soft: 'bg-brand-light text-brand hover:bg-surface-line2',
-  ghost: 'bg-transparent border border-surface-line text-brand hover:bg-surface-line2',
-  success: 'bg-status-ok text-onAccent hover:opacity-90',
-  danger: 'bg-status-danger-light text-status-danger-text hover:opacity-90',
+  primary: 'bg-brand text-brand-on hover:bg-brand-dark active:bg-brand-dark',
+  amber: 'bg-accent text-onAccent hover:bg-accent-dark active:bg-accent-dark',
+  soft: 'bg-brand-light text-brand hover:bg-surface-line2 active:bg-surface-line',
+  ghost:
+    'bg-transparent border border-surface-line text-brand hover:bg-surface-line2 active:bg-surface-line',
+  success: 'bg-status-ok text-onAccent hover:opacity-90 active:opacity-80',
+  danger: 'bg-status-danger-light text-status-danger-text hover:opacity-90 active:opacity-80',
 };
 
 const SIZE_CLASS: Record<ButtonSize, string> = {
@@ -55,9 +59,13 @@ export function Button(props: ButtonProps): ReactElement {
       aria-disabled={disabled || undefined}
       aria-busy={loading || undefined}
       onClick={inactive ? undefined : onClick}
-      className={`inline-flex min-h-tap items-center justify-center gap-8 rounded-control font-semibold transition-colors duration-cardPress ease-out focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 motion-reduce:transition-none ${SIZE_CLASS[size]} ${VARIANT_CLASS[variant]} ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+      className={`inline-flex min-h-tap items-center justify-center gap-8 rounded-control font-semibold transition-colors duration-cardPress ease-out focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none ${SIZE_CLASS[size]} ${VARIANT_CLASS[variant]} ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
     >
-      {loading ? <Spinner /> : children}
+      {loading && <Spinner />}
+      {/* Keep the action label as the accessible name while loading (a11y
+          finding): the spinner is decorative, so the label must remain — shown
+          inline normally, visually-hidden while the spinner is in flight. */}
+      <span className={loading ? 'sr-only' : undefined}>{children}</span>
     </button>
   );
 }

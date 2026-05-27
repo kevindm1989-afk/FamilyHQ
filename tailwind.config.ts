@@ -32,6 +32,7 @@ const shadow = tokens.shadow;
 const components = tokens.components;
 const layout = tokens.layout;
 const motion = tokens.motion;
+const focus = tokens.focus;
 
 // Component dimensions, traced straight to tokens so primitives never need a
 // magic-number literal. Keys are semantic (avatar-*, control-*, nav, topbar,
@@ -55,10 +56,18 @@ const sizeScale: Record<string, string> = {
 };
 
 // spacing keys in the token file are the raw px-step labels (plus _-prefixed
-// meta keys we skip). Build a clean numeric-key scale for Tailwind.
-const spacingScale = Object.fromEntries(
-  Object.entries(space).filter(([k]) => /^\d+$/.test(k)),
-) as Record<string, string>;
+// meta keys we skip). Build a clean numeric-key scale for Tailwind, then add
+// the named semantic spacings the layout chrome needs (e.g. the toast viewport
+// sits a fixed distance above the bottom nav — spacing._semantic).
+const spacingScale = {
+  ...(Object.fromEntries(Object.entries(space).filter(([k]) => /^\d+$/.test(k))) as Record<
+    string,
+    string
+  >),
+  'toast-from-nav': space._semantic.toastFromBottomNav,
+  'fab-from-bottom': space._semantic.fabFromBottom,
+  'footer-from-bottom': space._semantic.footerFromBottom,
+};
 
 // typography sizes: map each named style to [size, { lineHeight, letterSpacing, fontWeight }]
 const fontSize = Object.fromEntries(
@@ -186,8 +195,21 @@ export default {
         app: layout.maxWidth,
         frame: layout.frameAbove,
       },
+      ringWidth: {
+        // focus.ringWidth token (3px) — the obvious focus-visible ring required
+        // by AODA / WCAG 2.4.7 & 1.4.11 (>=3:1). See design-tokens.json focus.
+        focus: focus.ringWidth,
+      },
       ringColor: {
-        brand: light.brand.indigo,
+        // focus.ringColor token (== brand indigo). The focus-visible ring uses
+        // `ring-brand` for colour across all primitives. The token's reference
+        // shadow form uses 45% alpha; we render solid indigo, which exceeds the
+        // token's alpha for contrast and still satisfies the >=3:1 floor — a
+        // deliberate, documented simplification of the ring token.
+        brand: focus.ringColor,
+      },
+      ringOffsetWidth: {
+        focus: focus.ringOffset, // focus.ringOffset token (2px)
       },
       transitionTimingFunction: {
         out: motion.easing.out,

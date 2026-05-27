@@ -36,10 +36,9 @@ export function BottomNav(props: BottomNavProps): ReactElement {
           <button
             key={tab.id}
             type="button"
-            aria-label={tab.label}
             aria-current={isActive ? 'page' : undefined}
             onClick={() => onNavigate(tab.id)}
-            className={`flex min-h-tap flex-1 flex-col items-center justify-center gap-4 focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-inset ${isActive ? 'font-bold text-brand' : 'font-semibold text-ink-mute'}`}
+            className={`flex min-h-tap flex-1 flex-col items-center justify-center gap-4 focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-inset ${isActive ? 'font-bold text-brand' : 'font-semibold text-ink-mute'}`}
           >
             <span className={isActive ? 'text-brand' : 'text-ink-mute2'}>{tab.icon(isActive)}</span>
             <span className="text-caption">{tab.label}</span>

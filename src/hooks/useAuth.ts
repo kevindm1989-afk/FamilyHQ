@@ -31,6 +31,16 @@ export interface AuthState {
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
 
+// Single lazy loader for the Firebase config so the module stays SDK-free at
+// load time (Firebase init throws on a missing API key under tests). Both the
+// auth listener and sign-out share ONE import promise, so they always see the
+// same module instance (and the same mock under tests).
+let configPromise: Promise<typeof import('../firebase/config')> | null = null;
+function loadFirebaseConfig(): Promise<typeof import('../firebase/config')> {
+  configPromise ??= import('../firebase/config');
+  return configPromise;
+}
+
 export function AuthProvider(props: { children: ReactNode }): ReactElement {
   const [authUser, setAuthUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,31 +50,36 @@ export function AuthProvider(props: { children: ReactNode }): ReactElement {
   useEffect(() => {
     let unsub: (() => void) | undefined;
     let cancelled = false;
-    void import('../firebase/config').then(({ auth }) => {
-      if (cancelled) return;
-      unsub = onAuthStateChanged(auth, (user) => {
-        setAuthUser(user);
-        setLoading(false);
+    void loadFirebaseConfig()
+      .then(({ auth }) => {
+        if (cancelled) return;
+        unsub = onAuthStateChanged(auth, (user) => {
+          setAuthUser(user);
+          setLoading(false);
+        });
+      })
+      .catch(() => {
+        // SDK init can fail when no Firebase config is present (e.g. under unit
+        // tests). Resolve the loading gate so the UI falls back to the
+        // logged-out state instead of leaving an unhandled rejection.
+        if (!cancelled) setLoading(false);
       });
-    });
     return () => {
       cancelled = true;
       unsub?.();
     };
   }, []);
 
-  // Sign-out routes through signOutAndClearCache (M19). Firebase is imported
-  // lazily (same pattern as the auth listener) so the module stays SDK-free at
-  // load time. Body is a contract stub — the implementer wires it; it throws so
-  // the test fails for the right reason until then.
+  // Sign-out routes through signOutAndClearCache (M19). Firebase config and the
+  // auth service are imported lazily (same pattern as the auth listener) so the
+  // module stays SDK-free at load time.
   const signOut = async (): Promise<void> => {
-    throw new Error('useAuth.signOut not implemented');
+    const { auth, db } = await loadFirebaseConfig();
+    const { signOutAndClearCache } = await import('../features/auth/authService');
+    await signOutAndClearCache({ auth, db });
   };
 
-  const value = useMemo<AuthState>(
-    () => ({ authUser, loading, signOut }),
-    [authUser, loading],
-  );
+  const value = useMemo<AuthState>(() => ({ authUser, loading, signOut }), [authUser, loading]);
 
   return createElement(AuthContext.Provider, { value }, props.children);
 }

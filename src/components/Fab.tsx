@@ -16,7 +16,7 @@ export function Fab(props: FabProps): ReactElement {
       type="button"
       aria-label={label}
       onClick={onClick}
-      className="inline-flex h-fab w-fab items-center justify-center rounded-full bg-brand text-brand-on shadow-brand-rest transition-shadow duration-cardPress ease-out focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 active:shadow-brand-active motion-reduce:transition-none"
+      className="inline-flex h-fab w-fab items-center justify-center rounded-full bg-brand text-brand-on shadow-brand-rest transition-shadow duration-cardPress ease-out focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus active:shadow-brand-active motion-reduce:transition-none"
     >
       <PlusIcon />
     </button>

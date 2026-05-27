@@ -20,9 +20,9 @@ export function AvatarChip(props: AvatarChipProps): ReactElement {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-tap items-center gap-8 rounded-full bg-surface-line2 py-4 pl-4 pr-10 text-body text-ink-2 focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+      className="inline-flex min-h-tap items-center gap-8 rounded-full bg-surface-line2 py-4 pl-4 pr-10 text-body text-ink-2 focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
     >
-      <Avatar name={name} role={role} size="chip" />
+      <Avatar name={name} role={role} size="chip" showRoleForA11y />
       <span className="font-bold">{firstName}</span>
     </button>
   );
