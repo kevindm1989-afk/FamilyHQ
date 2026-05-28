@@ -133,7 +133,7 @@ async function renderAt(path: string) {
   // running synchronous queries. waitFor handles both "fallback never
   // appeared (already cached)" and "fallback appeared then resolved".
   await waitFor(() => {
-    expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Loading…')).not.toBeInTheDocument();
   });
   return r;
 }

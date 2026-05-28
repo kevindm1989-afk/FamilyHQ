@@ -102,7 +102,7 @@ async function renderAt(path: string) {
   // renders a Skeleton labelled "Loading…". See AppShell.dashboard.test.tsx
   // for the rationale; per-feature lazy splits landed in feature/per-route-splits.
   await waitFor(() => {
-    expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Loading…')).not.toBeInTheDocument();
   });
   return r;
 }

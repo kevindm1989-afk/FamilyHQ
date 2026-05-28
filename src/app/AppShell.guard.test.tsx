@@ -84,7 +84,7 @@ async function renderAt(path: string) {
   // Wait for the React.lazy route chunk to resolve — RouteFallback Skeleton
   // label is "Loading…". See AppShell.dashboard.test.tsx for the rationale.
   await waitFor(() => {
-    expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Loading…')).not.toBeInTheDocument();
   });
   return r;
 }
