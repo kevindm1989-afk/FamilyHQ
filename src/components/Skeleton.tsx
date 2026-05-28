@@ -26,3 +26,31 @@ export function Skeleton(props: SkeletonProps): ReactElement {
     </div>
   );
 }
+
+interface SkeletonBlockProps {
+  /** Tailwind height class (e.g. 'h-16', 'h-24'). */
+  h?: string;
+  /** Tailwind width class (e.g. 'w-full', 'w-2/3'). Defaults to 'w-full'. */
+  w?: string;
+  /** Tailwind radius class. Defaults to 'rounded-control'. */
+  rounded?: string;
+  className?: string;
+}
+
+/**
+ * A single token-coloured placeholder rectangle. The shape-layout primitive
+ * for per-route Suspense fallbacks — composed into route-specific skeletons
+ * (DashboardRouteSkeleton, CalendarRouteSkeleton, etc.) that approximate the
+ * destination layout so the chunk swap is perceptually invisible. Pure
+ * decoration: aria-hidden so AT only hears the parent skeleton's aria-live
+ * announcement once.
+ */
+export function SkeletonBlock(props: SkeletonBlockProps): ReactElement {
+  const { h = 'h-16', w = 'w-full', rounded = 'rounded-control', className = '' } = props;
+  return (
+    <span
+      aria-hidden="true"
+      className={`block bg-surface-line2 ${h} ${w} ${rounded} ${className}`.trim()}
+    />
+  );
+}

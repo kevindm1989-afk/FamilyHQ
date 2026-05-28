@@ -9,6 +9,7 @@
     "appName": "Family HQ",
     "loading": "Loading…",
     "loadingFamily": "Loading your family…",
+    "unavailable": "unavailable",
     "back": "Back",
     "save": "Save",
     "cancel": "Cancel",
@@ -60,6 +61,56 @@
     "signOutError": "We could not fully sign you out. Please try again.",
     "resourcesLabel": "Site resources",
     "accessibilityLink": "Accessibility statement & feedback"
+  },
+
+  "dashboard": {
+    "welcome": "Welcome, {{name}}",
+    "refresh": "Refresh dashboard",
+    "refreshing": "Refreshing dashboard…",
+    "currentBalance": "Current balance",
+    "currentBalanceLine": "Current balance: {{amount}}",
+    "fallbackMemberName": "A family member",
+    "worthPrefix": "worth",
+    "section": {
+      "earnings": {
+        "heading": "Recent earnings",
+        "viewAll": "View all allowance",
+        "loading": "Loading your earnings…",
+        "empty": "No recent earnings yet — finish a chore to earn allowance."
+      },
+      "myChores": {
+        "heading": "My chores",
+        "viewAll": "View all chores",
+        "loading": "Loading your chores…",
+        "empty": "You’re all caught up — no chores right now."
+      },
+      "approvals": {
+        "heading": "Approvals",
+        "viewAll": "View all chores",
+        "loading": "Loading approvals…",
+        "empty": "Nothing to approve right now.",
+        "pendingCount_one": "{{count}} awaiting approval",
+        "pendingCount_other": "{{count}} awaiting approval"
+      },
+      "events": {
+        "heading": "Upcoming events",
+        "viewAll": "View all events",
+        "loading": "Loading upcoming events…",
+        "empty": "Nothing on the calendar yet."
+      },
+      "posts": {
+        "heading": "Recent posts",
+        "viewAll": "View all posts",
+        "loading": "Loading recent posts…",
+        "empty": "No posts yet — share something with the family."
+      }
+    },
+    "status": {
+      "pending": "To do",
+      "complete": "Waiting",
+      "approved": "Approved",
+      "rejected": "Needs another try"
+    }
   },
 
   "accessibility": {

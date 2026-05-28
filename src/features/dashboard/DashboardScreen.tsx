@@ -22,6 +22,7 @@
  *    toast) states.
  */
 import { useId, useState, type ReactElement, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Badge, Card, EmptyState, Skeleton, type BadgeTone } from '../../components';
 import type { ChoreStatus, Role, UserWithId } from '../../lib/types';
 import type { ChoreWithId } from '../chores/choresMemberService';
@@ -80,12 +81,15 @@ export interface DashboardScreenProps {
 
 const SECTION_CAP = 3;
 
-/** Status conveyed as TEXT (label), never colour alone (WCAG 1.4.1). */
-const STATUS_LABEL: Record<ChoreStatus, string> = {
-  pending: 'To do',
-  complete: 'Waiting',
-  approved: 'Approved',
-  rejected: 'Needs another try',
+/**
+ * Status conveyed as TEXT (label), never colour alone (WCAG 1.4.1).
+ * Resolved at render via i18n; the i18n keys live under `dashboard.status.*`.
+ */
+const STATUS_I18N_KEY: Record<ChoreStatus, string> = {
+  pending: 'dashboard.status.pending',
+  complete: 'dashboard.status.complete',
+  approved: 'dashboard.status.approved',
+  rejected: 'dashboard.status.rejected',
 };
 const STATUS_TONE: Record<ChoreStatus, BadgeTone> = {
   pending: 'mute',
@@ -112,10 +116,11 @@ function gatedMoney(cents: number): string {
  * Accessible NAME for a money surface (A1). When the value is valid the name is
  * "<prefix> $X.XX"; when invalid it is a real spoken phrase ("<prefix>
  * unavailable") rather than "<prefix> —" — a screen reader voices a bare em-dash
- * as nothing, so the indicator alone is not an accessible name.
+ * as nothing, so the indicator alone is not an accessible name. The "unavailable"
+ * fallback uses i18n.t at call sites; this helper takes a fully-localized prefix.
  */
-function moneyLabel(prefix: string, cents: number): string {
-  return isValidMoneyCents(cents) ? `${prefix} ${formatMoney(cents)}` : `${prefix} unavailable`;
+function moneyLabel(prefix: string, cents: number, unavailable: string): string {
+  return isValidMoneyCents(cents) ? `${prefix} ${formatMoney(cents)}` : `${prefix} ${unavailable}`;
 }
 
 /** Friendly ISO date -> visible text inside a `<time>`; parse at UTC noon. */
@@ -127,6 +132,7 @@ function friendlyDate(iso: string): string {
 }
 
 export function DashboardScreen(props: DashboardScreenProps): ReactElement {
+  const { t } = useTranslation();
   const { role, userName, nowMs, onNavigate, onRefresh } = props;
   const isParent = role === 'parent';
 
@@ -136,7 +142,7 @@ export function DashboardScreen(props: DashboardScreenProps): ReactElement {
   // is the single status channel; section errors stay inline (no toast spam).
   const [refreshStatus, setRefreshStatus] = useState('');
   const handleRefresh = (): void => {
-    setRefreshStatus('Refreshing dashboard…');
+    setRefreshStatus(t('dashboard.refreshing'));
     onRefresh();
   };
 
@@ -144,11 +150,11 @@ export function DashboardScreen(props: DashboardScreenProps): ReactElement {
     <section className="flex flex-col gap-16 px-16 pt-4 pb-24">
       <div className="flex items-center justify-between gap-12">
         <h1 className="text-display font-display font-extrabold text-ink">
-          {`Welcome, ${userName}`}
+          {t('dashboard.welcome', { name: userName })}
         </h1>
         <button
           type="button"
-          aria-label="Refresh dashboard"
+          aria-label={t('dashboard.refresh')}
           onClick={handleRefresh}
           className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
         >
@@ -171,27 +177,29 @@ export function DashboardScreen(props: DashboardScreenProps): ReactElement {
 }
 
 function MemberSections(props: DashboardScreenProps): ReactElement {
+  const { t } = useTranslation();
   const { balanceCents, earnings, myChores, nowMs, onNavigate } = props;
+  const unavailable = t('common.unavailable');
 
   return (
     <>
       <SectionShell
-        heading="Recent earnings"
-        viewAllLabel="View all allowance"
+        heading={t('dashboard.section.earnings.heading')}
+        viewAllLabel={t('dashboard.section.earnings.viewAll')}
         onViewAll={() => onNavigate('allowance')}
       >
         {/* Balance is an INDEPENDENT fact — never framed as the sum of the
             earnings list below it (ADR-0004 honesty: no "sums to balance"). */}
         <p
           className="text-title font-bold text-ink"
-          aria-label={moneyLabel('Current balance', balanceCents)}
+          aria-label={moneyLabel(t('dashboard.currentBalance'), balanceCents, unavailable)}
         >
-          {`Current balance: ${gatedMoney(balanceCents)}`}
+          {t('dashboard.currentBalanceLine', { amount: gatedMoney(balanceCents) })}
         </p>
         <SectionBody
           feed={earnings}
-          loadingLabel="Loading your earnings…"
-          emptyMessage="No recent earnings yet — finish a chore to earn allowance."
+          loadingLabel={t('dashboard.section.earnings.loading')}
+          emptyMessage={t('dashboard.section.earnings.empty')}
           renderItems={(items) =>
             selectRecent(items, SECTION_CAP).map((txn) => (
               <ListRow key={txn.id}>
@@ -216,24 +224,28 @@ function MemberSections(props: DashboardScreenProps): ReactElement {
       </SectionShell>
 
       <SectionShell
-        heading="My chores"
-        viewAllLabel="View all chores"
+        heading={t('dashboard.section.myChores.heading')}
+        viewAllLabel={t('dashboard.section.myChores.viewAll')}
         onViewAll={() => onNavigate('chores')}
       >
         <SectionBody
           feed={myChores}
-          loadingLabel="Loading your chores…"
-          emptyMessage="You're all caught up — no chores right now."
+          loadingLabel={t('dashboard.section.myChores.loading')}
+          emptyMessage={t('dashboard.section.myChores.empty')}
           renderItems={(items) =>
             selectSoonestChores(items, SECTION_CAP).map((chore) => (
               <ListRow key={chore.id}>
                 <span className="flex-1 text-body font-semibold text-ink">{chore.title}</span>
                 <Badge tone={STATUS_TONE[chore.status]} size="sm">
-                  {STATUS_LABEL[chore.status]}
+                  {t(STATUS_I18N_KEY[chore.status])}
                 </Badge>
                 <span
                   className="text-meta font-semibold text-ink-mute"
-                  aria-label={moneyLabel('worth', chore.dollarValue)}
+                  aria-label={moneyLabel(
+                    t('dashboard.worthPrefix'),
+                    chore.dollarValue,
+                    unavailable,
+                  )}
                 >
                   {gatedMoney(chore.dollarValue)}
                 </span>
@@ -247,27 +259,31 @@ function MemberSections(props: DashboardScreenProps): ReactElement {
 }
 
 function ParentSections(props: DashboardScreenProps): ReactElement {
+  const { t } = useTranslation();
   const { approvals, members, onNavigate } = props;
+  const unavailable = t('common.unavailable');
+  const fallbackName = t('dashboard.fallbackMemberName');
 
-  const nameFor = (uid: string): string =>
-    members.find((m) => m.id === uid)?.name ?? 'A family member';
+  const nameFor = (uid: string): string => members.find((m) => m.id === uid)?.name ?? fallbackName;
 
   const queue = approvalQueue(approvals.items);
   const pending = pendingApprovalCount(approvals.items);
 
   return (
     <SectionShell
-      heading="Approvals"
-      viewAllLabel="View all chores"
+      heading={t('dashboard.section.approvals.heading')}
+      viewAllLabel={t('dashboard.section.approvals.viewAll')}
       onViewAll={() => onNavigate('chores')}
     >
       {!approvals.loading && approvals.error === null && (
-        <p className="text-meta text-ink-mute">{`${pending} awaiting approval`}</p>
+        <p className="text-meta text-ink-mute">
+          {t('dashboard.section.approvals.pendingCount', { count: pending })}
+        </p>
       )}
       <SectionBody
         feed={approvals}
-        loadingLabel="Loading approvals…"
-        emptyMessage="Nothing to approve right now."
+        loadingLabel={t('dashboard.section.approvals.loading')}
+        emptyMessage={t('dashboard.section.approvals.empty')}
         isEmpty={() => queue.length === 0}
         renderItems={() =>
           queue.slice(0, SECTION_CAP).map((chore) => (
@@ -276,7 +292,7 @@ function ParentSections(props: DashboardScreenProps): ReactElement {
               <span className="text-meta text-ink-mute">{nameFor(chore.assignedTo)}</span>
               <span
                 className="text-meta font-semibold text-ink-mute"
-                aria-label={moneyLabel('worth', chore.dollarValue)}
+                aria-label={moneyLabel(t('dashboard.worthPrefix'), chore.dollarValue, unavailable)}
               >
                 {gatedMoney(chore.dollarValue)}
               </span>
@@ -293,18 +309,19 @@ function UpcomingEventsSection(props: {
   nowMs: number;
   onNavigate: (screen: ScreenId) => void;
 }): ReactElement {
+  const { t } = useTranslation();
   const { feed, nowMs, onNavigate } = props;
   const upcoming = selectUpcomingEvents(feed.items, nowMs, SECTION_CAP);
   return (
     <SectionShell
-      heading="Upcoming events"
-      viewAllLabel="View all events"
+      heading={t('dashboard.section.events.heading')}
+      viewAllLabel={t('dashboard.section.events.viewAll')}
       onViewAll={() => onNavigate('calendar')}
     >
       <SectionBody
         feed={feed}
-        loadingLabel="Loading upcoming events…"
-        emptyMessage="Nothing on the calendar yet."
+        loadingLabel={t('dashboard.section.events.loading')}
+        emptyMessage={t('dashboard.section.events.empty')}
         isEmpty={() => upcoming.length === 0}
         renderItems={() =>
           upcoming.map((event) => (
@@ -329,17 +346,18 @@ function RecentPostsSection(props: {
   nowMs: number;
   onNavigate: (screen: ScreenId) => void;
 }): ReactElement {
+  const { t } = useTranslation();
   const { feed, nowMs, onNavigate } = props;
   return (
     <SectionShell
-      heading="Recent posts"
-      viewAllLabel="View all posts"
+      heading={t('dashboard.section.posts.heading')}
+      viewAllLabel={t('dashboard.section.posts.viewAll')}
       onViewAll={() => onNavigate('board')}
     >
       <SectionBody
         feed={feed}
-        loadingLabel="Loading recent posts…"
-        emptyMessage="No posts yet — share something with the family."
+        loadingLabel={t('dashboard.section.posts.loading')}
+        emptyMessage={t('dashboard.section.posts.empty')}
         renderItems={(items) => {
           const recent = selectRecent(items, SECTION_CAP);
           return recent.map((post) => {

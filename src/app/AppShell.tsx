@@ -15,19 +15,36 @@ const MAIN_CONTENT_ID = 'main-content';
 // Each feature route is its own lazy chunk so visiting one screen doesn't
 // download the others. Members never touch FamilyManagement; a parent who
 // stays on the dashboard never pays for Calendar / Board / Chores / Allowance
-// until they navigate. The Routes block below is wrapped in a single shared
-// <Suspense> — first navigation to a route shows the Skeleton fallback while
-// its chunk fetches, subsequent visits are instant (chunks cached by the
-// browser AND precached by the service worker on the next reload).
+// until they navigate. Each Route is wrapped in its OWN Suspense boundary
+// with a shape-matching skeleton (DashboardRouteSkeleton, etc.) so the
+// chunk swap is perceptually invisible — no more generic "Loading…" pill.
 //
 // All six route modules ship a default export specifically so React.lazy can
-// consume them; the screens themselves keep their named exports.
+// consume them; the screens themselves keep their named exports. The
+// skeleton modules are tiny (<1 KB each), have no feature deps, and are
+// imported eagerly so they ship in the AuthedApp chunk and render the
+// instant the user lands on a route.
 const DashboardRoute = lazy(() => import('../features/dashboard/DashboardRoute'));
 const CalendarRoute = lazy(() => import('../features/calendar/CalendarRoute'));
 const BoardRoute = lazy(() => import('../features/board/BoardRoute'));
 const ChoresRoute = lazy(() => import('../features/chores/ChoresRoute'));
 const AllowanceRoute = lazy(() => import('../features/allowance/AllowanceRoute'));
 const FamilyManagementRoute = lazy(() => import('../features/family/FamilyManagementRoute'));
+
+import { DashboardRouteSkeleton } from '../features/dashboard/DashboardRouteSkeleton';
+import { CalendarRouteSkeleton } from '../features/calendar/CalendarRouteSkeleton';
+import { BoardRouteSkeleton } from '../features/board/BoardRouteSkeleton';
+import { ChoresRouteSkeleton } from '../features/chores/ChoresRouteSkeleton';
+import { AllowanceRouteSkeleton } from '../features/allowance/AllowanceRouteSkeleton';
+import { FamilyManagementRouteSkeleton } from '../features/family/FamilyManagementRouteSkeleton';
+
+/**
+ * Wraps a lazy Route in its own Suspense + the matching skeleton. One-liner
+ * helper so each <Route element=…/> stays a single expression.
+ */
+function L(node: ReactElement, fallback: ReactElement): ReactElement {
+  return <Suspense fallback={fallback}>{node}</Suspense>;
+}
 
 /**
  * Authenticated shell (Task 7). Wires the TopBar + BottomNav chrome and routes
@@ -90,25 +107,48 @@ export function AppShell(): ReactElement {
         tabIndex={-1}
         className="flex-1 overflow-y-auto focus:outline-none"
       >
-        <Suspense fallback={<RouteFallback />}>
-          <Routes>
-            <Route path={ROUTES.dashboard.path} element={<DashboardRoute />} />
-            <Route path={ROUTES.calendar.path} element={<CalendarRoute />} />
-            <Route path={ROUTES.board.path} element={<BoardRoute />} />
-            <Route path={ROUTES.chores.path} element={<ChoresRoute />} />
-            <Route path={ROUTES.allowance.path} element={<AllowanceRoute />} />
-            <Route path={ROUTES.family.path} element={guard('family', <FamilyManagementRoute />)} />
-            <Route
-              path={ROUTES.accessibility.path}
-              element={<AccessibilityStatementScreen mode="in-app" />}
-            />
-            <Route path={ROUTES.add_chore.path} element={guard('add_chore', <ChoresRoute />)} />
-            <Route path={ROUTES.add_event.path} element={guard('add_event', <CalendarRoute />)} />
-            <Route path={ROUTES.compose.path} element={<Placeholder title="New Post" />} />
-            <Route path={ROUTES.account_switcher.path} element={<AccountScreen />} />
-            <Route path="*" element={<Navigate to={ROUTES.dashboard.path} replace />} />
-          </Routes>
-        </Suspense>
+        <Routes>
+          <Route
+            path={ROUTES.dashboard.path}
+            element={L(<DashboardRoute />, <DashboardRouteSkeleton />)}
+          />
+          <Route
+            path={ROUTES.calendar.path}
+            element={L(<CalendarRoute />, <CalendarRouteSkeleton />)}
+          />
+          <Route path={ROUTES.board.path} element={L(<BoardRoute />, <BoardRouteSkeleton />)} />
+          <Route path={ROUTES.chores.path} element={L(<ChoresRoute />, <ChoresRouteSkeleton />)} />
+          <Route
+            path={ROUTES.allowance.path}
+            element={L(<AllowanceRoute />, <AllowanceRouteSkeleton />)}
+          />
+          <Route
+            path={ROUTES.family.path}
+            element={guard(
+              'family',
+              L(<FamilyManagementRoute />, <FamilyManagementRouteSkeleton />),
+            )}
+          />
+          <Route
+            path={ROUTES.accessibility.path}
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <AccessibilityStatementScreen mode="in-app" />
+              </Suspense>
+            }
+          />
+          <Route
+            path={ROUTES.add_chore.path}
+            element={guard('add_chore', L(<ChoresRoute />, <ChoresRouteSkeleton />))}
+          />
+          <Route
+            path={ROUTES.add_event.path}
+            element={guard('add_event', L(<CalendarRoute />, <CalendarRouteSkeleton />))}
+          />
+          <Route path={ROUTES.compose.path} element={<Placeholder title="New Post" />} />
+          <Route path={ROUTES.account_switcher.path} element={<AccountScreen />} />
+          <Route path="*" element={<Navigate to={ROUTES.dashboard.path} replace />} />
+        </Routes>
       </main>
 
       {showNav && <BottomNav active={activeTab} onNavigate={(tab) => navigate(ROUTES[tab].path)} />}

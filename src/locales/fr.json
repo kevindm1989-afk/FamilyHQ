@@ -9,6 +9,7 @@
     "appName": "Family HQ",
     "loading": "Chargement…",
     "loadingFamily": "Chargement de votre famille…",
+    "unavailable": "indisponible",
     "back": "Retour",
     "save": "Enregistrer",
     "cancel": "Annuler",
@@ -60,6 +61,56 @@
     "signOutError": "Nous n’avons pas pu vous déconnecter complètement. Veuillez réessayer.",
     "resourcesLabel": "Ressources du site",
     "accessibilityLink": "Déclaration d’accessibilité et commentaires"
+  },
+
+  "dashboard": {
+    "welcome": "Bienvenue, {{name}}",
+    "refresh": "Actualiser le tableau de bord",
+    "refreshing": "Actualisation du tableau de bord…",
+    "currentBalance": "Solde actuel",
+    "currentBalanceLine": "Solde actuel : {{amount}}",
+    "fallbackMemberName": "Un membre de la famille",
+    "worthPrefix": "valeur",
+    "section": {
+      "earnings": {
+        "heading": "Gains récents",
+        "viewAll": "Voir toute l’allocation",
+        "loading": "Chargement de vos gains…",
+        "empty": "Aucun gain récent — terminez une tâche pour gagner de l’allocation."
+      },
+      "myChores": {
+        "heading": "Mes tâches",
+        "viewAll": "Voir toutes les tâches",
+        "loading": "Chargement de vos tâches…",
+        "empty": "Vous êtes à jour — aucune tâche en ce moment."
+      },
+      "approvals": {
+        "heading": "Approbations",
+        "viewAll": "Voir toutes les tâches",
+        "loading": "Chargement des approbations…",
+        "empty": "Rien à approuver pour l’instant.",
+        "pendingCount_one": "{{count}} en attente d’approbation",
+        "pendingCount_other": "{{count}} en attente d’approbation"
+      },
+      "events": {
+        "heading": "Événements à venir",
+        "viewAll": "Voir tous les événements",
+        "loading": "Chargement des événements à venir…",
+        "empty": "Rien au calendrier pour l’instant."
+      },
+      "posts": {
+        "heading": "Publications récentes",
+        "viewAll": "Voir toutes les publications",
+        "loading": "Chargement des publications récentes…",
+        "empty": "Aucune publication — partagez quelque chose avec la famille."
+      }
+    },
+    "status": {
+      "pending": "À faire",
+      "complete": "En attente",
+      "approved": "Approuvé",
+      "rejected": "À refaire"
+    }
   },
 
   "accessibility": {
