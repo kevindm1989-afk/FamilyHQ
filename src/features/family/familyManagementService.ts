@@ -1,13 +1,8 @@
 /**
  * Family Management service (Phase 4 — Family Management screen; ADR-0002).
  *
- * SIGNATURES ONLY. The test-writer authors this file to PIN the EXACT payload
- * shapes the firestore.rules contract requires (`affectedKeys().hasOnly(
- * ['name','isActive'])`). The implementer replaces each `throw new Error(
- * 'not implemented')` body with the real logic; the implementer MUST NOT
- * change these signatures / exported constants without updating the tests.
- *
- * SECURITY-CRITICAL payload contract:
+ * SECURITY-CRITICAL payload contract (firestore.rules
+ * `affectedKeys().hasOnly(['name','isActive'])`):
  *  - renameMember     writes EXACTLY `{ name: <trimmed> }` to users/{uid}.
  *  - setMemberActive  writes EXACTLY `{ isActive: <boolean> }` to users/{uid}.
  *  Neither path may spread/merge the full user doc, never include role /
@@ -51,15 +46,25 @@ export class FamilyManagementError extends Error {
  * failure to the same generic PII-free error.
  */
 export async function renameMember(
-  _deps: { db: Firestore },
-  _uid: string,
-  _name: string,
+  deps: { db: Firestore },
+  uid: string,
+  name: string,
 ): Promise<void> {
-  // Reference imports so unused-warnings stay quiet; the implementer fills in.
-  void doc;
-  void updateDoc;
-  void USERS_COLLECTION;
-  throw new Error('not implemented');
+  const trimmed = name.trim();
+  // Validate BEFORE any write — a blank/whitespace-only or over-length name is
+  // rejected. Surface ONLY the generic PII-free copy (never the raw input/uid).
+  if (trimmed.length === 0 || trimmed.length > NAME_MAX_LENGTH) {
+    throw new FamilyManagementError();
+  }
+  try {
+    // EXACT payload — only `name`. Never spread the full user doc; never include
+    // role / familyId / email / allowanceBalance / theme. The rules contract is
+    // `affectedKeys().hasOnly(['name','isActive'])`.
+    await updateDoc(doc(deps.db, USERS_COLLECTION, uid), { name: trimmed });
+  } catch {
+    // Never surface a raw Firebase code / PII (uid, member name) to the caller.
+    throw new FamilyManagementError();
+  }
 }
 
 /**
@@ -74,9 +79,13 @@ export async function renameMember(
  * its single contract is the exact payload shape.
  */
 export async function setMemberActive(
-  _deps: { db: Firestore },
-  _uid: string,
-  _isActive: boolean,
+  deps: { db: Firestore },
+  uid: string,
+  isActive: boolean,
 ): Promise<void> {
-  throw new Error('not implemented');
+  try {
+    await updateDoc(doc(deps.db, USERS_COLLECTION, uid), { isActive });
+  } catch {
+    throw new FamilyManagementError();
+  }
 }

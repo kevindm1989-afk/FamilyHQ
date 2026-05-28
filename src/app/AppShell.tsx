@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactElement } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import type { Firestore } from 'firebase/firestore';
 import { DashboardScreen } from '../features/dashboard/DashboardScreen';
 import { AvatarChip, BottomNav, Button, EmptyState, Skeleton, TopBar } from '../components';
 import type { NavTab } from '../components';
@@ -30,6 +31,9 @@ import {
   rejectChore,
   type CreateChoreInput,
 } from '../features/chores/choresParentService';
+import { FamilyManagementScreen } from '../features/family/FamilyManagementScreen';
+import { useAllFamilyMembers } from '../features/family/useAllFamilyMembers';
+import { renameMember, setMemberActive } from '../features/family/familyManagementService';
 import type { EventTag } from '../lib/types';
 import { ROUTES, canAccess, hidesBottomNav, type RouteMeta, type ScreenId } from './routes';
 
@@ -101,10 +105,7 @@ export function AppShell(): ReactElement {
           <Route path={ROUTES.board.path} element={<BoardRoute />} />
           <Route path={ROUTES.chores.path} element={<ChoresRoute />} />
           <Route path={ROUTES.allowance.path} element={<AllowanceRoute />} />
-          <Route
-            path={ROUTES.family.path}
-            element={guard('family', <Placeholder title="Family" />)}
-          />
+          <Route path={ROUTES.family.path} element={guard('family', <FamilyManagementRoute />)} />
           <Route path={ROUTES.add_chore.path} element={guard('add_chore', <ChoresRoute />)} />
           <Route path={ROUTES.add_event.path} element={guard('add_event', <CalendarRoute />)} />
           <Route path={ROUTES.compose.path} element={<Placeholder title="New Post" />} />
@@ -583,6 +584,61 @@ function ParentAllowanceRoute(props: {
       members={children}
       feed={feed}
       onSelectMember={setSelectedUid}
+    />
+  );
+}
+
+/**
+ * Family Management route — parent-only (the `guard('family', ...)` wrapper at
+ * the Routes layer already bounces a member to the dashboard). Wires the screen
+ * to live data: viewer = currentUser; members = the all-status feed (active +
+ * inactive) from useAllFamilyMembers(familyId); the rename / activate actions
+ * route through familyManagementService and surface a single toast per result.
+ * Firebase config is imported lazily (mirrors the other routes) so the shell
+ * module stays SDK-free at the top level.
+ */
+function FamilyManagementRoute(): ReactElement {
+  const { familyId, currentUser } = useFamily();
+  const feed = useAllFamilyMembers(familyId);
+
+  if (!currentUser || !familyId) {
+    return <Placeholder title="Family" />;
+  }
+
+  // The Firestore handle is resolved at action time (lazy import keeps the
+  // shell module SDK-free at top level — mirrors BoardRoute / ChoresRoute). A
+  // failing dynamic import (e.g. config missing in a test harness) falls
+  // through with a null db — the service still raises a user-safe
+  // FamilyManagementError, the screen toasts the generic copy, and no raw
+  // Firebase text leaks to the UI.
+  const resolveDb = async (): Promise<Firestore | null> => {
+    try {
+      const { db } = await import('../firebase/config');
+      return db;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleRename = async (uid: string, name: string): Promise<void> => {
+    const db = await resolveDb();
+    await renameMember({ db: db as Firestore }, uid, name);
+  };
+
+  const handleSetActive = async (uid: string, isActive: boolean): Promise<void> => {
+    const db = await resolveDb();
+    await setMemberActive({ db: db as Firestore }, uid, isActive);
+  };
+
+  return (
+    <FamilyManagementScreen
+      viewer={currentUser}
+      members={feed.members}
+      loading={feed.loading}
+      error={feed.error}
+      onRename={handleRename}
+      onSetActive={handleSetActive}
+      onRefresh={() => void feed.refresh()}
     />
   );
 }
