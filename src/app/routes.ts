@@ -16,6 +16,7 @@ export type ScreenId =
   | 'chores'
   | 'allowance'
   | 'family'
+  | 'accessibility'
   | 'add_chore'
   | 'add_event'
   | 'compose'
@@ -47,6 +48,15 @@ export const ROUTES: Record<ScreenId, RouteMeta> = {
     parentOnly: false,
   },
   family: { id: 'family', path: '/family', isModal: false, parentOnly: true },
+  // Accessibility statement (AODA launch-gate item). Reachable from both
+  // signed-out (login footer) and signed-in (Account screen) — see
+  // App.tsx + AppShell.tsx. NOT parent-only and NOT modal.
+  accessibility: {
+    id: 'accessibility',
+    path: '/accessibility',
+    isModal: false,
+    parentOnly: false,
+  },
   add_chore: {
     id: 'add_chore',
     path: '/chores/new',
