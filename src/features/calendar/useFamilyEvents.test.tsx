@@ -248,3 +248,107 @@ describe('useFamilyEvents — family switch clears events (cross-tenant display 
     expect(screen.queryByText('a-only-event')).not.toBeInTheDocument();
   });
 });
+
+// =====================================================================
+// Lesson 2026-05-28 #2 — snapshot dedupe must use field values, not id-set
+//
+// For events the rendered list fields are title + date + tag. An edit to any
+// of those on the same event id must surface; an identical re-fire is still
+// ignored.
+// =====================================================================
+describe('useFamilyEvents — snapshot dedupe (lesson 2026-05-28 #2: field-aware signature)', () => {
+  function snapshotOfEvents(
+    events: Array<{
+      id: string;
+      title?: string;
+      date?: string;
+      tag?: 'family' | 'school' | 'sport' | 'health' | 'work' | 'other';
+    }>,
+  ) {
+    return {
+      docs: events.map((e) => ({
+        id: e.id,
+        data: () => ({
+          title: e.title ?? 'Soccer practice',
+          description: '',
+          date: e.date ?? '2026-06-01T17:30:00.000Z',
+          tag: e.tag ?? 'family',
+          familyId: 'fam-A',
+          createdBy: 'uid-parent-a',
+          createdAt: tsOf(1000),
+        }),
+      })),
+    };
+  }
+
+  function FieldHarness({ familyId }: { familyId: string }) {
+    const { events } = useFamilyEvents(familyId);
+    return (
+      <ul>
+        {events.map((e) => (
+          <li key={e.id} data-testid="event-row">{`${e.id}:${e.title}:${e.date}:${e.tag}`}</li>
+        ))}
+      </ul>
+    );
+  }
+
+  it('a TITLE edit on the same event id surfaces (must NOT be deduped by an id-only signature)', async () => {
+    render(<FieldHarness familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+    act(() => cap.snapshotCb!(snapshotOfEvents([{ id: 'e1', title: 'Soccer' }])));
+    await waitFor(() =>
+      expect(screen.getByTestId('event-row').textContent).toBe(
+        'e1:Soccer:2026-06-01T17:30:00.000Z:family',
+      ),
+    );
+    act(() => cap.snapshotCb!(snapshotOfEvents([{ id: 'e1', title: 'Soccer practice (moved)' }])));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('event-row').textContent,
+        'a title edit on the same id must NOT be deduped',
+      ).toBe('e1:Soccer practice (moved):2026-06-01T17:30:00.000Z:family'),
+    );
+  });
+
+  it('a DATE reschedule on the same event id surfaces', async () => {
+    render(<FieldHarness familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+    act(() =>
+      cap.snapshotCb!(
+        snapshotOfEvents([{ id: 'e1', date: '2026-06-01T17:30:00.000Z' }]),
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('event-row').textContent).toBe(
+        'e1:Soccer practice:2026-06-01T17:30:00.000Z:family',
+      ),
+    );
+    act(() =>
+      cap.snapshotCb!(
+        snapshotOfEvents([{ id: 'e1', date: '2026-06-02T17:30:00.000Z' }]),
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('event-row').textContent,
+        'a reschedule on the same id must NOT be deduped',
+      ).toBe('e1:Soccer practice:2026-06-02T17:30:00.000Z:family'),
+    );
+  });
+
+  it('an identical re-fire (same id, same fields) is a no-op — the dedupe still short-circuits', async () => {
+    render(<FieldHarness familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+    act(() => cap.snapshotCb!(snapshotOfEvents([{ id: 'e1', title: 'Soccer' }])));
+    await waitFor(() =>
+      expect(screen.getByTestId('event-row').textContent).toBe(
+        'e1:Soccer:2026-06-01T17:30:00.000Z:family',
+      ),
+    );
+    act(() => cap.snapshotCb!(snapshotOfEvents([{ id: 'e1', title: 'Soccer' }])));
+    expect(
+      screen.getByTestId('event-row').textContent,
+      'an identical re-fire must not crash or churn',
+    ).toBe('e1:Soccer:2026-06-01T17:30:00.000Z:family');
+  });
+});

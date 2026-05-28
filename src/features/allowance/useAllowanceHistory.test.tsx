@@ -400,3 +400,77 @@ describe('useAllowanceHistory — a recovered listener error clears (F6: stale e
     expect(screen.getByTestId('loading').textContent).toBe('false');
   });
 });
+
+// =====================================================================
+// Lesson 2026-05-28 #2 — snapshot dedupe must use field values, not id-set
+//
+// The redundant-re-fire dedupe (Finding 9 / patterns.md) must NOT short-
+// circuit a genuine mutation on the same id. For transactions the rendered
+// fields are choreTitle + amount + createdAt; an admin amount correction on
+// the same row must surface, while a literal cache re-emission of the same
+// docs is still ignored.
+// =====================================================================
+describe('useAllowanceHistory — snapshot dedupe (lesson 2026-05-28 #2: field-aware signature)', () => {
+  function snapshotOfTxns(
+    txns: Array<{ id: string; choreTitle?: string; amount?: number; createdAtMs?: number }>,
+  ) {
+    return {
+      docs: txns.map((t) => ({
+        id: t.id,
+        data: () => ({
+          uid: 'uid-child-a',
+          choreId: 'chore-1',
+          choreTitle: t.choreTitle ?? 'Take out trash',
+          amount: t.amount ?? 300,
+          type: 'earning',
+          familyId: 'fam-A',
+          createdAt: tsOf(t.createdAtMs ?? 1000),
+        }),
+      })),
+    };
+  }
+
+  function FieldHarness({ uid, familyId }: { uid: string; familyId: string }) {
+    const { transactions } = useAllowanceHistory(uid, familyId);
+    return (
+      <ul>
+        {transactions.map((t) => (
+          <li key={t.id} data-testid="txn-row">{`${t.id}:${t.choreTitle}:${t.amount}`}</li>
+        ))}
+      </ul>
+    );
+  }
+
+  it('an AMOUNT mutation on the same txn id surfaces (must NOT be deduped by an id-only signature)', async () => {
+    render(<FieldHarness uid="uid-child-a" familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+    act(() => cap.snapshotCb!(snapshotOfTxns([{ id: 't1', amount: 300 }])));
+    await waitFor(() =>
+      expect(screen.getByTestId('txn-row').textContent).toBe('t1:Take out trash:300'),
+    );
+    // Same id, mutated amount (an admin correction). An id-only signature
+    // would short-circuit and leave the row at 300. The field-aware signature
+    // must let it through.
+    act(() => cap.snapshotCb!(snapshotOfTxns([{ id: 't1', amount: 350 }])));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('txn-row').textContent,
+        'an amount mutation on the same id must NOT be deduped',
+      ).toBe('t1:Take out trash:350'),
+    );
+  });
+
+  it('an identical re-fire (same id, same fields) is a no-op — the dedupe still short-circuits', async () => {
+    render(<FieldHarness uid="uid-child-a" familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+    act(() => cap.snapshotCb!(snapshotOfTxns([{ id: 't1', amount: 300 }])));
+    await waitFor(() =>
+      expect(screen.getByTestId('txn-row').textContent).toBe('t1:Take out trash:300'),
+    );
+    act(() => cap.snapshotCb!(snapshotOfTxns([{ id: 't1', amount: 300 }])));
+    expect(
+      screen.getByTestId('txn-row').textContent,
+      'an identical re-fire must not crash or churn — the row stays at the same value',
+    ).toBe('t1:Take out trash:300');
+  });
+});

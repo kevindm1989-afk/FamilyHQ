@@ -77,6 +77,12 @@ export function useFamilyPosts(familyId: string | null): UseFamilyPostsResult {
   // effect resolves it, so refresh() reuses it rather than awaiting a second
   // dynamic import on every call.
   const dbRef = useRef<Firestore | null>(null);
+  // Lesson 2026-05-28 #2: sign by id + every field the screen reads (here:
+  // content, authorName, authorId, createdAt). An id-only signature would drop
+  // a content edit or author rename on the same post id as a redundant
+  // re-fire. Reset per effect run so a familyId change does not carry a stale
+  // signature.
+  const lastSnapshotSig = useRef<string | null>(null);
 
   // Firebase config is imported lazily so this module's top level stays SDK-
   // free (mirrors useFamily) — App.test.tsx renders the shell without a live
@@ -93,6 +99,7 @@ export function useFamilyPosts(familyId: string | null): UseFamilyPostsResult {
     }
     setLoading(true);
     setError(null);
+    lastSnapshotSig.current = null;
     let unsub: (() => void) | undefined;
     let cancelled = false;
     void import('../../firebase/config')
@@ -102,7 +109,26 @@ export function useFamilyPosts(familyId: string | null): UseFamilyPostsResult {
         unsub = onSnapshot(
           buildPostsQuery(db, familyId),
           (snap) => {
-            setPosts((snap as { docs: QueryDocumentSnapshot[] }).docs.map(toPost));
+            const docs = (snap as { docs: QueryDocumentSnapshot[] }).docs;
+            const sig = docs
+              .map((d) => {
+                const data = d.data() as Post & { createdAt: unknown };
+                return [
+                  d.id,
+                  data.content,
+                  data.authorName,
+                  data.authorId,
+                  String(data.createdAt),
+                ].join(':');
+              })
+              .join(',');
+            if (sig === lastSnapshotSig.current) {
+              setLoading(false);
+              return;
+            }
+            lastSnapshotSig.current = sig;
+            refreshToken.current += 1;
+            setPosts(docs.map(toPost));
             setLoading(false);
           },
           () => {

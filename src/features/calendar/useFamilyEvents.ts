@@ -70,6 +70,14 @@ export function useFamilyEvents(familyId: string | null): UseFamilyEventsResult 
   // so the LATEST refresh() always wins even if an earlier call resolves last.
   const refreshToken = useRef(0);
   const dbRef = useRef<Firestore | null>(null);
+  // Lesson 2026-05-28 #2: sign by id + every field the screen reads (here:
+  // title, date, tag — list rows render these). An id-only signature would
+  // drop a title edit / date reschedule / tag re-categorization on the same
+  // event id as a redundant re-fire. `description` is not in the list rows;
+  // an edit to description alone never re-renders the list, so it's not in
+  // the signature. Reset per effect run so a familyId change does not carry
+  // a stale signature.
+  const lastSnapshotSig = useRef<string | null>(null);
 
   useEffect(() => {
     // Always clear stale events on a familyId CHANGE — not only when it goes
@@ -83,6 +91,7 @@ export function useFamilyEvents(familyId: string | null): UseFamilyEventsResult 
     }
     setLoading(true);
     setError(null);
+    lastSnapshotSig.current = null;
     let unsub: (() => void) | undefined;
     let cancelled = false;
     // Firebase config is imported lazily so this module's top level stays SDK-
@@ -94,7 +103,20 @@ export function useFamilyEvents(familyId: string | null): UseFamilyEventsResult 
         unsub = onSnapshot(
           buildEventsQuery(db, familyId),
           (snap) => {
-            setEvents((snap as { docs: QueryDocumentSnapshot[] }).docs.map(toEvent));
+            const docs = (snap as { docs: QueryDocumentSnapshot[] }).docs;
+            const sig = docs
+              .map((d) => {
+                const data = d.data() as FamilyEvent;
+                return [d.id, data.title, data.date, data.tag].join(':');
+              })
+              .join(',');
+            if (sig === lastSnapshotSig.current) {
+              setLoading(false);
+              return;
+            }
+            lastSnapshotSig.current = sig;
+            refreshToken.current += 1;
+            setEvents(docs.map(toEvent));
             setLoading(false);
           },
           () => {

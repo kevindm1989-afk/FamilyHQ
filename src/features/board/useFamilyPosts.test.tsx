@@ -338,3 +338,71 @@ describe('useFamilyPosts — refresh() concurrency + import failure (Finding D)'
     ).toBeGreaterThan(0);
   });
 });
+
+// =====================================================================
+// Lesson 2026-05-28 #2 — snapshot dedupe must use field values, not id-set
+//
+// For posts the rendered fields are content + authorName + authorId +
+// createdAt. A content edit on the same post id must surface; an identical
+// re-fire is still ignored.
+// =====================================================================
+describe('useFamilyPosts — snapshot dedupe (lesson 2026-05-28 #2: field-aware signature)', () => {
+  function snapshotOfPosts(
+    posts: Array<{
+      id: string;
+      content?: string;
+      authorName?: string;
+      createdAtMs?: number;
+    }>,
+  ) {
+    return {
+      docs: posts.map((p) => ({
+        id: p.id,
+        data: () => ({
+          content: p.content ?? 'hello',
+          authorId: 'uid-parent-a',
+          authorName: p.authorName ?? 'Alex',
+          familyId: 'fam-A',
+          createdAt: tsOf(p.createdAtMs ?? 1000),
+        }),
+      })),
+    };
+  }
+
+  function FieldHarness({ familyId }: { familyId: string }) {
+    const { posts } = useFamilyPosts(familyId);
+    return (
+      <ul>
+        {posts.map((p) => (
+          <li key={p.id} data-testid="post-row">{`${p.id}:${p.authorName}:${p.content}`}</li>
+        ))}
+      </ul>
+    );
+  }
+
+  it('a CONTENT edit on the same post id surfaces (must NOT be deduped by an id-only signature)', async () => {
+    render(<FieldHarness familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+    act(() => cap.snapshotCb!(snapshotOfPosts([{ id: 'p1', content: 'hello' }])));
+    await waitFor(() => expect(screen.getByTestId('post-row').textContent).toBe('p1:Alex:hello'));
+    act(() => cap.snapshotCb!(snapshotOfPosts([{ id: 'p1', content: 'hello (fixed typo)' }])));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('post-row').textContent,
+        'a content edit on the same id must NOT be deduped',
+      ).toBe('p1:Alex:hello (fixed typo)'),
+    );
+  });
+
+  it('an identical re-fire (same id, same fields) is a no-op — the dedupe still short-circuits', async () => {
+    render(<FieldHarness familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+    act(() => cap.snapshotCb!(snapshotOfPosts([{ id: 'p1', content: 'hello' }])));
+    await waitFor(() => expect(screen.getByTestId('post-row').textContent).toBe('p1:Alex:hello'));
+    act(() => cap.snapshotCb!(snapshotOfPosts([{ id: 'p1', content: 'hello' }])));
+    expect(
+      screen.getByTestId('post-row').textContent,
+      'an identical re-fire must not crash or churn',
+    ).toBe('p1:Alex:hello');
+  });
+});
