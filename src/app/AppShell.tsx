@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactElement } from 'react';
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import type { Firestore } from 'firebase/firestore';
 import { DashboardScreen } from '../features/dashboard/DashboardScreen';
 import { AvatarChip, BottomNav, Button, EmptyState, Skeleton, TopBar } from '../components';
@@ -31,6 +31,7 @@ import {
   rejectChore,
   type CreateChoreInput,
 } from '../features/chores/choresParentService';
+import { AccessibilityStatementScreen } from '../features/accessibility/AccessibilityStatementScreen';
 import { FamilyManagementScreen } from '../features/family/FamilyManagementScreen';
 import { useAllFamilyMembers } from '../features/family/useAllFamilyMembers';
 import {
@@ -110,6 +111,10 @@ export function AppShell(): ReactElement {
           <Route path={ROUTES.chores.path} element={<ChoresRoute />} />
           <Route path={ROUTES.allowance.path} element={<AllowanceRoute />} />
           <Route path={ROUTES.family.path} element={guard('family', <FamilyManagementRoute />)} />
+          <Route
+            path={ROUTES.accessibility.path}
+            element={<AccessibilityStatementScreen mode="in-app" />}
+          />
           <Route path={ROUTES.add_chore.path} element={guard('add_chore', <ChoresRoute />)} />
           <Route path={ROUTES.add_event.path} element={guard('add_event', <CalendarRoute />)} />
           <Route path={ROUTES.compose.path} element={<Placeholder title="New Post" />} />
@@ -151,6 +156,16 @@ function AccountScreen(): ReactElement {
       <Button variant="danger" loading={signingOut} onClick={handleSignOut}>
         Sign out
       </Button>
+      {/* AODA: the accessibility statement + feedback path must be reachable
+          from within the app, not only from the signed-out screen. */}
+      <nav aria-label="Site resources" className="mt-8">
+        <Link
+          to={ROUTES.accessibility.path}
+          className="text-body text-brand focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+        >
+          Accessibility statement & feedback
+        </Link>
+      </nav>
     </section>
   );
 }

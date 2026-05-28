@@ -1,4 +1,5 @@
 import { useState, type ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 import { Button, TextField } from '../../components';
 import { useToast } from '../../hooks/useToast';
 import { AuthActionError, sendPasswordReset, signIn, signUpFoundingParent } from './authService';
@@ -127,6 +128,18 @@ export function LoginScreen(): ReactElement {
             </button>
           )}
         </div>
+
+        {/* AODA: an accessibility statement + feedback path must be reachable
+            even by a user who cannot complete sign-in. Keep this link present
+            in all three modes, sized below the primary actions. */}
+        <nav aria-label="Site resources" className="mt-32 flex justify-center">
+          <Link
+            to="/accessibility"
+            className="text-meta text-ink-mute focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+          >
+            Accessibility statement
+          </Link>
+        </nav>
       </div>
     </main>
   );
