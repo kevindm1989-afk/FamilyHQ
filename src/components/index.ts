@@ -19,4 +19,5 @@ export { Fab, type FabProps } from './Fab';
 export { Toast, type ToastProps } from './Toast';
 export { BottomSheet, type BottomSheetProps } from './BottomSheet';
 export { EmptyState, type EmptyStateProps } from './EmptyState';
+export { LanguageToggle } from './LanguageToggle';
 export { Skeleton, type SkeletonProps } from './Skeleton';

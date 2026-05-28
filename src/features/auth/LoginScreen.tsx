@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { Button, TextField } from '../../components';
+import { Button, LanguageToggle, TextField } from '../../components';
 import { useToast } from '../../hooks/useToast';
 
 type Mode = 'signin' | 'signup' | 'forgot';
@@ -21,6 +22,7 @@ type Mode = 'signin' | 'signup' | 'forgot';
  * in its own chunk — a single static reference anywhere reverts it.
  */
 export function LoginScreen(): ReactElement {
+  const { t } = useTranslation();
   const { showToast } = useToast();
   const [mode, setMode] = useState<Mode>('signin');
   const [familyName, setFamilyName] = useState('');
@@ -32,11 +34,11 @@ export function LoginScreen(): ReactElement {
   // Match on the error's name string instead of `instanceof AuthActionError`
   // so we don't need to statically import the class — that would pull
   // authService (and thereby Firebase) into the login bundle.
-  // authService sets `name = 'AuthActionError'` at the throw site.
+  // authService sets `name = 'AuthActionError'` at the throw site. The fall-
+  // through generic copy is translated; an AuthActionError's own message is
+  // already user-safe at the service boundary and surfaces verbatim.
   const userSafeError = (e: unknown): string =>
-    e instanceof Error && e.name === 'AuthActionError'
-      ? e.message
-      : 'Something went wrong. Please try again.';
+    e instanceof Error && e.name === 'AuthActionError' ? e.message : t('login.toast.generic');
 
   async function withApi<T>(
     fn: (
@@ -61,15 +63,15 @@ export function LoginScreen(): ReactElement {
     try {
       if (mode === 'signin') {
         await withApi((api, { auth }) => api.signIn({ auth }, email, password));
-        showToast('Signed in.');
+        showToast(t('login.toast.signedIn'));
       } else if (mode === 'signup') {
         await withApi((api, { auth, db }) =>
           api.signUpFoundingParent({ auth, db }, { familyName, name, email, password }),
         );
-        showToast('Family created. Welcome to Family HQ.');
+        showToast(t('login.toast.created'));
       } else {
         await withApi((api, { auth }) => api.sendPasswordReset({ auth }, email));
-        showToast('If that email exists, a reset link is on its way.');
+        showToast(t('login.toast.resetSent'));
       }
     } catch (err) {
       showToast(userSafeError(err));
@@ -82,27 +84,34 @@ export function LoginScreen(): ReactElement {
     <main className="flex min-h-screen flex-col items-center justify-center bg-surface-bg px-24">
       <div className="w-full max-w-app">
         <div className="mb-24 text-center">
-          <h1 className="text-display font-display font-extrabold text-brand">Family HQ</h1>
-          <p className="mt-8 text-meta text-ink-mute">
-            {mode === 'signup'
-              ? 'Create your family home base.'
-              : mode === 'forgot'
-                ? 'Reset your password.'
-                : 'Your shared family home base.'}
-          </p>
+          <h1 className="text-display font-display font-extrabold text-brand">
+            {t('common.appName')}
+          </h1>
+          <p className="mt-8 text-meta text-ink-mute">{t(`login.tagline.${mode}`)}</p>
         </div>
 
         <form onSubmit={onSubmit} className="flex flex-col gap-12">
           {mode === 'signup' && (
             <>
-              <TextField label="Family name" value={familyName} onChange={setFamilyName} required />
-              <TextField label="Your name" value={name} onChange={setName} required />
+              <TextField
+                label={t('login.field.familyName')}
+                value={familyName}
+                onChange={setFamilyName}
+                required
+              />
+              <TextField label={t('login.field.name')} value={name} onChange={setName} required />
             </>
           )}
-          <TextField label="Email" type="email" value={email} onChange={setEmail} required />
+          <TextField
+            label={t('login.field.email')}
+            type="email"
+            value={email}
+            onChange={setEmail}
+            required
+          />
           {mode !== 'forgot' && (
             <TextField
-              label="Password"
+              label={t('login.field.password')}
               type="password"
               value={password}
               onChange={setPassword}
@@ -111,11 +120,7 @@ export function LoginScreen(): ReactElement {
           )}
 
           <Button type="submit" size="lg" loading={busy}>
-            {mode === 'signup'
-              ? 'Create family'
-              : mode === 'forgot'
-                ? 'Send reset link'
-                : 'Sign in'}
+            {t(`login.submit.${mode}`)}
           </Button>
         </form>
 
@@ -127,14 +132,14 @@ export function LoginScreen(): ReactElement {
                 className="text-brand focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
                 onClick={() => setMode('signup')}
               >
-                New here? Create a family
+                {t('login.switch.toSignup')}
               </button>
               <button
                 type="button"
                 className="text-ink-mute focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
                 onClick={() => setMode('forgot')}
               >
-                Forgot password?
+                {t('login.switch.toForgot')}
               </button>
             </>
           )}
@@ -144,22 +149,27 @@ export function LoginScreen(): ReactElement {
               className="text-brand focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
               onClick={() => setMode('signin')}
             >
-              Back to sign in
+              {t('login.switch.toSignin')}
             </button>
           )}
         </div>
 
         {/* AODA: an accessibility statement + feedback path must be reachable
             even by a user who cannot complete sign-in. Keep this link present
-            in all three modes, sized below the primary actions. */}
-        <nav aria-label="Site resources" className="mt-32 flex justify-center">
-          <Link
-            to="/accessibility"
-            className="text-meta text-ink-mute focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
-          >
-            Accessibility statement
-          </Link>
-        </nav>
+            in all three modes, sized below the primary actions. The language
+            toggle sits ABOVE the accessibility link so a user can switch into
+            French BEFORE relying on the statement copy. */}
+        <div className="mt-32 flex flex-col items-center gap-12">
+          <LanguageToggle />
+          <nav aria-label={t('account.resourcesLabel')}>
+            <Link
+              to="/accessibility"
+              className="text-meta text-ink-mute focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+            >
+              {t('login.footer.accessibility')}
+            </Link>
+          </nav>
+        </div>
       </div>
     </main>
   );
