@@ -145,14 +145,20 @@ import { ToastProvider } from '../hooks/useToast';
 import { AppShell } from './AppShell';
 import { ROUTES } from './routes';
 
-function renderAt(path: string) {
-  return render(
+async function renderAt(path: string) {
+  const r = render(
     <ToastProvider>
       <MemoryRouter initialEntries={[path]}>
         <AppShell />
       </MemoryRouter>
     </ToastProvider>,
   );
+  // Wait for the React.lazy route chunk to resolve — RouteFallback Skeleton
+  // label is "Loading…". See AppShell.dashboard.test.tsx for rationale.
+  await waitFor(() => {
+    expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+  });
+  return r;
 }
 
 function rowFor(name: string): HTMLElement {
@@ -182,7 +188,7 @@ afterEach(() => {
 // =====================================================================
 describe('AppShell Family route — Sec1: null db must short-circuit (no service call, no cast lie)', () => {
   it('Rename Save with a failed firebase/config import does NOT call renameMember; the generic toast appears', async () => {
-    renderAt(ROUTES.family.path);
+    await renderAt(ROUTES.family.path);
     fireEvent.click(screen.getByRole('button', { name: /rename\s+maya/i }));
     const dialog = screen.getByRole('dialog');
     const input = within(dialog).getByRole('textbox') as HTMLInputElement;
@@ -201,7 +207,7 @@ describe('AppShell Family route — Sec1: null db must short-circuit (no service
   });
 
   it('Reactivate with a failed firebase/config import does NOT call setMemberActive; the generic toast appears', async () => {
-    renderAt(ROUTES.family.path);
+    await renderAt(ROUTES.family.path);
     fireEvent.click(within(rowFor('Ben Kim')).getByRole('button', { name: /reactivate\s+ben/i }));
     await waitFor(() => {
       expect(screen.getByText(/something went wrong/i)).toBeInTheDocument();
@@ -213,7 +219,7 @@ describe('AppShell Family route — Sec1: null db must short-circuit (no service
   });
 
   it('Confirm Deactivate with a failed firebase/config import does NOT call setMemberActive; the generic toast appears', async () => {
-    renderAt(ROUTES.family.path);
+    await renderAt(ROUTES.family.path);
     fireEvent.click(
       within(rowFor('Maya Kim')).getByRole('button', { name: /deactivate\s+maya/i }),
     );
