@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactElement } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { DashboardScreen } from '../features/dashboard/DashboardScreen';
 import { AvatarChip, BottomNav, Button, EmptyState, Skeleton, TopBar } from '../components';
 import type { NavTab } from '../components';
 import { useAuth } from '../hooks/useAuth';
@@ -41,7 +42,7 @@ const MAIN_CONTENT_ID = 'main-content';
  * cosmetic — firestore.rules is the real authority boundary.
  */
 export function AppShell(): ReactElement {
-  const { currentUser, members, role, loading } = useFamily();
+  const { currentUser, role, loading } = useFamily();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -95,15 +96,7 @@ export function AppShell(): ReactElement {
         className="flex-1 overflow-y-auto focus:outline-none"
       >
         <Routes>
-          <Route
-            path={ROUTES.dashboard.path}
-            element={
-              <Placeholder
-                title={`Welcome${currentUser ? `, ${currentUser.name.split(' ')[0]}` : ''}`}
-                note={`${members.length} member${members.length === 1 ? '' : 's'} in your family.`}
-              />
-            }
-          />
+          <Route path={ROUTES.dashboard.path} element={<DashboardRoute />} />
           <Route path={ROUTES.calendar.path} element={<CalendarRoute />} />
           <Route path={ROUTES.board.path} element={<BoardRoute />} />
           <Route path={ROUTES.chores.path} element={<ChoresRoute />} />
@@ -154,6 +147,113 @@ function AccountScreen(): ReactElement {
         Sign out
       </Button>
     </section>
+  );
+}
+
+/**
+ * Dashboard route — role-gated read-only composition over the existing feeds
+ * (Phase 4). A MEMBER wires their OWN per-uid scoped hooks (useMyChores +
+ * useAllowanceHistory, both keyed on the member's own uid + familyId) plus the
+ * family events/posts; a PARENT wires the family-wide chore feed (-> approval
+ * queue) plus events/posts and NEVER the per-member ledger. `onRefresh` fans
+ * out to every wired feed; `onNavigate` deep-links to the full screen. Role
+ * branching is cosmetic — firestore.rules is the authoritative boundary.
+ */
+function DashboardRoute(): ReactElement {
+  const { currentUser, role } = useFamily();
+  return role === 'parent' ? (
+    <ParentDashboardRoute />
+  ) : (
+    <MemberDashboardRoute key={currentUser?.id ?? 'anon'} />
+  );
+}
+
+function MemberDashboardRoute(): ReactElement {
+  const { familyId, currentUser, members } = useFamily();
+  const navigate = useNavigate();
+  const ownUid = currentUser?.id ?? null;
+
+  // Personal feeds scoped to the member's OWN uid — never a family-wide leak.
+  const choresFeed = useMyChores(ownUid, familyId);
+  const ledgerFeed = useAllowanceHistory(ownUid, familyId);
+  const eventsFeed = useFamilyEvents(familyId);
+  const postsFeed = useFamilyPosts(familyId);
+
+  if (!currentUser || !familyId) {
+    return <Placeholder title="Dashboard" />;
+  }
+
+  const onRefresh = (): void => {
+    void choresFeed.refresh();
+    void ledgerFeed.refresh();
+    void eventsFeed.refresh();
+    void postsFeed.refresh();
+  };
+
+  return (
+    <DashboardScreen
+      role="member"
+      userName={currentUser.name}
+      balanceCents={currentUser.allowanceBalance}
+      members={members}
+      nowMs={Date.now()}
+      onNavigate={(screen) => navigate(ROUTES[screen].path)}
+      onRefresh={onRefresh}
+      earnings={{
+        items: ledgerFeed.transactions,
+        loading: ledgerFeed.loading,
+        error: ledgerFeed.error,
+      }}
+      myChores={{
+        items: choresFeed.chores,
+        loading: choresFeed.loading,
+        error: choresFeed.error,
+      }}
+      approvals={{ items: [], loading: false, error: null }}
+      events={{ items: eventsFeed.events, loading: eventsFeed.loading, error: eventsFeed.error }}
+      posts={{ items: postsFeed.posts, loading: postsFeed.loading, error: postsFeed.error }}
+    />
+  );
+}
+
+function ParentDashboardRoute(): ReactElement {
+  const { familyId, currentUser, members } = useFamily();
+  const navigate = useNavigate();
+
+  // Approvals come from the family-wide chore feed; NO per-member ledger.
+  const choresFeed = useFamilyChores(familyId);
+  const eventsFeed = useFamilyEvents(familyId);
+  const postsFeed = useFamilyPosts(familyId);
+
+  if (!currentUser || !familyId) {
+    return <Placeholder title="Dashboard" />;
+  }
+
+  const onRefresh = (): void => {
+    void choresFeed.refresh();
+    void eventsFeed.refresh();
+    void postsFeed.refresh();
+  };
+
+  return (
+    <DashboardScreen
+      role="parent"
+      userName={currentUser.name}
+      balanceCents={currentUser.allowanceBalance}
+      members={members}
+      nowMs={Date.now()}
+      onNavigate={(screen) => navigate(ROUTES[screen].path)}
+      onRefresh={onRefresh}
+      earnings={{ items: [], loading: false, error: null }}
+      myChores={{ items: [], loading: false, error: null }}
+      approvals={{
+        items: choresFeed.chores,
+        loading: choresFeed.loading,
+        error: choresFeed.error,
+      }}
+      events={{ items: eventsFeed.events, loading: eventsFeed.loading, error: eventsFeed.error }}
+      posts={{ items: postsFeed.posts, loading: postsFeed.loading, error: postsFeed.error }}
+    />
   );
 }
 

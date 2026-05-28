@@ -224,10 +224,10 @@ describe('DashboardScreen — MEMBER layout', () => {
     renderDash({
       role: 'member',
       myChores: settled([
-        mkChore({ id: 'c-late', dueDate: '2026-06-25', title: 'Mow lawn', status: 'pending' }),
-        mkChore({ id: 'c-soon', dueDate: '2026-06-16', title: 'Dishes', status: 'complete' }),
-        mkChore({ id: 'c-mid', dueDate: '2026-06-20', title: 'Trash', status: 'rejected' }),
-        mkChore({ id: 'c-overflow', dueDate: '2026-06-30', title: 'Vacuum', status: 'pending' }),
+        mkChore({ id: 'c-late', dueDate: '2026-06-25', title: 'Mow lawn', status: 'pending', dollarValue: 730 }),
+        mkChore({ id: 'c-soon', dueDate: '2026-06-16', title: 'Dishes', status: 'complete', dollarValue: 710 }),
+        mkChore({ id: 'c-mid', dueDate: '2026-06-20', title: 'Trash', status: 'rejected', dollarValue: 720 }),
+        mkChore({ id: 'c-overflow', dueDate: '2026-06-30', title: 'Vacuum', status: 'pending', dollarValue: 740 }),
       ]),
     });
     const chores = section(/my chores/i);
@@ -236,7 +236,12 @@ describe('DashboardScreen — MEMBER layout', () => {
     // Soonest first: Dishes (06-16) before Trash (06-20) before Mow lawn (06-25).
     expect(within(chores).getByText('Dishes')).toBeInTheDocument();
     expect(within(chores).queryByText('Vacuum')).not.toBeInTheDocument();
+    // Every displayed chore shows its own value regardless of status (distinct
+    // fixtures avoid a $X.XX collision); the overflow chore is not rendered.
     expect(within(chores).getByText(/\$7\.10/)).toBeInTheDocument();
+    expect(within(chores).getByText(/\$7\.20/)).toBeInTheDocument();
+    expect(within(chores).getByText(/\$7\.30/)).toBeInTheDocument();
+    expect(within(chores).queryByText(/\$7\.40/)).not.toBeInTheDocument();
   });
 
   it('renders only FUTURE events (local today or later), soonest first, capped at 3', () => {
@@ -262,12 +267,15 @@ describe('DashboardScreen — MEMBER layout', () => {
       role: 'member',
       posts: settled([
         mkPost({ id: 'p1', authorName: 'Sarah Kim', content: 'Newest news', createdAt: NOW - ONE_HOUR }),
-        mkPost({ id: 'p2', content: 'Older news', createdAt: NOW - 5 * ONE_HOUR }),
+        mkPost({ id: 'p2', authorName: 'Tom Lee', content: 'Older news', createdAt: NOW - 5 * ONE_HOUR }),
       ]),
     });
     const posts = section(/recent posts/i);
+    // Each post shows its own author (distinct fixtures avoid a name collision).
     expect(within(posts).getByText('Sarah Kim')).toBeInTheDocument();
+    expect(within(posts).getByText('Tom Lee')).toBeInTheDocument();
     expect(within(posts).getByText(/newest news/i)).toBeInTheDocument();
+    expect(within(posts).getByText(/older news/i)).toBeInTheDocument();
     expect(within(posts).getByText(/1h ago/)).toBeInTheDocument();
   });
 
