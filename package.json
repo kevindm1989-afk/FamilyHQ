@@ -17,7 +17,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:rules": "vitest run --config vitest.rules.config.ts",
-    "a11y": "echo 'TODO(Phase 4 / Task 17): wire the real a11y gate (axe / playwright). Placeholder passes.' && exit 0"
+    "a11y": "vitest run --config vitest.a11y.config.ts"
   },
   "_overrides_rationale": "Transitive deps below are flagged by npm audit but reach us only via the dev-only firebase-tools CLI or non-browser code paths of the firebase SDK. Pinned to fixed releases so the high/critical audit gate passes without weakening the gate itself.",
   "overrides": {
@@ -41,6 +41,7 @@
     "@types/react-dom": "18.3.0",
     "@vitejs/plugin-react": "4.3.1",
     "autoprefixer": "10.4.19",
+    "axe-core": "4.11.4",
     "eslint": "9.5.0",
     "eslint-plugin-react-hooks": "5.0.0",
     "eslint-plugin-react-refresh": "0.4.7",
@@ -55,6 +56,7 @@
     "typescript-eslint": "8.4.0",
     "vite": "5.3.1",
     "vite-plugin-pwa": "0.20.0",
-    "vitest": "1.6.1"
+    "vitest": "1.6.1",
+    "vitest-axe": "0.1.0"
   }
 }
