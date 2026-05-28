@@ -122,6 +122,51 @@ describe('selectSoonestChores — dueDate ascending, capped, stable (happy + edg
   });
 });
 
+describe('selectSoonestChores — F5: tolerates missing / non-ISO dueDate without throwing', () => {
+  // F5 (LOW): `a.chore.dueDate.localeCompare(...)` throws if dueDate is
+  // undefined/null, crashing the member home. A malformed dueDate must NOT
+  // throw; the well-formed chores still sort soonest-first and malformed ones
+  // sort deterministically LAST (after all parseable ISO dates).
+
+  it('does NOT throw when a chore has an undefined dueDate', () => {
+    const chores = [
+      mkChore({ id: 'good', dueDate: '2026-06-01' }),
+      // Production data / stale cache can carry a missing dueDate; cast to feed it.
+      mkChore({ id: 'no-due', dueDate: undefined as unknown as string }),
+    ];
+    expect(() => selectSoonestChores(chores, 3)).not.toThrow();
+  });
+
+  it('does NOT throw when a chore has an empty-string dueDate', () => {
+    const chores = [
+      mkChore({ id: 'good', dueDate: '2026-06-01' }),
+      mkChore({ id: 'empty-due', dueDate: '' }),
+    ];
+    expect(() => selectSoonestChores(chores, 3)).not.toThrow();
+  });
+
+  it('returns the cap and sorts well-formed chores soonest-first, malformed LAST', () => {
+    const chores = [
+      mkChore({ id: 'undef', dueDate: undefined as unknown as string }),
+      mkChore({ id: 'late', dueDate: '2026-06-20' }),
+      mkChore({ id: 'empty', dueDate: '' }),
+      mkChore({ id: 'soon', dueDate: '2026-06-05' }),
+    ];
+    // Cap honored (4 in, 3 out); the two parseable ISO dates come first in
+    // ascending order, and exactly one malformed entry survives the cap at the end.
+    const result = selectSoonestChores(chores, 3).map((c) => c.id);
+    expect(result).toEqual(['soon', 'late', 'undef']);
+  });
+
+  it('places empty-string dueDate after parseable ISO dates (deterministic last)', () => {
+    const chores = [
+      mkChore({ id: 'empty', dueDate: '' }),
+      mkChore({ id: 'soon', dueDate: '2026-06-05' }),
+    ];
+    expect(selectSoonestChores(chores, 3).map((c) => c.id)).toEqual(['soon', 'empty']);
+  });
+});
+
 describe('selectUpcomingEvents — TZ-sensitive future filter (lesson F4: local today is NOT past)', () => {
   const ORIGINAL_TZ = process.env.TZ;
   beforeEach(() => {
@@ -177,6 +222,167 @@ describe('selectUpcomingEvents — TZ-sensitive future filter (lesson F4: local 
   it('returns an empty array when no event is today-or-later (no throw)', () => {
     const nowMs = new Date('2026-06-15T19:00:00.000Z').getTime();
     const events = [mkEvent({ id: 'past', date: '2026-01-01' })];
+    expect(selectUpcomingEvents(events, nowMs, 3)).toEqual([]);
+  });
+});
+
+describe('selectUpcomingEvents — F1: buckets TIME-BEARING ISO datetimes by the VIEWER LOCAL day (LA)', () => {
+  // F1 (HIGH/BLOCKER): the selector slices the raw UTC date substring
+  // (`iso.slice(0,10)`) and compares it to a LOCAL today key — two different
+  // time bases. For a non-UTC viewer an event with a TIME component lands in
+  // the wrong day. These fixtures all carry a time component (the existing
+  // date-only suite hides the bug). TZ is set per-test and restored in afterEach
+  // so a non-UTC zone never leaks into a sibling suite.
+  const ORIGINAL_TZ = process.env.TZ;
+  beforeEach(() => {
+    // America/Los_Angeles is PDT (UTC-7) in June.
+    process.env.TZ = 'America/Los_Angeles';
+  });
+  afterEach(() => {
+    if (ORIGINAL_TZ === undefined) delete process.env.TZ;
+    else process.env.TZ = ORIGINAL_TZ;
+  });
+
+  it('DROPS a time-bearing event that is yesterday in LOCAL time though its UTC substring reads today', () => {
+    // Local now = 2026-06-15 12:00 PDT (== 2026-06-15 19:00 UTC).
+    const nowMs = new Date('2026-06-15T19:00:00.000Z').getTime();
+    // 2026-06-15T02:00Z == 2026-06-14 19:00 PDT — that is YESTERDAY locally and
+    // must be dropped. Its UTC substring "2026-06-15" would wrongly KEEP it.
+    const events = [mkEvent({ id: 'utc-today-but-local-yesterday', date: '2026-06-15T02:00:00.000Z' })];
+    expect(
+      selectUpcomingEvents(events, nowMs, 3).map((e) => e.id),
+      'an event at 2026-06-14 19:00 LOCAL is past and must be dropped',
+    ).toEqual([]);
+  });
+
+  it('KEEPS a time-bearing event that is today in LOCAL time though its UTC substring reads tomorrow', () => {
+    const nowMs = new Date('2026-06-15T19:00:00.000Z').getTime();
+    // 2026-06-16T05:00Z == 2026-06-15 22:00 PDT — still TODAY locally, must be
+    // kept. Its UTC substring "2026-06-16" is correct here but the next test
+    // proves the bucket is the LOCAL instant, not the substring.
+    const events = [mkEvent({ id: 'local-today-evening', date: '2026-06-16T05:00:00.000Z' })];
+    expect(selectUpcomingEvents(events, nowMs, 3).map((e) => e.id)).toEqual(['local-today-evening']);
+  });
+
+  it('orders the kept time-bearing event as today/soonest ahead of a later future event', () => {
+    const nowMs = new Date('2026-06-15T19:00:00.000Z').getTime();
+    const events = [
+      mkEvent({ id: 'future', date: '2026-06-20T18:00:00.000Z' }),
+      mkEvent({ id: 'local-today-evening', date: '2026-06-16T05:00:00.000Z' }), // 06-15 22:00 PDT
+    ];
+    expect(selectUpcomingEvents(events, nowMs, 3).map((e) => e.id)).toEqual([
+      'local-today-evening',
+      'future',
+    ]);
+  });
+
+  it('buckets an OFFSET-form date by its LOCAL instant in the viewer zone (kept)', () => {
+    const nowMs = new Date('2026-06-15T19:00:00.000Z').getTime();
+    // '2026-06-15T23:30:00.000-04:00' == 2026-06-16 03:30 UTC == 2026-06-15
+    // 20:30 PDT — TODAY locally, must be kept (the -04:00 substring "2026-06-15"
+    // happens to agree, but the assertion pins the LOCAL instant).
+    const events = [mkEvent({ id: 'offset-local-today', date: '2026-06-15T23:30:00.000-04:00' })];
+    expect(selectUpcomingEvents(events, nowMs, 3).map((e) => e.id)).toEqual(['offset-local-today']);
+  });
+
+  it('DROPS an OFFSET-form date whose LOCAL instant is yesterday (substring would keep it)', () => {
+    const nowMs = new Date('2026-06-15T19:00:00.000Z').getTime();
+    // '2026-06-15T01:00:00.000-04:00' == 2026-06-15 05:00 UTC == 2026-06-14
+    // 22:00 PDT — YESTERDAY locally, must be dropped. Its substring "2026-06-15"
+    // would wrongly keep it.
+    const events = [mkEvent({ id: 'offset-local-yesterday', date: '2026-06-15T01:00:00.000-04:00' })];
+    expect(
+      selectUpcomingEvents(events, nowMs, 3).map((e) => e.id),
+      'offset date resolving to 2026-06-14 22:00 LOCAL is past',
+    ).toEqual([]);
+  });
+
+  it('keeps a DATE-ONLY today event green as a positive control (no regression)', () => {
+    const nowMs = new Date('2026-06-15T19:00:00.000Z').getTime();
+    const events = [mkEvent({ id: 'date-only-today', date: '2026-06-15' })];
+    expect(selectUpcomingEvents(events, nowMs, 3).map((e) => e.id)).toEqual(['date-only-today']);
+  });
+});
+
+describe('selectUpcomingEvents — F1: LOCAL-day bucketing under a UTC-AHEAD zone (Asia/Tokyo, not LA-specific)', () => {
+  const ORIGINAL_TZ = process.env.TZ;
+  beforeEach(() => {
+    // Asia/Tokyo is JST (UTC+9), no DST.
+    process.env.TZ = 'Asia/Tokyo';
+  });
+  afterEach(() => {
+    if (ORIGINAL_TZ === undefined) delete process.env.TZ;
+    else process.env.TZ = ORIGINAL_TZ;
+  });
+
+  it('KEEPS a time-bearing event whose UTC substring reads yesterday but is today in LOCAL (Tokyo)', () => {
+    // Local now = 2026-06-15 12:00 JST (== 2026-06-15 03:00 UTC).
+    const nowMs = new Date('2026-06-15T03:00:00.000Z').getTime();
+    // 2026-06-14T20:00Z == 2026-06-15 05:00 JST — TODAY locally, must be kept.
+    // Its UTC substring "2026-06-14" would wrongly DROP it.
+    const events = [mkEvent({ id: 'utc-yesterday-but-local-today', date: '2026-06-14T20:00:00.000Z' })];
+    expect(
+      selectUpcomingEvents(events, nowMs, 3).map((e) => e.id),
+      'an event at 2026-06-15 05:00 LOCAL (Tokyo) is today and must be kept',
+    ).toEqual(['utc-yesterday-but-local-today']);
+  });
+
+  it('KEEPS an OFFSET-form date whose UTC day is yesterday but resolves to today in LOCAL (Tokyo)', () => {
+    // In a UTC-AHEAD zone the local day is always >= the UTC day, so the only
+    // bug-exposing mismatch is "substring reads yesterday, local is today" — the
+    // buggy substring drops it, the correct LOCAL bucketing keeps it.
+    const nowMs = new Date('2026-06-15T03:00:00.000Z').getTime(); // 2026-06-15 12:00 JST
+    // '2026-06-14T22:00:00.000-04:00' == 2026-06-15 02:00 UTC == 2026-06-15
+    // 11:00 JST — TODAY locally, must be kept. Its UTC/offset substring
+    // "2026-06-14" would wrongly DROP it.
+    const events = [mkEvent({ id: 'offset-local-today-tokyo', date: '2026-06-14T22:00:00.000-04:00' })];
+    expect(
+      selectUpcomingEvents(events, nowMs, 3).map((e) => e.id),
+      'offset date resolving to 2026-06-15 11:00 LOCAL (Tokyo) is today',
+    ).toEqual(['offset-local-today-tokyo']);
+  });
+});
+
+describe('selectUpcomingEvents — F2: malformed / empty event.date is DROPPED (never surfaced)', () => {
+  // F2 (MED): eventDayKey('garbage') currently passes the `>= todayKey` compare
+  // by lexicographic luck and renders <time dateTime="garbage">. An unparseable
+  // or empty date must be dropped from the result.
+  const ORIGINAL_TZ = process.env.TZ;
+  beforeEach(() => {
+    process.env.TZ = 'America/Los_Angeles';
+  });
+  afterEach(() => {
+    if (ORIGINAL_TZ === undefined) delete process.env.TZ;
+    else process.env.TZ = ORIGINAL_TZ;
+  });
+
+  it('drops an event whose date is an empty string', () => {
+    const nowMs = new Date('2026-06-15T19:00:00.000Z').getTime();
+    const events = [
+      mkEvent({ id: 'empty', date: '' }),
+      mkEvent({ id: 'good', date: '2026-06-20T18:00:00.000Z' }),
+    ];
+    expect(selectUpcomingEvents(events, nowMs, 3).map((e) => e.id)).toEqual(['good']);
+  });
+
+  it('drops an event whose date is a non-ISO / unparseable string', () => {
+    const nowMs = new Date('2026-06-15T19:00:00.000Z').getTime();
+    const events = [
+      mkEvent({ id: 'garbage', date: 'garbage' }),
+      mkEvent({ id: 'good', date: '2026-06-20T18:00:00.000Z' }),
+    ];
+    const result = selectUpcomingEvents(events, nowMs, 3).map((e) => e.id);
+    expect(result).not.toContain('garbage');
+    expect(result).toEqual(['good']);
+  });
+
+  it('does not throw and returns [] when every event date is malformed', () => {
+    const nowMs = new Date('2026-06-15T19:00:00.000Z').getTime();
+    const events = [
+      mkEvent({ id: 'empty', date: '' }),
+      mkEvent({ id: 'garbage', date: 'not-a-date' }),
+    ];
+    expect(() => selectUpcomingEvents(events, nowMs, 3)).not.toThrow();
     expect(selectUpcomingEvents(events, nowMs, 3)).toEqual([]);
   });
 });

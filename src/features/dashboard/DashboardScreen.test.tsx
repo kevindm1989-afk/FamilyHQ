@@ -403,6 +403,151 @@ describe('DashboardScreen — single-error-channel (no toast spam, PII-safe inli
   });
 });
 
+describe('DashboardScreen — A1: invalid money has a MEANINGFUL accessible name (not a bare dash)', () => {
+  // A1 (MOD): when the balance / a chore "worth" renders MONEY_INVALID_INDICATOR
+  // ("—"), the accessible NAME must be a real phrase. A screen reader voices a
+  // bare em-dash as nothing/"dash", so "Current balance —" / "worth —" is not an
+  // accessible name. Distinct fixtures + scoped within().
+
+  it('gives a non-finite balance a meaningful accessible name, not "Current balance —"', () => {
+    renderDash({ role: 'member', balanceCents: Number.NaN });
+    const balance = screen.getByText(/current balance/i);
+    const accessibleName = balance.getAttribute('aria-label') ?? '';
+    // The visible em-dash may still show, but the accessible NAME must be a phrase
+    // a screen reader can voice — not the bare indicator.
+    expect(accessibleName).toMatch(/current balance unavailable/i);
+    expect(accessibleName).not.toMatch(/current balance\s*—\s*$/);
+    expect(accessibleName).not.toBe(`Current balance ${MONEY_INVALID_INDICATOR}`);
+  });
+
+  it('keeps a VALID balance accessible name as the formatted amount (positive control)', () => {
+    renderDash({ role: 'member', balanceCents: 3850 });
+    const balance = screen.getByText(/current balance/i);
+    expect(balance.getAttribute('aria-label') ?? '').toMatch(/current balance.*\$38\.50/i);
+  });
+
+  it('gives an invalid chore worth a meaningful accessible name, not "worth —"', () => {
+    renderDash({
+      role: 'member',
+      // Distinct invalid value (non-finite) on a single chore so the worth slot is
+      // the only invalid-money surface; valid balance avoids a second indicator.
+      balanceCents: 3850,
+      myChores: settled([mkChore({ id: 'c-bad', title: 'Mystery chore', dollarValue: Number.NaN })]),
+    });
+    const chores = section(/my chores/i);
+    const row = within(chores).getByText('Mystery chore').closest('li');
+    expect(row).not.toBeNull();
+    const worth = within(row as HTMLElement).getByText(MONEY_INVALID_INDICATOR);
+    const accessibleName = worth.getAttribute('aria-label') ?? '';
+    expect(accessibleName).toMatch(/worth.*(unavailable|not available)/i);
+    expect(accessibleName).not.toBe(`worth ${MONEY_INVALID_INDICATOR}`);
+  });
+});
+
+describe('DashboardScreen — A4: refresh announces via ONE page-level polite live region', () => {
+  // A4 (MOD): refresh is currently silent (WCAG 4.1.3). Pin a SINGLE page-level
+  // role="status" (polite) live region that conveys refresh activity. Exactly
+  // one such page-level region (not one per section), and activating refresh
+  // wires it. We do NOT require role="alert" and do NOT require per-section alerts.
+
+  it('renders exactly ONE page-level role="status" live region (not one per section)', () => {
+    // All feeds settled so no section renders its own Skeleton (role=status).
+    renderDash({ role: 'member' });
+    const statuses = screen.queryAllByRole('status');
+    expect(statuses).toHaveLength(1);
+  });
+
+  it('the page-level status region is polite (aria-live="polite"), not assertive', () => {
+    renderDash({ role: 'member' });
+    const status = screen.getByRole('status');
+    const live = status.getAttribute('aria-live');
+    // role="status" implies polite; if aria-live is set explicitly it must be polite.
+    expect(live === null || live === 'polite').toBe(true);
+    expect(live).not.toBe('assertive');
+  });
+
+  it('activating refresh updates the page-level status region (refresh is announced)', () => {
+    renderDash({ role: 'member' });
+    const status = screen.getByRole('status');
+    const before = status.textContent ?? '';
+    fireEvent.click(screen.getByRole('button', { name: /refresh/i }));
+    const after = status.textContent ?? '';
+    // The live region conveys refresh activity: its text changes / becomes non-empty
+    // on refresh, so a screen reader announces something.
+    expect(after.trim().length).toBeGreaterThan(0);
+    expect(after).not.toBe(before);
+  });
+
+  it('does not introduce a role="alert" for refresh (polite only, no toast escalation)', () => {
+    renderDash({ role: 'member' });
+    fireEvent.click(screen.getByRole('button', { name: /refresh/i }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('DashboardScreen — A6: event tag shows the capitalized display label, not the raw enum', () => {
+  // A6 (MINOR): the events badge currently renders the raw lowercase tag
+  // ("school"). The visible badge must show the display label ("School" etc.),
+  // matching how AddEvent labels its categories. Scoped within the events section.
+
+  it('renders the "School" label for a school-tagged event (not "school")', () => {
+    renderDash({
+      role: 'member',
+      events: settled([mkEvent({ id: 'e-school', date: '2026-06-18', title: 'Field trip', tag: 'school' })]),
+    });
+    const events = section(/upcoming events/i);
+    expect(within(events).getByText('School')).toBeInTheDocument();
+    expect(within(events).queryByText('school')).not.toBeInTheDocument();
+  });
+
+  it('renders the "Sports" label for a sports-tagged event', () => {
+    renderDash({
+      role: 'member',
+      events: settled([mkEvent({ id: 'e-sports', date: '2026-06-18', title: 'Soccer', tag: 'sports' })]),
+    });
+    const events = section(/upcoming events/i);
+    expect(within(events).getByText('Sports')).toBeInTheDocument();
+    expect(within(events).queryByText('sports')).not.toBeInTheDocument();
+  });
+
+  it('renders the "Work" label for a work-tagged event', () => {
+    renderDash({
+      role: 'member',
+      events: settled([mkEvent({ id: 'e-work', date: '2026-06-18', title: 'Meeting', tag: 'work' })]),
+    });
+    const events = section(/upcoming events/i);
+    expect(within(events).getByText('Work')).toBeInTheDocument();
+    expect(within(events).queryByText('work')).not.toBeInTheDocument();
+  });
+});
+
+describe('DashboardScreen — F2: malformed event date never renders an invalid <time dateTime>', () => {
+  // F2 (MED) screen-level: a dropped malformed event must not leave a
+  // <time dateTime="garbage"> in the DOM. Pin that every rendered <time> in the
+  // events section carries a parseable dateTime.
+  it('renders no <time> with an unparseable dateTime when an event date is malformed', () => {
+    renderDash({
+      role: 'member',
+      events: settled([
+        mkEvent({ id: 'e-bad', date: 'garbage', title: 'Broken event' }),
+        mkEvent({ id: 'e-good', date: '2026-06-20', title: 'Good event' }),
+      ]),
+    });
+    const events = section(/upcoming events/i);
+    // The malformed event is dropped, so its title is absent.
+    expect(within(events).queryByText('Broken event')).not.toBeInTheDocument();
+    // Every <time> that IS rendered must carry a parseable dateTime.
+    const times = within(events).queryAllByText(/./, { selector: 'time' });
+    for (const time of times) {
+      const dt = time.getAttribute('dateTime') ?? '';
+      expect(dt).not.toBe('garbage');
+      expect(new Date(dt).toString(), `time dateTime "${dt}" must be parseable`).not.toBe(
+        'Invalid Date',
+      );
+    }
+  });
+});
+
 describe('DashboardScreen — "View all" deep links + a11y structure', () => {
   it('member "View all" controls navigate to the right ScreenId with target-specific names', () => {
     const props = renderDash({ role: 'member' });
