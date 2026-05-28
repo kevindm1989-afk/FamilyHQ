@@ -1,0 +1,91 @@
+{
+  "_meta": {
+    "language": "Français (fr) — developer-authored placeholder. MUST be reviewed by a native French speaker (Canadian French preferred — Quebec Law 25 / OQLF register) before public launch. Mirrored from en.json key-for-key; missing keys fall back to English at runtime.",
+    "review_status": "PLACEHOLDER — NEEDS NATIVE-SPEAKER REVIEW",
+    "register_target": "Canadian French (fr-CA), warm but plain — same tone as the English source. Avoid France-specific idiom (e.g. 'mél' for email, 'arobase' if writing addresses)."
+  },
+
+  "common": {
+    "appName": "Family HQ",
+    "loading": "Chargement…",
+    "loadingFamily": "Chargement de votre famille…",
+    "back": "Retour",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "retry": "Réessayer"
+  },
+
+  "language": {
+    "selectorLabel": "Langue",
+    "switchedTo": "Langue changée pour {{language}}."
+  },
+
+  "login": {
+    "tagline": {
+      "signin": "Votre point de rencontre familial.",
+      "signup": "Créez votre point de rencontre familial.",
+      "forgot": "Réinitialisez votre mot de passe."
+    },
+    "field": {
+      "familyName": "Nom de famille",
+      "name": "Votre nom",
+      "email": "Courriel",
+      "password": "Mot de passe"
+    },
+    "submit": {
+      "signin": "Se connecter",
+      "signup": "Créer la famille",
+      "forgot": "Envoyer le lien de réinitialisation"
+    },
+    "switch": {
+      "toSignup": "Nouveau ici ? Créer une famille",
+      "toForgot": "Mot de passe oublié ?",
+      "toSignin": "Retour à la connexion"
+    },
+    "toast": {
+      "signedIn": "Connecté.",
+      "created": "Famille créée. Bienvenue à Family HQ.",
+      "resetSent": "Si ce courriel existe, un lien de réinitialisation arrive.",
+      "generic": "Une erreur est survenue. Veuillez réessayer."
+    },
+    "footer": {
+      "accessibility": "Déclaration d’accessibilité"
+    }
+  },
+
+  "account": {
+    "title": "Compte",
+    "signOut": "Se déconnecter",
+    "signOutError": "Nous n’avons pas pu vous déconnecter complètement. Veuillez réessayer.",
+    "resourcesLabel": "Ressources du site",
+    "accessibilityLink": "Déclaration d’accessibilité et commentaires"
+  },
+
+  "accessibility": {
+    "title": "Accessibilité chez Family HQ",
+    "lastReviewed": "Dernière révision : <1>{{date}}</1>",
+    "back": "← Retour à la connexion",
+    "commitment": {
+      "heading": "Notre engagement",
+      "body": "Family HQ est conçu pour chaque membre de chaque famille. Nous concevons et développons en plaçant l’accessibilité à la base — non pas comme une réflexion après coup — et nous voulons savoir lorsque nous nous trompons."
+    },
+    "conformance": {
+      "heading": "Objectif de conformité",
+      "body1": "Nous visons à respecter le niveau <strong>{{target}}</strong> des Règles pour l’accessibilité des contenus Web, et à le dépasser lorsque nous le pouvons. C’est le minimum légal pour les services au public en vertu de la Loi sur l’accessibilité pour les personnes handicapées de l’Ontario (LAPHO/AODA).",
+      "body2": "La conformité est vérifiée par une combinaison de contrôles automatisés (axe-core dans notre pipeline d’intégration continue), un examen manuel structuré par notre équipe, et les commentaires continus des personnes qui utilisent Family HQ. Nous traitons les obstacles signalés comme des bogues et les trions avec la même urgence."
+    },
+    "limitations": {
+      "heading": "Limites connues",
+      "intro": "Nous publions ce que nous savons ne pas encore être conforme afin que vous puissiez en tenir compte et que nous soyons responsables des correctifs :",
+      "atTesting": "Les <strong>tests avec des utilisateurs réels de technologies d’assistance</strong> sont prévus mais n’ont pas encore été effectués sur cette version. Si un lecteur d’écran, une commande vocale ou un dispositif à interrupteur ne fonctionne pas pour vous, nous voulons le savoir.",
+      "audit": "Un <strong>audit d’accessibilité indépendant par un tiers</strong> est prévu avant le lancement public.",
+      "french": "Une <strong>révision de la traduction française</strong> par un réviseur de langue maternelle est prévue avant le lancement public — la copie française actuelle est un texte temporaire rédigé par les développeurs."
+    },
+    "feedback": {
+      "heading": "Signaler un obstacle ou demander un format alternatif",
+      "body1": "Si vous rencontrez un obstacle d’accessibilité dans Family HQ, ou si vous avez besoin d’information de ce site dans un format alternatif (gros caractères, texte brut, format électronique accessible, ou un autre arrangement qui fonctionne pour vous), veuillez nous contacter :",
+      "body2": "Nous visons à accuser réception de chaque rapport dans les deux jours ouvrables et à fournir une réponse substantielle dans les dix jours ouvrables. Veuillez inclure la page ou le parcours où l’obstacle est apparu, la technologie d’assistance que vous utilisiez, et une description de ce qui n’a pas fonctionné."
+    }
+  }
+}

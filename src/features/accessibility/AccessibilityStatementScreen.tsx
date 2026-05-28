@@ -17,10 +17,17 @@
  *                BottomNav handles navigation, so this variant does not
  *                duplicate it.
  *
+ * i18n: all visible copy reads from the 'common' namespace (accessibility.*
+ * keys in src/locales/{en,fr}.json). The French copy is a developer-authored
+ * placeholder and is flagged as such in fr.json's `_meta` AND in the
+ * statement's own "Known limitations" section, so a French-speaking visitor
+ * is told upfront that the translation is pending native-speaker review.
+ *
  * Content that requires human sign-off before public launch is marked with
  * `// REVIEW:` comments next to the line; see PR description.
  */
 import type { ReactElement } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 
 // REVIEW (PRE-LAUNCH): replace with the real service domain's mailbox.
@@ -44,6 +51,7 @@ interface Props {
 }
 
 export function AccessibilityStatementScreen({ mode }: Props): ReactElement {
+  const { t } = useTranslation();
   const headingId = 'accessibility-statement-heading';
 
   return (
@@ -57,81 +65,73 @@ export function AccessibilityStatementScreen({ mode }: Props): ReactElement {
             to="/"
             className="text-brand focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
           >
-            ← Back to sign in
+            {t('accessibility.back')}
           </Link>
         </p>
       )}
 
       <h1 id={headingId} className="text-display font-display font-extrabold text-ink">
-        Accessibility at Family HQ
+        {t('accessibility.title')}
       </h1>
       <p className="text-meta text-ink-mute">
-        Last reviewed:{' '}
-        <time dateTime={ACCESSIBILITY_LAST_REVIEWED_ISO}>{ACCESSIBILITY_LAST_REVIEWED_ISO}</time>
+        <Trans
+          i18nKey="accessibility.lastReviewed"
+          values={{ date: ACCESSIBILITY_LAST_REVIEWED_ISO }}
+          components={{
+            // The date itself stays inside a <time datetime=...> for machine
+            // readability — Trans wires the children into the {{date}} slot.
+            1: <time dateTime={ACCESSIBILITY_LAST_REVIEWED_ISO} />,
+          }}
+        />
       </p>
 
       <section aria-labelledby="commitment-heading" className="flex flex-col gap-8">
         <h2 id="commitment-heading" className="text-title font-semibold text-ink">
-          Our commitment
+          {t('accessibility.commitment.heading')}
         </h2>
-        <p className="text-body text-ink">
-          Family HQ is built for every member of every family. We design and develop with
-          accessibility as a baseline — not an afterthought — and we want to hear from you when we
-          get it wrong.
-        </p>
+        <p className="text-body text-ink">{t('accessibility.commitment.body')}</p>
       </section>
 
       <section aria-labelledby="conformance-heading" className="flex flex-col gap-8">
         <h2 id="conformance-heading" className="text-title font-semibold text-ink">
-          Conformance target
+          {t('accessibility.conformance.heading')}
         </h2>
         <p className="text-body text-ink">
-          We aim to meet <strong>{CONFORMANCE_TARGET}</strong> of the Web Content Accessibility
-          Guidelines, and to exceed it where we can. This is the legal minimum for public-facing
-          services under the Accessibility for Ontarians with Disabilities Act (AODA).
+          <Trans
+            i18nKey="accessibility.conformance.body1"
+            values={{ target: CONFORMANCE_TARGET }}
+            components={{ strong: <strong /> }}
+          />
         </p>
-        <p className="text-body text-ink">
-          Conformance is verified by a combination of automated checks (axe-core in our
-          continuous-integration pipeline), structured manual review by our team, and ongoing
-          feedback from people who use Family HQ. We treat reported barriers as bugs and triage them
-          with the same urgency.
-        </p>
+        <p className="text-body text-ink">{t('accessibility.conformance.body2')}</p>
       </section>
 
       <section aria-labelledby="limitations-heading" className="flex flex-col gap-8">
         <h2 id="limitations-heading" className="text-title font-semibold text-ink">
-          Known limitations
+          {t('accessibility.limitations.heading')}
         </h2>
-        <p className="text-body text-ink">
-          We publish what we know is not yet conformant so you can plan around it and so we are
-          accountable to fixing it:
-        </p>
+        <p className="text-body text-ink">{t('accessibility.limitations.intro')}</p>
         <ul className="ml-24 list-disc text-body text-ink">
           <li>
-            <strong>Real-user assistive-technology testing</strong> is scheduled but has not yet
-            been completed against this build. If a screen reader, voice control, or switch device
-            fails for you, we want to know.
+            <Trans
+              i18nKey="accessibility.limitations.atTesting"
+              components={{ strong: <strong /> }}
+            />
           </li>
           <li>
-            <strong>Independent third-party accessibility audit</strong> is scheduled before public
-            launch.
+            <Trans i18nKey="accessibility.limitations.audit" components={{ strong: <strong /> }} />
           </li>
           <li>
-            <strong>French-language interface</strong> is not yet available; this is tracked
-            separately as a localization deliverable.
+            <Trans i18nKey="accessibility.limitations.french" components={{ strong: <strong /> }} />
           </li>
         </ul>
       </section>
 
       <section aria-labelledby="feedback-heading" className="flex flex-col gap-8">
         <h2 id="feedback-heading" className="text-title font-semibold text-ink">
-          Report a barrier or request an alternative format
+          {t('accessibility.feedback.heading')}
         </h2>
-        <p className="text-body text-ink">
-          If you encounter an accessibility barrier in Family HQ, or you need information from this
-          site in an alternative format (large print, plain text, an accessible electronic format,
-          or another arrangement that works for you), please contact us:
-        </p>
+        <p className="text-body text-ink">{t('accessibility.feedback.body1')}</p>
         <p className="text-body text-ink">
           <a
             href={`mailto:${ACCESSIBILITY_CONTACT_EMAIL}?subject=${encodeURIComponent('Accessibility feedback — Family HQ')}`}
@@ -140,11 +140,7 @@ export function AccessibilityStatementScreen({ mode }: Props): ReactElement {
             {ACCESSIBILITY_CONTACT_EMAIL}
           </a>
         </p>
-        <p className="text-body text-ink">
-          We aim to acknowledge every report within two business days and to provide a substantive
-          response within ten business days. Please include the page or flow where the barrier
-          appeared, the assistive technology you were using, and a description of what went wrong.
-        </p>
+        <p className="text-body text-ink">{t('accessibility.feedback.body2')}</p>
       </section>
     </main>
   );

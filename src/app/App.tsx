@@ -6,7 +6,8 @@
  * Phase-3 placeholders. The "Family HQ" brand mark renders in the loading and
  * logged-out states so the shell always shows something real.
  */
-import { Suspense, lazy, type ReactElement } from 'react';
+import { Suspense, lazy, useEffect, type ReactElement } from 'react';
+import { useTranslation } from 'react-i18next';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { LoginScreen } from '../features/auth/LoginScreen';
 import { AuthProvider, useAuth } from '../hooks/useAuth';
@@ -34,18 +35,39 @@ const AccessibilityStatementScreen = lazy(() =>
 );
 
 function BrandSplash(): ReactElement {
+  const { t } = useTranslation();
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-surface-bg px-24">
-      <h1 className="text-display font-display font-extrabold text-brand">Family HQ</h1>
+      <h1 className="text-display font-display font-extrabold text-brand">{t('common.appName')}</h1>
       <p className="mt-12 text-body text-ink-mute" aria-busy="true">
-        Loading…
+        {t('common.loading')}
       </p>
     </main>
   );
 }
 
+/**
+ * Sync `<html lang>` with the active i18n language. Critical for assistive
+ * tech — a screen reader uses the lang attribute to pick the correct
+ * pronunciation voice. Browsers also use it for hyphenation, spell-check,
+ * etc. Listens on i18n's language-change event so a toggle anywhere in the
+ * tree updates the root element.
+ */
+function useLangAttributeSync(): void {
+  const { i18n } = useTranslation();
+  useEffect(() => {
+    const apply = (lng: string): void => {
+      document.documentElement.lang = lng;
+    };
+    apply(i18n.resolvedLanguage ?? i18n.language ?? 'en');
+    i18n.on('languageChanged', apply);
+    return () => i18n.off('languageChanged', apply);
+  }, [i18n]);
+}
+
 function Gate(): ReactElement {
   const { authUser, loading } = useAuth();
+  useLangAttributeSync();
   if (loading) return <BrandSplash />;
   // Signed-out flow has its own tiny route table because /accessibility is an
   // AODA launch-gate requirement that MUST work for a user who can't get past

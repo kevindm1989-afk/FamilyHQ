@@ -1,7 +1,8 @@
 import { Suspense, lazy, useMemo, useState, type ReactElement } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AccessibilityStatementScreen } from '../features/accessibility/AccessibilityStatementScreen';
-import { AvatarChip, BottomNav, Button, Skeleton, TopBar } from '../components';
+import { AvatarChip, BottomNav, Button, LanguageToggle, Skeleton, TopBar } from '../components';
 import type { NavTab } from '../components';
 import { useAuth } from '../hooks/useAuth';
 import { useFamily } from '../hooks/useFamily';
@@ -35,6 +36,7 @@ const FamilyManagementRoute = lazy(() => import('../features/family/FamilyManage
  * cosmetic — firestore.rules is the real authority boundary.
  */
 export function AppShell(): ReactElement {
+  const { t } = useTranslation();
   const { currentUser, role, loading } = useFamily();
   const navigate = useNavigate();
   const location = useLocation();
@@ -47,7 +49,7 @@ export function AppShell(): ReactElement {
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-surface-bg">
-        <Skeleton label="Loading your family…" />
+        <Skeleton label={t('common.loadingFamily')} />
       </main>
     );
   }
@@ -119,11 +121,17 @@ export function AppShell(): ReactElement {
  * content area so the TopBar + BottomNav stay rendered during the swap — the
  * user never sees the whole app blank out, just the screen body shimmer
  * briefly. Skeleton's aria-live announces the transition to assistive tech.
+ *
+ * The Skeleton's label MUST come from i18n's common.loading key — tests
+ * (AppShell.<feature>.test.tsx) wait for this exact string to disappear to
+ * gate on the route having mounted. If the label changes, those tests'
+ * waitFor predicates must change in lockstep.
  */
 function RouteFallback(): ReactElement {
+  const { t } = useTranslation();
   return (
     <section className="flex flex-col items-center justify-center px-16 pt-32">
-      <Skeleton label="Loading…" />
+      <Skeleton label={t('common.loading')} />
     </section>
   );
 }
@@ -136,6 +144,7 @@ function RouteFallback(): ReactElement {
  * auth gate returns the user to the Login screen automatically.
  */
 function AccountScreen(): ReactElement {
+  const { t } = useTranslation();
   const { signOut } = useAuth();
   const { showToast } = useToast();
   const [signingOut, setSigningOut] = useState(false);
@@ -145,25 +154,28 @@ function AccountScreen(): ReactElement {
     void signOut().catch(() => {
       // Cache is cleared even on failure (see signOutAndClearCache); surface a
       // user-safe toast — never a raw error.
-      showToast('We could not fully sign you out. Please try again.');
+      showToast(t('account.signOutError'));
       setSigningOut(false);
     });
   };
 
   return (
     <section className="flex flex-col gap-16 px-16 pt-4">
-      <h1 className="text-display font-display font-extrabold text-ink">Account</h1>
+      <h1 className="text-display font-display font-extrabold text-ink">{t('account.title')}</h1>
       <Button variant="danger" loading={signingOut} onClick={handleSignOut}>
-        Sign out
+        {t('account.signOut')}
       </Button>
       {/* AODA: the accessibility statement + feedback path must be reachable
-          from within the app, not only from the signed-out screen. */}
-      <nav aria-label="Site resources" className="mt-8">
+          from within the app, not only from the signed-out screen. The
+          language toggle sits in the same Account surface so a signed-in
+          user can switch language without having to sign out. */}
+      <LanguageToggle />
+      <nav aria-label={t('account.resourcesLabel')} className="mt-8">
         <Link
           to={ROUTES.accessibility.path}
           className="text-body text-brand focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
         >
-          Accessibility statement & feedback
+          {t('account.accessibilityLink')}
         </Link>
       </nav>
     </section>

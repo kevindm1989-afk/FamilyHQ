@@ -2,6 +2,15 @@
 // Adds @testing-library/jest-dom matchers (toBeInTheDocument, etc.).
 import '@testing-library/jest-dom/vitest';
 
+// Initialize i18next so any component that calls useTranslation in a test
+// gets real string lookups, not echoed keys. The main app does this via
+// main.tsx's `import './i18n'` side-effect; tests bypass main.tsx, so we
+// import the same module here. Same shared singleton across tests — a test
+// that calls `i18n.changeLanguage('fr')` will persist that across tests in
+// the same worker, so any test that depends on a specific language must
+// set it explicitly in beforeEach.
+import '../src/i18n';
+
 // Adds the a11y gate's `toHaveNoViolations` matcher (Phase 4 / Task 17).
 // vitest-axe@0.1.0 ships an empty `extend-expect.js` (upstream bug) AND its
 // `matchers.d.ts` re-exports `toHaveNoViolations` in a mixed-type-and-value

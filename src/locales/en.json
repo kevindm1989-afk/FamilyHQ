@@ -1,0 +1,91 @@
+{
+  "_meta": {
+    "language": "English (en) — the source language. Edit here first; mirror keys to fr.json.",
+    "key_convention": "dotted paths that mirror the source file's purpose (login.*, account.*, accessibility.*, etc.). Keep keys stable; values may evolve.",
+    "interpolation": "{{name}} for variables, $t(key) for nested references. See i18next docs."
+  },
+
+  "common": {
+    "appName": "Family HQ",
+    "loading": "Loading…",
+    "loadingFamily": "Loading your family…",
+    "back": "Back",
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "retry": "Try again"
+  },
+
+  "language": {
+    "selectorLabel": "Language",
+    "switchedTo": "Switched to {{language}}."
+  },
+
+  "login": {
+    "tagline": {
+      "signin": "Your shared family home base.",
+      "signup": "Create your family home base.",
+      "forgot": "Reset your password."
+    },
+    "field": {
+      "familyName": "Family name",
+      "name": "Your name",
+      "email": "Email",
+      "password": "Password"
+    },
+    "submit": {
+      "signin": "Sign in",
+      "signup": "Create family",
+      "forgot": "Send reset link"
+    },
+    "switch": {
+      "toSignup": "New here? Create a family",
+      "toForgot": "Forgot password?",
+      "toSignin": "Back to sign in"
+    },
+    "toast": {
+      "signedIn": "Signed in.",
+      "created": "Family created. Welcome to Family HQ.",
+      "resetSent": "If that email exists, a reset link is on its way.",
+      "generic": "Something went wrong. Please try again."
+    },
+    "footer": {
+      "accessibility": "Accessibility statement"
+    }
+  },
+
+  "account": {
+    "title": "Account",
+    "signOut": "Sign out",
+    "signOutError": "We could not fully sign you out. Please try again.",
+    "resourcesLabel": "Site resources",
+    "accessibilityLink": "Accessibility statement & feedback"
+  },
+
+  "accessibility": {
+    "title": "Accessibility at Family HQ",
+    "lastReviewed": "Last reviewed: <1>{{date}}</1>",
+    "back": "← Back to sign in",
+    "commitment": {
+      "heading": "Our commitment",
+      "body": "Family HQ is built for every member of every family. We design and develop with accessibility as a baseline — not an afterthought — and we want to hear from you when we get it wrong."
+    },
+    "conformance": {
+      "heading": "Conformance target",
+      "body1": "We aim to meet <strong>{{target}}</strong> of the Web Content Accessibility Guidelines, and to exceed it where we can. This is the legal minimum for public-facing services under the Accessibility for Ontarians with Disabilities Act (AODA).",
+      "body2": "Conformance is verified by a combination of automated checks (axe-core in our continuous-integration pipeline), structured manual review by our team, and ongoing feedback from people who use Family HQ. We treat reported barriers as bugs and triage them with the same urgency."
+    },
+    "limitations": {
+      "heading": "Known limitations",
+      "intro": "We publish what we know is not yet conformant so you can plan around it and so we are accountable to fixing it:",
+      "atTesting": "<strong>Real-user assistive-technology testing</strong> is scheduled but has not yet been completed against this build. If a screen reader, voice control, or switch device fails for you, we want to know.",
+      "audit": "<strong>Independent third-party accessibility audit</strong> is scheduled before public launch.",
+      "french": "<strong>French-language translation review</strong> by a native-speaker reviewer is scheduled before public launch — the current French copy is a developer-authored placeholder."
+    },
+    "feedback": {
+      "heading": "Report a barrier or request an alternative format",
+      "body1": "If you encounter an accessibility barrier in Family HQ, or you need information from this site in an alternative format (large print, plain text, an accessible electronic format, or another arrangement that works for you), please contact us:",
+      "body2": "We aim to acknowledge every report within two business days and to provide a substantive response within ten business days. Please include the page or flow where the barrier appeared, the assistive technology you were using, and a description of what went wrong."
+    }
+  }
+}
