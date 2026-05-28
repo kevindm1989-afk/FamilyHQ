@@ -13,6 +13,7 @@ import { AuthProvider, useAuth } from '../hooks/useAuth';
 import { FamilyProvider } from '../hooks/useFamily';
 import { ToastProvider } from '../hooks/useToast';
 import { AppShell } from './AppShell';
+import { PwaUpdatePrompt } from './PwaUpdatePrompt';
 import { ToastViewport } from './ToastViewport';
 
 function BrandSplash(): ReactElement {
@@ -44,6 +45,10 @@ export default function App(): ReactElement {
         <AuthProvider>
           <Gate />
           <ToastViewport />
+          {/* Mounted at the app root (not inside Gate) so a SW update prompt
+              surfaces on the login screen too — the new code is what serves
+              that screen on the next reload. */}
+          <PwaUpdatePrompt />
         </AuthProvider>
       </ToastProvider>
     </BrowserRouter>

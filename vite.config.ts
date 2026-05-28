@@ -12,16 +12,49 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-// PWA baseline only (ADR-0005). Manifest + autoUpdate registration.
-// TODO(Phase 4 / Task 16): Workbox app-shell precache, offline-fallback
-// navigation route, controlled SW update prompt, runtime asset caching.
+// PWA (ADR-0005): Firestore handles data offline; Workbox precaches the app
+// shell + serves an SPA fallback for navigations while offline. SW updates
+// are USER-CONTROLLED via `registerType: 'prompt'` — `src/app/PwaUpdatePrompt.tsx`
+// surfaces the prompt; mid-task users never get a surprise reload.
 export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // The new SW installs in the background but waits for an explicit
+      // updateServiceWorker(true) call — the prompt component owns that
+      // decision so a mid-task user is never reloaded silently.
+      registerType: 'prompt',
       // Icons are placeholders; real icon set is a Phase 4 / design deliverable.
       includeAssets: ['favicon.svg'],
+      workbox: {
+        // The app shell — every static artifact Vite emits. The SW precaches
+        // these at install time so a cold offline launch boots the SPA and
+        // Firestore's IndexedDB cache (config.ts) serves the data.
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest,woff2}'],
+        // SPA navigations that miss the precache (any deep route) fall back
+        // to the precached index.html. Without this the browser shows its
+        // offline error page on a fresh deep-link while offline.
+        navigateFallback: '/index.html',
+        // ...EXCEPT requests we MUST NOT serve from the shell — Firebase /
+        // Google API hosts handle their own offline path via the Firestore
+        // SDK's IndexedDB cache + write queue. Letting the SW intercept those
+        // would corrupt the SDK's transport. The denylist is conservative:
+        // anything looking like a Firebase / Google API host, and the auth
+        // popup handler routes.
+        navigateFallbackDenylist: [
+          /^\/__\//, // Firebase Hosting reserved
+          /\/firestore\.googleapis\.com\//,
+          /\/identitytoolkit\.googleapis\.com\//,
+          /\/securetoken\.googleapis\.com\//,
+        ],
+        // Prune precache entries for files that no longer exist in a new
+        // build, so storage doesn't grow unbounded across deployments.
+        cleanupOutdatedCaches: true,
+        // No skipWaiting — the prompt flow controls activation so a mid-task
+        // user is never replaced under their feet.
+        skipWaiting: false,
+        clientsClaim: false,
+      },
       manifest: {
         name: 'Family HQ',
         short_name: 'FamilyHQ',
