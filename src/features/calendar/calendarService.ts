@@ -150,6 +150,19 @@ export function canManageEvents(viewer: { role: Role }): boolean {
 }
 
 /**
+ * The single source of truth for a category/tag's human display label
+ * (School / Sports / Family / Work). Shared by AddEvent's category radios,
+ * CalendarScreen's agenda badges, and the Dashboard's upcoming-events badge so
+ * the capitalized label is never re-invented per surface.
+ */
+export const EVENT_TAG_LABEL: Record<EventTag, string> = {
+  school: 'School',
+  sports: 'Sports',
+  family: 'Family',
+  work: 'Work',
+};
+
+/**
  * STATIC lookup from a category/tag to its FULL literal token DOT colour class
  * (mirrors Badge.tsx's `TONE_CLASS`). The full literal strings are what make the
  * `bg-category-*-dot` utilities visible to Tailwind's JIT — a `bg-category-

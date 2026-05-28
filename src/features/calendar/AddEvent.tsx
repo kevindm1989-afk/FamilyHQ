@@ -25,7 +25,12 @@ import { BottomSheet } from '../../components';
 import { ToastViewport } from '../../app/ToastViewport';
 import { useToast } from '../../hooks/useToast';
 import type { EventTag, Role } from '../../lib/types';
-import { EVENT_CREATE_SUCCESS, EVENT_GENERIC_ERROR, eventTagDotClass } from './calendarService';
+import {
+  EVENT_CREATE_SUCCESS,
+  EVENT_GENERIC_ERROR,
+  EVENT_TAG_LABEL,
+  eventTagDotClass,
+} from './calendarService';
 
 export interface AddEventValue {
   title: string;
@@ -51,12 +56,11 @@ export interface AddEventProps {
 
 type DayChoice = 'today' | 'tomorrow';
 
-const CATEGORIES: ReadonlyArray<{ tag: EventTag; label: string }> = [
-  { tag: 'school', label: 'School' },
-  { tag: 'sports', label: 'Sports' },
-  { tag: 'family', label: 'Family' },
-  { tag: 'work', label: 'Work' },
-];
+// Labels come from calendarService (single source of truth, shared with the
+// agenda badges and the Dashboard upcoming-events badge); order is fixed here.
+const CATEGORIES: ReadonlyArray<{ tag: EventTag; label: string }> = (
+  ['school', 'sports', 'family', 'work'] as const
+).map((tag) => ({ tag, label: EVENT_TAG_LABEL[tag] }));
 
 const CATEGORY_TAGS: ReadonlyArray<EventTag> = CATEGORIES.map((c) => c.tag);
 const DAY_CHOICES: ReadonlyArray<DayChoice> = ['today', 'tomorrow'];

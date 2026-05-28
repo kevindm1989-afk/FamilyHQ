@@ -30,6 +30,7 @@ import {
   canManageEvents,
   EVENT_DELETE_SUCCESS,
   EVENT_GENERIC_ERROR,
+  EVENT_TAG_LABEL,
   eventTagDotClass,
   type EventWithId,
 } from './calendarService';
@@ -75,12 +76,9 @@ const MONTH_NAMES = [
 // S M T W T F S — duplicate letters are fine; each column is its own cell.
 const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-const TAG_LABEL: Record<EventTag, string> = {
-  school: 'School',
-  sports: 'Sports',
-  family: 'Family',
-  work: 'Work',
-};
+// The category display labels live in calendarService (single source of truth,
+// shared with AddEvent and the Dashboard upcoming-events badge).
+const TAG_LABEL = EVENT_TAG_LABEL;
 
 /**
  * Format the time-of-day shown in the agenda.

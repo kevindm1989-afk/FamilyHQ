@@ -21,11 +21,11 @@
  *    empty (EmptyState) / error (compact inline, single-channel — never a
  *    toast) states.
  */
-import { useId, type ReactElement, type ReactNode } from 'react';
+import { useId, useState, type ReactElement, type ReactNode } from 'react';
 import { Badge, Card, EmptyState, Skeleton, type BadgeTone } from '../../components';
 import type { ChoreStatus, Role, UserWithId } from '../../lib/types';
 import type { ChoreWithId } from '../chores/choresMemberService';
-import type { EventWithId } from '../calendar/calendarService';
+import { EVENT_TAG_LABEL, type EventWithId } from '../calendar/calendarService';
 import type { PostWithId } from '../board/boardService';
 import type { TransactionWithId } from '../allowance/allowanceService';
 import type { ScreenId } from '../../app/routes';
@@ -108,6 +108,16 @@ function gatedMoney(cents: number): string {
   return isValidMoneyCents(cents) ? formatMoney(cents) : MONEY_INVALID_INDICATOR;
 }
 
+/**
+ * Accessible NAME for a money surface (A1). When the value is valid the name is
+ * "<prefix> $X.XX"; when invalid it is a real spoken phrase ("<prefix>
+ * unavailable") rather than "<prefix> —" — a screen reader voices a bare em-dash
+ * as nothing, so the indicator alone is not an accessible name.
+ */
+function moneyLabel(prefix: string, cents: number): string {
+  return isValidMoneyCents(cents) ? `${prefix} ${formatMoney(cents)}` : `${prefix} unavailable`;
+}
+
 /** Friendly ISO date -> visible text inside a `<time>`; parse at UTC noon. */
 function friendlyDate(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
@@ -120,6 +130,16 @@ export function DashboardScreen(props: DashboardScreenProps): ReactElement {
   const { role, userName, nowMs, onNavigate, onRefresh } = props;
   const isParent = role === 'parent';
 
+  // ONE page-level polite live region (A4, WCAG 4.1.3). Refresh fans out to every
+  // feed; we announce the activity honestly ("Refreshing dashboard…") on click —
+  // we do not claim "updated" since completion is not observable from here. This
+  // is the single status channel; section errors stay inline (no toast spam).
+  const [refreshStatus, setRefreshStatus] = useState('');
+  const handleRefresh = (): void => {
+    setRefreshStatus('Refreshing dashboard…');
+    onRefresh();
+  };
+
   return (
     <section className="flex flex-col gap-16 px-16 pt-4 pb-24">
       <div className="flex items-center justify-between gap-12">
@@ -129,12 +149,18 @@ export function DashboardScreen(props: DashboardScreenProps): ReactElement {
         <button
           type="button"
           aria-label="Refresh dashboard"
-          onClick={onRefresh}
+          onClick={handleRefresh}
           className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
         >
           <RefreshIcon />
         </button>
       </div>
+
+      {/* Single polite live region for refresh activity. Visually hidden but in
+          the accessibility tree (role=status implies aria-live=polite). */}
+      <p role="status" className="sr-only">
+        {refreshStatus}
+      </p>
 
       {isParent ? <ParentSections {...props} /> : <MemberSections {...props} />}
 
@@ -158,7 +184,7 @@ function MemberSections(props: DashboardScreenProps): ReactElement {
             earnings list below it (ADR-0004 honesty: no "sums to balance"). */}
         <p
           className="text-title font-bold text-ink"
-          aria-label={`Current balance ${gatedMoney(balanceCents)}`}
+          aria-label={moneyLabel('Current balance', balanceCents)}
         >
           {`Current balance: ${gatedMoney(balanceCents)}`}
         </p>
@@ -207,7 +233,7 @@ function MemberSections(props: DashboardScreenProps): ReactElement {
                 </Badge>
                 <span
                   className="text-meta font-semibold text-ink-mute"
-                  aria-label={`worth ${gatedMoney(chore.dollarValue)}`}
+                  aria-label={moneyLabel('worth', chore.dollarValue)}
                 >
                   {gatedMoney(chore.dollarValue)}
                 </span>
@@ -248,7 +274,10 @@ function ParentSections(props: DashboardScreenProps): ReactElement {
             <ListRow key={chore.id}>
               <span className="flex-1 text-body font-semibold text-ink">{chore.title}</span>
               <span className="text-meta text-ink-mute">{nameFor(chore.assignedTo)}</span>
-              <span className="text-meta font-semibold text-ink-mute">
+              <span
+                className="text-meta font-semibold text-ink-mute"
+                aria-label={moneyLabel('worth', chore.dollarValue)}
+              >
                 {gatedMoney(chore.dollarValue)}
               </span>
             </ListRow>
@@ -284,8 +313,8 @@ function UpcomingEventsSection(props: {
               <time dateTime={event.date} className="text-meta text-ink-mute">
                 {friendlyDate(event.date)}
               </time>
-              <Badge tone={event.tag as BadgeTone} size="sm">
-                {event.tag}
+              <Badge tone={event.tag} size="sm">
+                {EVENT_TAG_LABEL[event.tag]}
               </Badge>
             </ListRow>
           ))

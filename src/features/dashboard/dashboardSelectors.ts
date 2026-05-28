@@ -27,17 +27,44 @@ function localDayKey(ms: number): string {
 }
 
 /**
- * The leading `YYYY-MM-DD` of an ISO date string, for lexicographic comparison
- * against the local-day key (ISO dates sort correctly as strings).
+ * Resolve an event `date` to the SAME local-day basis as `nowMs` (F1/F2).
+ *
+ * Returns `{ key, instant }` where `key` is the event's LOCAL `YYYY-MM-DD` and
+ * `instant` is the parsed epoch ms (used for soonest-first ordering). Returns
+ * `null` for an empty or unparseable date so the event is DROPPED (F2).
+ *
+ * A bare `YYYY-MM-DD` (date-only) is treated as a LOCAL calendar day — parsed
+ * via the date PARTS, not `new Date('2026-06-15')` (which is UTC-midnight and
+ * shifts a day back in a UTC-behind zone). A time-bearing / offset-bearing ISO
+ * datetime is parsed to an instant, then reduced to its LOCAL day via
+ * `getFullYear/getMonth/getDate` — the same parts `localDayKey` uses for `now`.
  */
-function eventDayKey(iso: string): string {
-  return iso.slice(0, 10);
+function eventLocalDay(iso: string): { key: string; instant: number } | null {
+  if (typeof iso !== 'string' || iso === '') return null;
+
+  // Date-only `YYYY-MM-DD`: interpret as a LOCAL calendar day directly.
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (dateOnly) {
+    const year = Number(dateOnly[1]);
+    const month = Number(dateOnly[2]);
+    const day = Number(dateOnly[3]);
+    const local = new Date(year, month - 1, day);
+    if (Number.isNaN(local.getTime())) return null;
+    return { key: localDayKey(local.getTime()), instant: local.getTime() };
+  }
+
+  // Time-bearing / offset-bearing ISO datetime: parse to an instant, then take
+  // the LOCAL day parts (same basis as `now`).
+  const instant = new Date(iso).getTime();
+  if (Number.isNaN(instant)) return null;
+  return { key: localDayKey(instant), instant };
 }
 
 /**
- * Keep only events whose `date` (an ISO string) falls on the LOCAL calendar day
- * of `nowMs` OR later (a future event), sorted soonest-first, capped at `limit`.
- * Stable: ties preserve input order. Does not mutate the input.
+ * Keep only events whose `date` falls on the LOCAL calendar day of `nowMs` OR
+ * later (a future event), sorted soonest-first, capped at `limit`. Stable: ties
+ * preserve input order. Malformed / empty dates are DROPPED (F2). Does not
+ * mutate the input.
  */
 export function selectUpcomingEvents(
   events: EventWithId[],
@@ -46,11 +73,14 @@ export function selectUpcomingEvents(
 ): EventWithId[] {
   const todayKey = localDayKey(nowMs);
   return events
-    .map((event, index) => ({ event, index }))
-    .filter(({ event }) => eventDayKey(event.date) >= todayKey)
+    .map((event, index) => ({ event, index, day: eventLocalDay(event.date) }))
+    .filter((entry): entry is typeof entry & { day: { key: string; instant: number } } => {
+      // Drop malformed/empty dates (day === null) and anything before today.
+      return entry.day !== null && entry.day.key >= todayKey;
+    })
     .sort((a, b) => {
-      const byDate = eventDayKey(a.event.date).localeCompare(eventDayKey(b.event.date));
-      return byDate !== 0 ? byDate : a.index - b.index;
+      const byInstant = a.day.instant - b.day.instant;
+      return byInstant !== 0 ? byInstant : a.index - b.index;
     })
     .slice(0, limit)
     .map(({ event }) => event);
@@ -77,11 +107,23 @@ export function selectRecent<T extends { createdAt: number }>(items: T[], limit:
  * Does not mutate the input.
  */
 export function selectSoonestChores(chores: ChoreWithId[], limit: number): ChoreWithId[] {
+  // A parseable ISO `YYYY-MM-DD`(...) due date is a real sort key; a missing /
+  // non-string / unparseable one is `null` and sorts LAST (after all real dates),
+  // never throwing on `.localeCompare` (F5).
+  const dueKey = (value: unknown): string | null => {
+    if (typeof value !== 'string' || value === '') return null;
+    return Number.isNaN(new Date(value).getTime()) ? null : value;
+  };
   return chores
-    .map((chore, index) => ({ chore, index }))
+    .map((chore, index) => ({ chore, index, due: dueKey(chore.dueDate) }))
     .sort((a, b) => {
-      const byDue = a.chore.dueDate.localeCompare(b.chore.dueDate);
-      return byDue !== 0 ? byDue : a.index - b.index;
+      if (a.due !== null && b.due !== null) {
+        const byDue = a.due.localeCompare(b.due);
+        return byDue !== 0 ? byDue : a.index - b.index;
+      }
+      // Malformed dates sort after parseable ones; ties stay stable.
+      if (a.due === null && b.due === null) return a.index - b.index;
+      return a.due === null ? 1 : -1;
     })
     .slice(0, limit)
     .map(({ chore }) => chore);
