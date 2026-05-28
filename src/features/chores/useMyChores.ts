@@ -79,6 +79,16 @@ export function useMyChores(uid: string | null, familyId: string | null): UseMyC
   // so the LATEST refresh() always wins even if an earlier call resolves last.
   const refreshToken = useRef(0);
   const dbRef = useRef<Firestore | null>(null);
+  // Lesson 2026-05-28 #2: sign by id + every field the MEMBER screen reads
+  // (title, status, dueDate, pointValue, dollarValue, rejectionReason,
+  // isRecurring, recurrenceFrequency). Status changes are the most common
+  // mutation here (mark-complete / approve / reject) — an id-only signature
+  // would drop them as redundant re-fires and the member's view would never
+  // reflect the parent's approval. `assignedTo` is the query predicate, so
+  // a reassignment removes the doc from the result set entirely (no
+  // signature work needed). Reset per effect run so a uid/familyId change
+  // does not carry a stale signature.
+  const lastSnapshotSig = useRef<string | null>(null);
 
   useEffect(() => {
     // Always clear stale chores on a uid OR familyId CHANGE — not only when one
@@ -92,6 +102,7 @@ export function useMyChores(uid: string | null, familyId: string | null): UseMyC
     }
     setLoading(true);
     setError(null);
+    lastSnapshotSig.current = null;
     let unsub: (() => void) | undefined;
     let cancelled = false;
     // Firebase config is imported lazily so this module's top level stays SDK-
@@ -103,7 +114,30 @@ export function useMyChores(uid: string | null, familyId: string | null): UseMyC
         unsub = onSnapshot(
           buildChoresQuery(db, uid, familyId),
           (snap) => {
-            setChores((snap as { docs: QueryDocumentSnapshot[] }).docs.map(toChore));
+            const docs = (snap as { docs: QueryDocumentSnapshot[] }).docs;
+            const sig = docs
+              .map((d) => {
+                const data = d.data() as Chore;
+                return [
+                  d.id,
+                  data.title,
+                  data.status,
+                  data.dueDate,
+                  String(data.pointValue),
+                  String(data.dollarValue),
+                  data.rejectionReason ?? '',
+                  String(data.isRecurring),
+                  data.recurrenceFrequency,
+                ].join(':');
+              })
+              .join(',');
+            if (sig === lastSnapshotSig.current) {
+              setLoading(false);
+              return;
+            }
+            lastSnapshotSig.current = sig;
+            refreshToken.current += 1;
+            setChores(docs.map(toChore));
             setLoading(false);
           },
           () => {

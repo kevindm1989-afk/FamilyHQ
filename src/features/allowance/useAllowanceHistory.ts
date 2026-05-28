@@ -75,6 +75,13 @@ export function useAllowanceHistory(
   // so the LATEST refresh() always wins even if an earlier call resolves last.
   const refreshToken = useRef(0);
   const dbRef = useRef<Firestore | null>(null);
+  // Lesson 2026-05-28 #2: sign by id + every field the screen reads (here:
+  // choreTitle, amount, createdAt). An id-only signature would drop a
+  // ledger-row mutation on the same id (e.g. an admin amount correction) as
+  // a redundant re-fire. The dedupe still short-circuits a true cache
+  // re-emission. Reset per effect run so a uid/familyId change does not carry
+  // a stale signature.
+  const lastSnapshotSig = useRef<string | null>(null);
 
   useEffect(() => {
     // Always clear stale transactions on a uid OR familyId CHANGE — not only
@@ -88,6 +95,7 @@ export function useAllowanceHistory(
     }
     setLoading(true);
     setError(null);
+    lastSnapshotSig.current = null;
     let unsub: (() => void) | undefined;
     let cancelled = false;
     // Firebase config is imported lazily so this module's top level stays SDK-
@@ -99,7 +107,25 @@ export function useAllowanceHistory(
         unsub = onSnapshot(
           buildTransactionsQuery(db, uid, familyId),
           (snap) => {
-            setTransactions((snap as { docs: QueryDocumentSnapshot[] }).docs.map(toTransaction));
+            const docs = (snap as { docs: QueryDocumentSnapshot[] }).docs;
+            const sig = docs
+              .map((d) => {
+                const data = d.data() as Transaction & { createdAt: unknown };
+                return [d.id, data.choreTitle, String(data.amount), String(data.createdAt)].join(
+                  ':',
+                );
+              })
+              .join(',');
+            if (sig === lastSnapshotSig.current) {
+              setLoading(false);
+              return;
+            }
+            lastSnapshotSig.current = sig;
+            // Claim the next monotonic token so an in-flight refresh whose
+            // server fetch pre-dated this snapshot bails out instead of
+            // clobbering the newer live state.
+            refreshToken.current += 1;
+            setTransactions(docs.map(toTransaction));
             // Clear any prior (e.g. transient listener) error: a recovered
             // snapshot must not leave a sticky error banner over good data (F6),
             // mirroring the refresh() success path.

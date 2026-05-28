@@ -295,3 +295,109 @@ describe('useMyChores — switching member/family clears chores (cross-display l
     await waitFor(() => expect(screen.getByTestId('count').textContent).toBe('0'));
   });
 });
+
+// =====================================================================
+// Lesson 2026-05-28 #2 — snapshot dedupe must use field values, not id-set
+//
+// The MEMBER view watches its own chores: the most common mutation is a
+// status change (mark-complete by the member; approve/reject by the parent).
+// An id-only signature would drop these because the id set is unchanged —
+// the member's screen would never reflect the parent's approval. The
+// signature includes status (and the other rendered fields) so any mutation
+// forces a re-apply, while a literal cache re-emission is still ignored.
+// =====================================================================
+describe('useMyChores — snapshot dedupe (lesson 2026-05-28 #2: field-aware signature)', () => {
+  function snapshotOfChores(
+    chores: Array<{
+      id: string;
+      title?: string;
+      status?: 'pending' | 'complete' | 'approved' | 'rejected';
+      dueDate?: string;
+      rejectionReason?: string;
+    }>,
+  ) {
+    return {
+      docs: chores.map((c) => ({
+        id: c.id,
+        data: () => ({
+          title: c.title ?? 'Take out trash',
+          assignedTo: 'uid-member-a',
+          dueDate: c.dueDate ?? '2026-05-30',
+          pointValue: 10,
+          dollarValue: 3,
+          status: c.status ?? 'pending',
+          rejectionReason: c.rejectionReason,
+          familyId: 'fam-A',
+          createdBy: 'uid-parent-a',
+          createdAt: tsOf(1000),
+          isRecurring: false,
+          recurrenceFrequency: 'none',
+        }),
+      })),
+    };
+  }
+
+  function FieldHarness({ uid, familyId }: { uid: string; familyId: string }) {
+    const { chores } = useMyChores(uid, familyId);
+    return (
+      <ul>
+        {chores.map((c) => (
+          <li
+            key={c.id}
+            data-testid="chore-row"
+          >{`${c.id}:${c.title}:${c.status}:${c.rejectionReason ?? ''}`}</li>
+        ))}
+      </ul>
+    );
+  }
+
+  it('a STATUS change on the same chore id surfaces — pending -> approved (must NOT be deduped)', async () => {
+    render(<FieldHarness uid="uid-member-a" familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+    act(() => cap.snapshotCb!(snapshotOfChores([{ id: 'c1', status: 'pending' }])));
+    await waitFor(() =>
+      expect(screen.getByTestId('chore-row').textContent).toBe('c1:Take out trash:pending:'),
+    );
+    act(() => cap.snapshotCb!(snapshotOfChores([{ id: 'c1', status: 'approved' }])));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('chore-row').textContent,
+        'a status change on the same id must NOT be deduped — the member must see the approval',
+      ).toBe('c1:Take out trash:approved:'),
+    );
+  });
+
+  it('a rejection (status + rejectionReason) on the same chore id surfaces', async () => {
+    render(<FieldHarness uid="uid-member-a" familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+    act(() => cap.snapshotCb!(snapshotOfChores([{ id: 'c1', status: 'complete' }])));
+    await waitFor(() =>
+      expect(screen.getByTestId('chore-row').textContent).toBe('c1:Take out trash:complete:'),
+    );
+    act(() =>
+      cap.snapshotCb!(
+        snapshotOfChores([{ id: 'c1', status: 'rejected', rejectionReason: 'try again' }]),
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('chore-row').textContent,
+        'a rejection on the same id must NOT be deduped — the member must see the reason',
+      ).toBe('c1:Take out trash:rejected:try again'),
+    );
+  });
+
+  it('an identical re-fire (same id, same fields) is a no-op — the dedupe still short-circuits', async () => {
+    render(<FieldHarness uid="uid-member-a" familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+    act(() => cap.snapshotCb!(snapshotOfChores([{ id: 'c1', status: 'pending' }])));
+    await waitFor(() =>
+      expect(screen.getByTestId('chore-row').textContent).toBe('c1:Take out trash:pending:'),
+    );
+    act(() => cap.snapshotCb!(snapshotOfChores([{ id: 'c1', status: 'pending' }])));
+    expect(
+      screen.getByTestId('chore-row').textContent,
+      'an identical re-fire must not crash or churn',
+    ).toBe('c1:Take out trash:pending:');
+  });
+});
