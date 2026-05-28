@@ -92,6 +92,11 @@ function Harness({ familyId }: { familyId: string | null }) {
       <span data-testid="inactives">
         {members.filter((m) => !m.isActive).map((m) => m.id).join(',')}
       </span>
+      {/* Expose name+isActive for F1 (field-change dedupe) assertions. */}
+      <span data-testid="names">{members.map((m) => `${m.id}:${m.name}`).join('|')}</span>
+      <span data-testid="activeFlags">
+        {members.map((m) => `${m.id}:${m.isActive ? 'on' : 'off'}`).join('|')}
+      </span>
       <button onClick={() => void refresh()}>refresh</button>
     </div>
   );
@@ -283,5 +288,221 @@ describe('useAllFamilyMembers — error surface is generic and PII-free', () => 
       expect(text.length, 'a load failure must surface a user-safe error string').toBeGreaterThan(0);
       expect(text).not.toMatch(/permission-denied|firebase|firestore/i);
     });
+  });
+});
+
+// =====================================================================
+// F1 (BLOCKER) — field-change snapshots must NOT be deduped
+//
+// Today's hook signs the snapshot by id-list only:
+//   const sig = docs.map((d) => d.id).join(',');
+// A rename or isActive flip on the SAME id-set is then dropped — the screen
+// would never reflect the change. The dedupe key must include the read fields
+// (at minimum name + isActive; ideally also role + familyId + allowanceBalance),
+// OR the guard must be removed for this hook.
+//
+// MECHANISM: deliver snapshot A, then snapshot A' where the doc ids are
+// IDENTICAL but a field has been mutated (name change; isActive flip). The
+// fresh field value MUST be reflected — currently fails because the id-only
+// signature treats A' as a redundant re-fire and short-circuits.
+// =====================================================================
+describe('useAllFamilyMembers — F1: dedupe must use field values, not just id-set', () => {
+  it('a RENAME on the same id (snap A then A\') is APPLIED — the new name surfaces', async () => {
+    render(<Harness familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+
+    // Snapshot A: one user "Maya" (id u1)
+    act(() =>
+      cap.snapshotCb!(snapshotOfUsers([{ id: 'u1', name: 'Maya', isActive: true }])),
+    );
+    await waitFor(() => expect(screen.getByTestId('names').textContent).toBe('u1:Maya'));
+
+    // Snapshot A': SAME id 'u1', but the name has been edited to 'Maya Rivera'.
+    // The id-set is unchanged, so today's id-only signature drops the snapshot
+    // and the screen stays on 'Maya' — that's the bug. The new value MUST win.
+    act(() =>
+      cap.snapshotCb!(
+        snapshotOfUsers([{ id: 'u1', name: 'Maya Rivera', isActive: true }]),
+      ),
+    );
+    await waitFor(
+      () =>
+        expect(
+          screen.getByTestId('names').textContent,
+          'a rename on the same id-set must NOT be deduped by an id-only signature',
+        ).toBe('u1:Maya Rivera'),
+      { timeout: 1000 },
+    );
+  });
+
+  it('an isActive FLIP on the same id (snap A then A\') is APPLIED — the new flag surfaces', async () => {
+    render(<Harness familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+
+    // Snapshot A: one user, active.
+    act(() =>
+      cap.snapshotCb!(snapshotOfUsers([{ id: 'u1', name: 'Maya', isActive: true }])),
+    );
+    await waitFor(() => expect(screen.getByTestId('activeFlags').textContent).toBe('u1:on'));
+
+    // Snapshot A': SAME id 'u1', isActive flipped to false. Today the id-only
+    // signature drops this snapshot and the row stays "Active" — must NOT.
+    act(() =>
+      cap.snapshotCb!(snapshotOfUsers([{ id: 'u1', name: 'Maya', isActive: false }])),
+    );
+    await waitFor(
+      () =>
+        expect(
+          screen.getByTestId('activeFlags').textContent,
+          'an isActive flip on the same id-set must NOT be deduped by an id-only signature',
+        ).toBe('u1:off'),
+      { timeout: 1000 },
+    );
+  });
+
+  it('positive control: an IDENTICAL re-fire of snap A (same ids, same fields) is still a no-op (no spurious churn)', async () => {
+    render(<Harness familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+
+    act(() =>
+      cap.snapshotCb!(snapshotOfUsers([{ id: 'u1', name: 'Maya', isActive: true }])),
+    );
+    await waitFor(() => expect(screen.getByTestId('names').textContent).toBe('u1:Maya'));
+
+    // Re-fire EXACTLY the same docs (same ids AND same field values). The
+    // resulting state is identical to before — the dedupe key with field
+    // values is still allowed to short-circuit identical re-fires.
+    act(() =>
+      cap.snapshotCb!(snapshotOfUsers([{ id: 'u1', name: 'Maya', isActive: true }])),
+    );
+    expect(
+      screen.getByTestId('names').textContent,
+      'an identical re-fire must not crash or churn — the rendered state stays the same',
+    ).toBe('u1:Maya');
+    expect(screen.getByTestId('activeFlags').textContent).toBe('u1:on');
+  });
+});
+
+// =====================================================================
+// F5 (MED) — deterministic display order independent of Firestore doc order
+//
+// The query has no orderBy; Firestore is free to return docs in any order
+// and the order can SHUFFLE between snapshots. The hook MUST stabilize the
+// order in JS. Pinned ordering: alphabetical by NAME (ascending, case-
+// insensitive) with the uid as a secondary tiebreak.
+//
+// MECHANISM: deliver two snapshots with the SAME members in DIFFERENT doc
+// orders. The hook's returned `members` array order must be identical and
+// deterministic both times, matching the alphabetical-by-name (then uid)
+// rule.
+// =====================================================================
+describe('useAllFamilyMembers — F5: deterministic order (alphabetical-by-name ci, uid tiebreak)', () => {
+  it('two snapshots with the SAME members in DIFFERENT doc orders yield identical, deterministic ordering', async () => {
+    render(<Harness familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+
+    // Distinct names chosen to make the sort visible: Alice / bob / Charlie /
+    // dora (mixed case to exercise case-insensitive compare).
+    act(() =>
+      cap.snapshotCb!(
+        snapshotOfUsers([
+          // Firestore "doc order" — arbitrary.
+          { id: 'u-3', name: 'Charlie', isActive: true },
+          { id: 'u-1', name: 'Alice', isActive: true },
+          { id: 'u-4', name: 'dora', isActive: false },
+          { id: 'u-2', name: 'bob', isActive: true },
+        ]),
+      ),
+    );
+    // Expected stable order: Alice (u-1), bob (u-2), Charlie (u-3), dora (u-4).
+    await waitFor(() =>
+      expect(screen.getByTestId('ids').textContent).toBe('u-1,u-2,u-3,u-4'),
+    );
+
+    // Now the SAME members in a different Firestore doc order — the rendered
+    // order MUST be identical (deterministic).
+    act(() =>
+      cap.snapshotCb!(
+        snapshotOfUsers([
+          { id: 'u-2', name: 'bob', isActive: true },
+          { id: 'u-4', name: 'dora', isActive: false },
+          { id: 'u-1', name: 'Alice', isActive: true },
+          { id: 'u-3', name: 'Charlie', isActive: true },
+        ]),
+      ),
+    );
+    await waitFor(
+      () =>
+        expect(
+          screen.getByTestId('ids').textContent,
+          'rendered order must be stable across snapshots, regardless of Firestore doc order',
+        ).toBe('u-1,u-2,u-3,u-4'),
+      { timeout: 1000 },
+    );
+  });
+
+  it('uid tiebreaks names that compare equal (case-insensitive)', async () => {
+    render(<Harness familyId="fam-A" />);
+    await waitFor(() => expect(cap.snapshotCb).not.toBeNull());
+
+    // Same case-insensitive name; uid breaks the tie alphabetically.
+    act(() =>
+      cap.snapshotCb!(
+        snapshotOfUsers([
+          { id: 'uid-z', name: 'sam', isActive: true },
+          { id: 'uid-a', name: 'Sam', isActive: true },
+          { id: 'uid-m', name: 'SAM', isActive: true },
+        ]),
+      ),
+    );
+    await waitFor(
+      () =>
+        expect(
+          screen.getByTestId('ids').textContent,
+          'on equal case-insensitive names, uid is the secondary tiebreak',
+        ).toBe('uid-a,uid-m,uid-z'),
+      { timeout: 1000 },
+    );
+  });
+});
+
+// =====================================================================
+// F2 (HIGH) — error clears when a subsequent snapshot succeeds
+//
+// Today's onSnapshot success callback never resets `error`. A transient
+// listener error remains stuck forever (Firestore detaches on error, but
+// subsequent snapshots can still resume — the user-visible error must clear).
+// =====================================================================
+describe('useAllFamilyMembers — F2: a successful snapshot CLEARS a previously set error', () => {
+  it('error is set on listener failure, then CLEARED to null on the next successful snapshot', async () => {
+    render(<Harness familyId="fam-A" />);
+    await waitFor(() => expect(cap.errorCb).not.toBeNull());
+
+    // Fire a listener error first.
+    act(() => cap.errorCb!(new Error('permission-denied: raw firebase, must not surface')));
+    await waitFor(() => {
+      const text = screen.getByTestId('error').textContent ?? '';
+      expect(text.length, 'a listener error must surface a user-safe error').toBeGreaterThan(0);
+    });
+
+    // Now a SUCCESS snapshot lands. The error must clear AND members must populate.
+    act(() =>
+      cap.snapshotCb!(
+        snapshotOfUsers([
+          { id: 'u1', name: 'Maya', isActive: true },
+          { id: 'u2', name: 'Ben', isActive: false },
+        ]),
+      ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('error').textContent,
+        'a successful snapshot must CLEAR the prior error (mirror the allowance hook F6 pin)',
+      ).toBe(''),
+    );
+    expect(
+      screen.getByTestId('count').textContent,
+      'and members must populate from the successful snapshot',
+    ).toBe('2');
   });
 });

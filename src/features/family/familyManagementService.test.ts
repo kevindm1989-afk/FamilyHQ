@@ -270,3 +270,130 @@ describe('NAME_MAX_LENGTH — cap is the pinned value (matches the screen test)'
     expect(NAME_MAX_LENGTH).toBe(60);
   });
 });
+
+// =====================================================================
+// Sec2 — non-string `name` is mapped to FamilyManagementError, not a raw TypeError
+//
+// Today `name.trim()` runs OUTSIDE the `try` block; a non-string argument
+// (TS escape hatch via `unknown as string`) throws a raw TypeError that
+// bubbles to the caller as something OTHER than FamilyManagementError. The
+// fix: move the validation (including the typeof check) INSIDE the try, or
+// guard before trimming, so EVERY failure path leaves through the generic
+// PII-free error class.
+// =====================================================================
+describe('renameMember — Sec2: a non-string `name` is mapped to FamilyManagementError (no raw TypeError)', () => {
+  it('rejects with FamilyManagementError when name is a number', async () => {
+    await expect(
+      renameMember({ db }, 'uid-x', 123 as unknown as string),
+    ).rejects.toBeInstanceOf(FamilyManagementError);
+  });
+
+  it('rejects with FamilyManagementError when name is null', async () => {
+    await expect(
+      renameMember({ db }, 'uid-x', null as unknown as string),
+    ).rejects.toBeInstanceOf(FamilyManagementError);
+  });
+
+  it('rejects with FamilyManagementError when name is undefined', async () => {
+    await expect(
+      renameMember({ db }, 'uid-x', undefined as unknown as string),
+    ).rejects.toBeInstanceOf(FamilyManagementError);
+  });
+
+  it('rejects with FamilyManagementError when name is an object', async () => {
+    await expect(
+      renameMember({ db }, 'uid-x', { name: 'hax' } as unknown as string),
+    ).rejects.toBeInstanceOf(FamilyManagementError);
+  });
+
+  it('the surfaced error message is the generic copy (no raw TypeError text, no PII)', async () => {
+    const err = await renameMember({ db }, 'uid-secret', 42 as unknown as string).then(
+      () => new Error('expected rejection'),
+      (e: unknown) => e as Error,
+    );
+    expect(err).toBeInstanceOf(FamilyManagementError);
+    expect(err.message).toBe(FAMILY_GENERIC_ERROR);
+    expect(
+      err.message,
+      'no raw TypeError text may surface to the user',
+    ).not.toMatch(/TypeError|trim is not a function|undefined is not/i);
+    expect(err.message).not.toContain('uid-secret');
+  });
+
+  it('a non-string name results in NO updateDoc call (rejected before any write)', async () => {
+    await renameMember({ db }, 'uid-x', 123 as unknown as string).catch(() => undefined);
+    expect(
+      updateDocMock,
+      'Sec2 — a non-string name must be rejected BEFORE issuing any Firestore write',
+    ).not.toHaveBeenCalled();
+  });
+});
+
+// =====================================================================
+// Sec3 — non-boolean `isActive` is mapped to FamilyManagementError, never round-tripped
+//
+// Today a TS escape hatch (`'true' as unknown as boolean`) round-trips into
+// Firestore as a string value. Pin: setMemberActive rejects with
+// FamilyManagementError and updateDoc is NOT called.
+// =====================================================================
+describe('setMemberActive — Sec3: a non-boolean `isActive` is mapped to FamilyManagementError; no write', () => {
+  it('rejects with FamilyManagementError when isActive is the string "true"', async () => {
+    await expect(
+      setMemberActive({ db }, 'uid-x', 'true' as unknown as boolean),
+    ).rejects.toBeInstanceOf(FamilyManagementError);
+  });
+
+  it('rejects with FamilyManagementError when isActive is the number 1', async () => {
+    await expect(
+      setMemberActive({ db }, 'uid-x', 1 as unknown as boolean),
+    ).rejects.toBeInstanceOf(FamilyManagementError);
+  });
+
+  it('rejects with FamilyManagementError when isActive is null', async () => {
+    await expect(
+      setMemberActive({ db }, 'uid-x', null as unknown as boolean),
+    ).rejects.toBeInstanceOf(FamilyManagementError);
+  });
+
+  it('rejects with FamilyManagementError when isActive is undefined', async () => {
+    await expect(
+      setMemberActive({ db }, 'uid-x', undefined as unknown as boolean),
+    ).rejects.toBeInstanceOf(FamilyManagementError);
+  });
+
+  it('a non-boolean isActive results in NO updateDoc call (rejected before any write)', async () => {
+    await setMemberActive({ db }, 'uid-x', 'true' as unknown as boolean).catch(() => undefined);
+    expect(
+      updateDocMock,
+      'Sec3 — a non-boolean isActive must be rejected BEFORE issuing any Firestore write (no round-trip)',
+    ).not.toHaveBeenCalled();
+  });
+
+  it('the surfaced error message is the generic copy (no raw TypeError text, no PII)', async () => {
+    const err = await setMemberActive(
+      { db },
+      'uid-secret',
+      'true' as unknown as boolean,
+    ).then(
+      () => new Error('expected rejection'),
+      (e: unknown) => e as Error,
+    );
+    expect(err).toBeInstanceOf(FamilyManagementError);
+    expect(err.message).toBe(FAMILY_GENERIC_ERROR);
+    expect(err.message).not.toContain('uid-secret');
+  });
+
+  it('positive control: a real boolean true STILL writes (Sec3 must not over-block)', async () => {
+    await setMemberActive({ db }, 'uid-x', true);
+    expect(updateDocMock).toHaveBeenCalledTimes(1);
+    expect(updateOps).toHaveLength(1);
+    expect(updateOps[0]!.data.isActive).toBe(true);
+  });
+
+  it('positive control: a real boolean false STILL writes (Sec3 must not over-block)', async () => {
+    await setMemberActive({ db }, 'uid-x', false);
+    expect(updateDocMock).toHaveBeenCalledTimes(1);
+    expect(updateOps).toHaveLength(1);
+    expect(updateOps[0]!.data.isActive).toBe(false);
+  });
+});

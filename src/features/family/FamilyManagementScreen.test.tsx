@@ -30,7 +30,7 @@
  * No clock / network / RNG. Money fixtures are DISTINCT per member (lesson
  * 2026-05-27 — collision guard) and scoped via `within(row)`.
  */
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../hooks/useToast';
 import {
@@ -569,6 +569,531 @@ describe('FamilyManagementScreen — a11y baseline (tap targets, focus, text sta
   it('inactive status is conveyed by TEXT (assertion repeated at a11y level for the focused suite)', () => {
     renderScreen();
     expect(within(rowFor('Ben Kim')).getByText(/inactive/i)).toBeInTheDocument();
+  });
+});
+
+// =====================================================================
+// F3 (HIGH) — in-flight guard on per-row mutations (no double-tap writes)
+//
+// Today no guard exists on Rename / Deactivate / Reactivate. A double-tap
+// (two synchronous clicks before the first promise resolves) fires TWO writes.
+// The implementer may use a disabled button OR aria-busy OR a ref-tracked
+// in-flight set — the observable contract is: exactly ONE call to the action
+// callback while the first invocation is in flight, AND an a11y signal on
+// the button so AT knows it is busy / disabled (one of the two).
+//
+// MECHANISM: each test holds a manual-resolution Promise on the action so we
+// can synchronously double-click before the first promise resolves, then
+// release.
+// =====================================================================
+describe('FamilyManagementScreen — F3 in-flight guard: a synchronous double-tap fires the action ONCE', () => {
+  /**
+   * The button gains aria-busy="true" OR disabled while the action is pending.
+   * Either signal satisfies the a11y contract; tests assert at least one of
+   * them is present (so the implementer has a choice without ambiguity).
+   */
+  function expectInFlightSignal(btn: HTMLElement): void {
+    const ariaBusy = btn.getAttribute('aria-busy');
+    const disabledAttr = btn.hasAttribute('disabled');
+    const ariaDisabled = btn.getAttribute('aria-disabled');
+    const isInFlight =
+      ariaBusy === 'true' ||
+      disabledAttr ||
+      ariaDisabled === 'true';
+    expect(
+      isInFlight,
+      'an in-flight action button must convey busy/disabled state to AT (aria-busy="true" OR disabled OR aria-disabled="true")',
+    ).toBe(true);
+  }
+
+  it('REACTIVATE: two synchronous clicks call onSetActive ONCE; the button is signalled busy while pending; re-enabled after resolve', async () => {
+    let resolveAction: (() => void) | null = null;
+    const onSetActive = vi
+      .fn()
+      .mockImplementation(
+        () =>
+          new Promise<void>((res) => {
+            resolveAction = () => res(undefined);
+          }),
+      );
+    renderScreen({ onSetActive });
+    const btn = within(rowFor('Ben Kim')).getByRole('button', { name: /reactivate\s+ben/i });
+
+    // Two synchronous clicks BEFORE the first promise resolves.
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+
+    // Only ONE call may have escaped — the guard must collapse the double-tap.
+    expect(
+      onSetActive,
+      'a double-tap of Reactivate must NOT fire two writes (in-flight guard)',
+    ).toHaveBeenCalledTimes(1);
+    expect(onSetActive).toHaveBeenCalledWith(INACTIVE_CHILD.id, true);
+
+    // The a11y signal must be present while pending.
+    expectInFlightSignal(btn);
+
+    // Release the in-flight promise — the button re-enables, the busy signal lifts.
+    await act(async () => {
+      resolveAction!();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      // After resolve, neither aria-busy="true" nor disabled remains.
+      const stillBusy = btn.getAttribute('aria-busy') === 'true' || btn.hasAttribute('disabled');
+      expect(stillBusy, 'after the promise resolves, the button must be re-enabled').toBe(false);
+    });
+  });
+
+  it('DEACTIVATE CONFIRM: two synchronous clicks call onSetActive(uid,false) ONCE; confirm button is signalled busy', async () => {
+    let resolveAction: (() => void) | null = null;
+    const onSetActive = vi
+      .fn()
+      .mockImplementation(
+        () =>
+          new Promise<void>((res) => {
+            resolveAction = () => res(undefined);
+          }),
+      );
+    renderScreen({ onSetActive });
+    // Open the confirm sheet from the Maya row.
+    fireEvent.click(
+      within(rowFor('Maya Kim')).getByRole('button', { name: /deactivate\s+maya/i }),
+    );
+    const dialog = screen.getByRole('dialog');
+    const confirmBtn = within(dialog).getByRole('button', { name: /deactivate|confirm|yes/i });
+
+    fireEvent.click(confirmBtn);
+    fireEvent.click(confirmBtn);
+
+    expect(
+      onSetActive,
+      'a double-tap on the destructive Confirm must NOT fire two writes',
+    ).toHaveBeenCalledTimes(1);
+    expect(onSetActive).toHaveBeenCalledWith(ACTIVE_CHILD.id, false);
+    expectInFlightSignal(confirmBtn);
+
+    await act(async () => {
+      resolveAction!();
+      await Promise.resolve();
+    });
+  });
+
+  it('RENAME SAVE: two synchronous clicks call onRename ONCE; Save button is signalled busy', async () => {
+    let resolveAction: (() => void) | null = null;
+    const onRename = vi
+      .fn()
+      .mockImplementation(
+        () =>
+          new Promise<void>((res) => {
+            resolveAction = () => res(undefined);
+          }),
+      );
+    renderScreen({ onRename });
+    fireEvent.click(screen.getByRole('button', { name: /rename\s+maya/i }));
+    const dialog = screen.getByRole('dialog');
+    const input = within(dialog).getByRole('textbox') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Maya R.' } });
+    const saveBtn = within(dialog).getByRole('button', { name: /save/i });
+
+    fireEvent.click(saveBtn);
+    fireEvent.click(saveBtn);
+
+    expect(
+      onRename,
+      'a double-tap on Save must NOT fire two renames',
+    ).toHaveBeenCalledTimes(1);
+    expect(onRename).toHaveBeenCalledWith(ACTIVE_CHILD.id, 'Maya R.');
+    expectInFlightSignal(saveBtn);
+
+    await act(async () => {
+      resolveAction!();
+      await Promise.resolve();
+    });
+  });
+
+  it('POSITIVE CONTROL: after a Reactivate promise resolves, the row\'s Reactivate is REMOVED (member is now active) — no duplicate button', async () => {
+    // Resolve immediately; afterwards the screen would re-render with the member
+    // re-classified as active. We assert that the row's Reactivate button is no
+    // longer present (the row would be in the Active section), AND that no
+    // residual aria-busy="true" leaks anywhere on the page.
+    const onSetActive = vi.fn().mockResolvedValue(undefined);
+    const props = renderScreen({ onSetActive });
+    const btn = within(rowFor('Ben Kim')).getByRole('button', { name: /reactivate\s+ben/i });
+    await act(async () => {
+      fireEvent.click(btn);
+      await Promise.resolve();
+    });
+    // Sanity: the action was called once.
+    expect(props.onSetActive).toHaveBeenCalledTimes(1);
+    // After resolve, no button anywhere on screen carries aria-busy="true".
+    const busy = Array.from(
+      document.querySelectorAll('button[aria-busy="true"]'),
+    );
+    expect(busy, 'no stale aria-busy="true" button after resolve').toHaveLength(0);
+  });
+});
+
+// =====================================================================
+// F4 + F10 (MED) — rename and deactivate sheets CLOSE on failure
+//
+// Today both sheets STAY OPEN on a rejected action and the Save/Confirm
+// button stays clickable (compounding F3). The fix: on rejection close the
+// sheet, toast the generic error, re-enable the row's trigger button.
+// =====================================================================
+describe('FamilyManagementScreen — F4: rename sheet closes on rejection + toast + re-enable', () => {
+  it('a rejected onRename CLOSES the rename sheet, toasts the generic error, re-enables the row\'s Rename button', async () => {
+    const onRename = vi.fn().mockRejectedValue(new Error('any-error'));
+    renderScreen({ onRename });
+    const renameTrigger = screen.getByRole('button', { name: /rename\s+maya/i });
+    fireEvent.click(renameTrigger);
+    const dialog = screen.getByRole('dialog');
+    const input = within(dialog).getByRole('textbox') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'New Name' } });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: /save/i }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // 1) The dialog must close (deterministic close on failure).
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog'),
+        'the rename sheet must CLOSE on rejection (F4) — staying open compounds the double-tap risk',
+      ).not.toBeInTheDocument(),
+    );
+    // 2) The generic toast surfaces ONCE.
+    await waitFor(() => {
+      const toast = screen.getByText(/something went wrong/i);
+      expect(toast).toBeInTheDocument();
+    });
+    // 3) The row's Rename button is re-enabled (no aria-busy="true" / disabled).
+    expect(renameTrigger.getAttribute('aria-busy') === 'true').toBe(false);
+    expect(renameTrigger.hasAttribute('disabled')).toBe(false);
+  });
+});
+
+describe('FamilyManagementScreen — F10: deactivate confirm sheet closes on rejection + toast + re-enable', () => {
+  it('a rejected onSetActive(uid,false) CLOSES the confirm sheet, toasts generic error, re-enables the row\'s Deactivate button', async () => {
+    const onSetActive = vi.fn().mockRejectedValue(new Error('any-error'));
+    renderScreen({ onSetActive });
+    const deactivateTrigger = within(rowFor('Maya Kim')).getByRole('button', {
+      name: /deactivate\s+maya/i,
+    });
+    fireEvent.click(deactivateTrigger);
+    const dialog = screen.getByRole('dialog');
+    await act(async () => {
+      fireEvent.click(
+        within(dialog).getByRole('button', { name: /deactivate|confirm|yes/i }),
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog'),
+        'the confirm sheet must CLOSE on rejection (F10)',
+      ).not.toBeInTheDocument(),
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/something went wrong/i)).toBeInTheDocument();
+    });
+    expect(deactivateTrigger.getAttribute('aria-busy') === 'true').toBe(false);
+    expect(deactivateTrigger.hasAttribute('disabled')).toBe(false);
+  });
+
+  it('a rejected REACTIVATE (no sheet to close): during pending the button is busy; after rejection the busy signal LIFTS and the toast appears', async () => {
+    // Manual-resolution so we can observe the in-flight state (F3 + F10 together).
+    let rejectAction: ((err: Error) => void) | null = null;
+    const onSetActive = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((_res, rej) => {
+          rejectAction = (err: Error) => rej(err);
+        }),
+    );
+    renderScreen({ onSetActive });
+    const reactivateTrigger = within(rowFor('Ben Kim')).getByRole('button', {
+      name: /reactivate\s+ben/i,
+    });
+    fireEvent.click(reactivateTrigger);
+    // While pending the button must convey busy/disabled to AT (F3 contract).
+    const ariaBusyDuring = reactivateTrigger.getAttribute('aria-busy') === 'true';
+    const disabledDuring =
+      reactivateTrigger.hasAttribute('disabled') ||
+      reactivateTrigger.getAttribute('aria-disabled') === 'true';
+    expect(
+      ariaBusyDuring || disabledDuring,
+      'F3 — during a pending Reactivate the button must convey busy/disabled to AT',
+    ).toBe(true);
+
+    // Now reject the in-flight action.
+    await act(async () => {
+      rejectAction!(new Error('any-error'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // The generic toast surfaces.
+    await waitFor(() => {
+      expect(screen.getByText(/something went wrong/i)).toBeInTheDocument();
+    });
+    // F10 — the busy/disabled signal LIFTS so the user can retry.
+    expect(
+      reactivateTrigger.getAttribute('aria-busy') === 'true',
+      'F10 — after rejection, the busy signal must lift so the user can retry',
+    ).toBe(false);
+    expect(
+      reactivateTrigger.hasAttribute('disabled'),
+      'F10 — after rejection, the button must be re-enabled',
+    ).toBe(false);
+  });
+});
+
+// =====================================================================
+// F6 (MED) — Reactivate is gated by !isSelf too (defensive race)
+//
+// Today canReactivate = !member.isActive — no !isSelf guard. If a viewer-self
+// somehow appears in the Inactive section (defensive race, post-deactivation
+// flicker), the viewer's row would show a Reactivate control on their own
+// row. Server rules already deny self-edits of isActive; the UI must mirror.
+// =====================================================================
+describe('FamilyManagementScreen — F6: Reactivate is NOT offered on the viewer\'s own row', () => {
+  it('viewer-self appearing as INACTIVE has NO Reactivate control on their own row', () => {
+    const selfInactiveViewer: UserWithId = {
+      ...VIEWER_PARENT,
+      isActive: false, // defensive race — viewer somehow in the Inactive section
+    };
+    renderScreen({
+      viewer: selfInactiveViewer,
+      members: [selfInactiveViewer, CO_PARENT, ACTIVE_CHILD, INACTIVE_CHILD],
+    });
+    // Sarah Kim's row must have NO Reactivate button (it's the viewer).
+    expect(
+      within(rowFor('Sarah Kim')).queryByRole('button', { name: /reactivate/i }),
+      'Reactivate must never appear on the viewer\'s OWN row (F6 — defensive against an isActive race)',
+    ).toBeNull();
+    // But the OTHER inactive row (Ben) still has its Reactivate — guard is per-row, not global.
+    expect(
+      within(rowFor('Ben Kim')).queryByRole('button', { name: /reactivate\s+ben/i }),
+    ).toBeInTheDocument();
+  });
+});
+
+// =====================================================================
+// F8 (LOW) — no-op rename is a UI-side no-op
+//
+// If the trimmed input equals target.name, Save must NOT call onRename. The
+// server would deny with affectedKeys().size() > 0 → a confusing generic-error
+// toast for what the user perceives as "saving the same name". The UI does the
+// short-circuit: dismiss the sheet silently (no error toast).
+// =====================================================================
+describe('FamilyManagementScreen — F8: no-op rename does NOT call onRename (silent close, no error toast)', () => {
+  it('Save with the trimmed value equal to the current name → onRename NOT called; sheet closes; no error toast', async () => {
+    const onRename = vi.fn().mockResolvedValue(undefined);
+    renderScreen({ onRename });
+    fireEvent.click(screen.getByRole('button', { name: /rename\s+maya/i }));
+    const dialog = screen.getByRole('dialog');
+    const input = within(dialog).getByRole('textbox') as HTMLInputElement;
+    // Re-type the same name (with surrounding whitespace to exercise the trim).
+    fireEvent.change(input, { target: { value: '   Maya Kim   ' } });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: /save/i }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // 1) onRename NOT called — the UI short-circuits the no-op.
+    expect(
+      onRename,
+      'a no-op rename (trimmed === current name) must NOT call onRename (server would deny on hasOnly-not-affected)',
+    ).not.toHaveBeenCalled();
+    // 2) The sheet closes silently.
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog'),
+        'the rename sheet must close silently on a no-op',
+      ).not.toBeInTheDocument(),
+    );
+    // 3) NO generic error toast appears (the user's action was implicitly a save).
+    expect(
+      screen.queryByText(/something went wrong/i),
+      'a no-op rename must NOT surface the generic error toast',
+    ).toBeNull();
+  });
+});
+
+// =====================================================================
+// A1 (a11y) — drop redundant <ul aria-label>
+//
+// The <ul> carries aria-label={heading} which duplicates the section's <h2>.
+// The section heading is the authoritative name; the <ul> must NOT carry an
+// aria-label.
+// =====================================================================
+describe('FamilyManagementScreen — A1: section <ul> has no aria-label (avoid duplicating <h2>)', () => {
+  it('the Active section\'s <ul> carries NO aria-label', () => {
+    renderScreen();
+    // Find the active <section>, then its <ul>.
+    const sections = Array.from(document.querySelectorAll('section'));
+    const activeSection = sections.find(
+      (s) =>
+        /active/i.test(s.querySelector('h2')?.textContent ?? '') &&
+        !/inactive/i.test(s.querySelector('h2')?.textContent ?? ''),
+    );
+    expect(activeSection, 'an Active <section> must exist').toBeTruthy();
+    const list = activeSection!.querySelector('ul');
+    expect(list, 'the Active section must contain a <ul>').toBeTruthy();
+    expect(
+      list!.hasAttribute('aria-label'),
+      'A1 — the <ul> must NOT carry aria-label (duplicates the <h2>)',
+    ).toBe(false);
+  });
+
+  it('the Inactive section\'s <ul> carries NO aria-label', () => {
+    renderScreen();
+    const sections = Array.from(document.querySelectorAll('section'));
+    const inactiveSection = sections.find((s) =>
+      /inactive/i.test(s.querySelector('h2')?.textContent ?? ''),
+    );
+    expect(inactiveSection, 'an Inactive <section> must exist').toBeTruthy();
+    const list = inactiveSection!.querySelector('ul');
+    expect(list, 'the Inactive section must contain a <ul>').toBeTruthy();
+    expect(
+      list!.hasAttribute('aria-label'),
+      'A1 — the Inactive <ul> must NOT carry aria-label (duplicates the <h2>)',
+    ).toBe(false);
+  });
+});
+
+// =====================================================================
+// A3 (a11y) — destructive confirm sheet associates consequence text via aria-describedby
+//
+// The "{name} will no longer be able to sign in or earn allowance…" sentence
+// must be part of the dialog's accessible description. Pin: the dialog has
+// aria-describedby pointing to an element whose id matches, and that element
+// contains the consequence text.
+// =====================================================================
+describe('FamilyManagementScreen — A3: destructive confirm dialog has aria-describedby wired to the consequence text', () => {
+  it('the confirm dialog\'s aria-describedby points to an element containing the consequence sentence', () => {
+    renderScreen();
+    fireEvent.click(
+      within(rowFor('Maya Kim')).getByRole('button', { name: /deactivate\s+maya/i }),
+    );
+    const dialog = screen.getByRole('dialog');
+    const describedById = dialog.getAttribute('aria-describedby');
+    expect(
+      describedById,
+      'A3 — the destructive confirm dialog must carry aria-describedby pointing at the consequence text',
+    ).not.toBeNull();
+    expect(describedById?.length ?? 0).toBeGreaterThan(0);
+    const describedNode = document.getElementById(describedById!);
+    expect(
+      describedNode,
+      'A3 — the element referenced by aria-describedby must exist in the DOM',
+    ).not.toBeNull();
+    // The referenced element must contain the consequence text.
+    expect(
+      describedNode!.textContent ?? '',
+      'A3 — the described element must contain the consequence sentence (sign in / allowance)',
+    ).toMatch(/sign in|earn allowance/i);
+  });
+});
+
+// =====================================================================
+// A5 + Adv F7 — rename input drops maxLength; over-length error is surfaced
+//
+// Today the input has maxLength={NAME_MAX_LENGTH} (silent truncation; the
+// isOverLength branch is unreachable). Fix: drop the maxLength attribute,
+// surface the over-length error inline via role="alert" / aria-live, and DO
+// NOT call onRename.
+// =====================================================================
+describe('FamilyManagementScreen — A5/F7: rename input has no maxLength; over-length surfaces an inline error', () => {
+  function openRenameSheet(name: string): HTMLInputElement {
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`rename\\s+${name}`, 'i') }));
+    const dialog = screen.getByRole('dialog');
+    return within(dialog).getByRole('textbox') as HTMLInputElement;
+  }
+
+  it('the rename input does NOT carry a maxLength attribute (silent truncation harms cognition)', () => {
+    renderScreen();
+    const input = openRenameSheet('Maya Kim');
+    expect(
+      input.hasAttribute('maxlength'),
+      'A5 — the rename input must NOT carry maxLength (silent truncation is a cognitive harm)',
+    ).toBe(false);
+  });
+
+  it(`an over-length name (> ${NAME_MAX_LENGTH} chars trimmed) on Save surfaces an inline live-region error AND does NOT call onRename`, async () => {
+    const onRename = vi.fn().mockResolvedValue(undefined);
+    renderScreen({ onRename });
+    const input = openRenameSheet('Maya Kim');
+    // Without maxLength, the input can accept the long value. Trimmed length
+    // is then > NAME_MAX_LENGTH.
+    fireEvent.change(input, { target: { value: 'A'.repeat(NAME_MAX_LENGTH + 5) } });
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /save/i }));
+    await Promise.resolve();
+    // 1) onRename NOT called.
+    expect(
+      onRename,
+      'an over-length name must not invoke onRename (UI validation)',
+    ).not.toHaveBeenCalled();
+    // 2) A live-region inline error appears, mentioning the cap.
+    const liveRegion =
+      screen.queryByRole('alert') ??
+      document.querySelector('[aria-live]');
+    expect(
+      liveRegion,
+      'A5/F7 — an over-length error must be announced (role="alert" or aria-live)',
+    ).not.toBeNull();
+    const text = liveRegion?.textContent ?? '';
+    expect(
+      text,
+      'the over-length error copy should mention the cap and that the name is too long',
+    ).toMatch(new RegExp(`too long|${NAME_MAX_LENGTH}`, 'i'));
+  });
+
+  it('the rename input accepts a paste-style assignment of an over-length value (no truncation at the input boundary)', () => {
+    // With maxLength removed, the DOM input must hold the FULL value the user
+    // types/pastes. A truncated value at the input boundary is the bug.
+    renderScreen();
+    const input = openRenameSheet('Maya Kim');
+    const long = 'A'.repeat(NAME_MAX_LENGTH + 10);
+    fireEvent.change(input, { target: { value: long } });
+    expect(
+      input.value.length,
+      'A5/F7 — without maxLength the input must hold the full value (no silent truncation)',
+    ).toBe(long.length);
+  });
+});
+
+// =====================================================================
+// A8 (a11y) — drop redundant aria-required on the pre-filled rename input
+//
+// The input is pre-filled and has no native `required` — aria-required="true"
+// is misleading. Pin: aria-required is not set.
+// =====================================================================
+describe('FamilyManagementScreen — A8: rename input does NOT carry aria-required', () => {
+  it('the rename input has NO aria-required attribute', () => {
+    renderScreen();
+    fireEvent.click(screen.getByRole('button', { name: /rename\s+maya/i }));
+    const dialog = screen.getByRole('dialog');
+    const input = within(dialog).getByRole('textbox');
+    expect(
+      input.hasAttribute('aria-required'),
+      'A8 — the pre-filled rename input must not carry aria-required (no matching native `required`)',
+    ).toBe(false);
+  });
+
+  it('canSave-guarding logic is unchanged: empty input still does not submit', async () => {
+    const onRename = vi.fn().mockResolvedValue(undefined);
+    renderScreen({ onRename });
+    fireEvent.click(screen.getByRole('button', { name: /rename\s+maya/i }));
+    const dialog = screen.getByRole('dialog');
+    const input = within(dialog).getByRole('textbox') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /save/i }));
+    await Promise.resolve();
+    expect(
+      onRename,
+      'A8 — removing aria-required must NOT relax the canSave guard',
+    ).not.toHaveBeenCalled();
   });
 });
 
