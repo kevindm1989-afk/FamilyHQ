@@ -3,62 +3,18 @@
  *
  * These selectors isolate the two pieces of logic worth unit-testing apart from
  * the screen: the TIMEZONE-sensitive "upcoming events" filter (an event dated
- * the LOCAL today must not be dropped as past — lesson F4), and the generic
+ * the LOCAL today must not be dropped as past — lesson F4) and the generic
  * cap-at-N / stable-order helpers shared by every section.
  *
  * All selectors are PURE: no clock read, no side effects. The reference "now"
- * is always passed in (`nowMs`), never read from `Date.now()` inside.
+ * is always passed in (`nowMs`), never read from `Date.now()` inside. The
+ * local-day reductions (`localDayKey` / `eventLocalDay`) come from the shared
+ * `src/lib/dates.ts` so the same basis is used on BOTH sides of every day
+ * comparison (lesson 2026-05-28).
  */
+import { eventLocalDay, localDayKey } from '../../lib/dates';
 import type { ChoreWithId } from '../chores/choresMemberService';
 import type { EventWithId } from '../calendar/calendarService';
-
-/**
- * Map a `nowMs` instant to the LOCAL calendar day as a comparable `YYYY-MM-DD`
- * string. Using local date PARTS (not `toISOString`, which is UTC) is what makes
- * an event dated the local today survive even after UTC has rolled to tomorrow
- * (lesson F4).
- */
-function localDayKey(ms: number): string {
-  const d = new Date(ms);
-  const year = d.getFullYear();
-  const month = `${d.getMonth() + 1}`.padStart(2, '0');
-  const day = `${d.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-/**
- * Resolve an event `date` to the SAME local-day basis as `nowMs` (F1/F2).
- *
- * Returns `{ key, instant }` where `key` is the event's LOCAL `YYYY-MM-DD` and
- * `instant` is the parsed epoch ms (used for soonest-first ordering). Returns
- * `null` for an empty or unparseable date so the event is DROPPED (F2).
- *
- * A bare `YYYY-MM-DD` (date-only) is treated as a LOCAL calendar day — parsed
- * via the date PARTS, not `new Date('2026-06-15')` (which is UTC-midnight and
- * shifts a day back in a UTC-behind zone). A time-bearing / offset-bearing ISO
- * datetime is parsed to an instant, then reduced to its LOCAL day via
- * `getFullYear/getMonth/getDate` — the same parts `localDayKey` uses for `now`.
- */
-function eventLocalDay(iso: string): { key: string; instant: number } | null {
-  if (typeof iso !== 'string' || iso === '') return null;
-
-  // Date-only `YYYY-MM-DD`: interpret as a LOCAL calendar day directly.
-  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  if (dateOnly) {
-    const year = Number(dateOnly[1]);
-    const month = Number(dateOnly[2]);
-    const day = Number(dateOnly[3]);
-    const local = new Date(year, month - 1, day);
-    if (Number.isNaN(local.getTime())) return null;
-    return { key: localDayKey(local.getTime()), instant: local.getTime() };
-  }
-
-  // Time-bearing / offset-bearing ISO datetime: parse to an instant, then take
-  // the LOCAL day parts (same basis as `now`).
-  const instant = new Date(iso).getTime();
-  if (Number.isNaN(instant)) return null;
-  return { key: localDayKey(instant), instant };
-}
 
 /**
  * Keep only events whose `date` falls on the LOCAL calendar day of `nowMs` OR

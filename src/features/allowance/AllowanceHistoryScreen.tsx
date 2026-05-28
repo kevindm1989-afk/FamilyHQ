@@ -26,6 +26,7 @@
  */
 import { type ReactElement } from 'react';
 import { EmptyState, Skeleton } from '../../components';
+import { localDayKey } from '../../lib/dates';
 import type { Role, UserWithId } from '../../lib/types';
 import {
   ALLOWANCE_EMPTY_MESSAGE,
@@ -72,22 +73,15 @@ const DATE_FORMAT = new Intl.DateTimeFormat('en-CA', {
   year: 'numeric',
 });
 
-// Machine-readable YYYY-MM-DD for the <time dateTime> attribute + the day key.
-// Uses the viewer's LOCAL calendar day so an evening earning groups under the
-// local day, not the UTC day (F4).
-function isoDay(ms: number): string {
-  const safe = Number.isFinite(ms) ? ms : Date.now();
-  const d = new Date(safe);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+// Machine-readable YYYY-MM-DD for the <time dateTime> attribute + the day key
+// comes from the shared `localDayKey` helper (`src/lib/dates.ts`) — same basis
+// as the dashboard's local-day comparison so an evening earning groups under
+// the LOCAL day, not the UTC day (lesson 2026-05-28).
 
 function friendlyDay(ms: number): string {
   const safe = Number.isFinite(ms) ? ms : Date.now();
   // Format the viewer's LOCAL calendar day at local noon, so the visible
-  // heading matches the local day key (F4) and is stable against TZ edge flips.
+  // heading matches the local day key and is stable against TZ edge flips.
   const d = new Date(safe);
   const noon = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12);
   return DATE_FORMAT.format(noon);
@@ -106,7 +100,7 @@ function groupByDay(transactions: TransactionWithId[]): DayGroup[] {
   const groups: DayGroup[] = [];
   const byKey = new Map<string, DayGroup>();
   for (const txn of ordered) {
-    const key = isoDay(txn.createdAt);
+    const key = localDayKey(txn.createdAt);
     let group = byKey.get(key);
     if (!group) {
       group = { key, label: friendlyDay(txn.createdAt), transactions: [] };
@@ -228,7 +222,7 @@ function TransactionRow(props: { txn: TransactionWithId }): ReactElement {
   // F5: gate the row amount exactly like the balance — a non-finite / negative /
   // over-max amount renders the invalid indicator, never "$NaN" / "-$x".
   const amount = isValidMoneyCents(txn.amount) ? formatMoney(txn.amount) : MONEY_INVALID_INDICATOR;
-  const iso = isoDay(txn.createdAt);
+  const iso = localDayKey(txn.createdAt);
   const friendly = friendlyDay(txn.createdAt);
   // A2: the row's coherent sentence is exposed as REAL text inside the listitem
   // (an sr-only span), with the decorative/visual spans aria-hidden — rather than
