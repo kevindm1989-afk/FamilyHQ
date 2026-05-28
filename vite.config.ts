@@ -1,4 +1,13 @@
 /// <reference types="vitest/config" />
+
+// Pin a deterministic, non-UTC default timezone for the whole test run before
+// any worker forks (workers inherit this process.env). Local-day behaviour
+// (e.g. allowance day grouping, F4) is then exercised identically on every
+// machine regardless of the host zone. Set here (not in a setup file) because
+// V8 locks its default zone early — it must already be in the environment when
+// the worker runtime initialises.
+process.env.TZ ??= 'America/Los_Angeles';
+
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';

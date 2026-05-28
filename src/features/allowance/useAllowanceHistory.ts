@@ -100,6 +100,10 @@ export function useAllowanceHistory(
           buildTransactionsQuery(db, uid, familyId),
           (snap) => {
             setTransactions((snap as { docs: QueryDocumentSnapshot[] }).docs.map(toTransaction));
+            // Clear any prior (e.g. transient listener) error: a recovered
+            // snapshot must not leave a sticky error banner over good data (F6),
+            // mirroring the refresh() success path.
+            setError(null);
             setLoading(false);
           },
           () => {

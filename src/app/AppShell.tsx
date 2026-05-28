@@ -429,7 +429,6 @@ function MemberAllowanceRoute(props: {
       members={[]}
       feed={feed}
       onSelectMember={() => undefined}
-      nowMs={Date.now()}
     />
   );
 }
@@ -440,10 +439,19 @@ function ParentAllowanceRoute(props: {
   members: ReturnType<typeof useFamily>['members'];
 }): ReactElement {
   const { familyId, currentUser, members } = props;
-  // The parent picks which child's ledger to view; default to the first active
-  // member. The hook re-queries whenever the selection changes.
+  // The parent picks which CHILD's ledger to view. F1: only members with
+  // role === 'member' are selectable — never a parent. Default to the first
+  // child. F3: resolve the effective uid against the CURRENT child membership,
+  // so a removed/deactivated selection falls back to a valid child (never a
+  // nameless header still subscribed to a gone uid). The hook re-queries
+  // whenever the resolved selection changes.
+  const children = members.filter((m) => m.role === 'member');
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
-  const effectiveUid = selectedUid ?? members[0]?.id ?? null;
+  const selectedChild = children.find((c) => c.id === selectedUid);
+  const effectiveChild = selectedChild ?? children[0];
+  const effectiveUid = effectiveChild?.id ?? null;
+  // The hook is keyed on the resolved child uid (see key=) so a switch unmounts
+  // the prior list — defence-in-depth against a cross-child flash (F2).
   const feed = useAllowanceHistory(effectiveUid, familyId);
 
   if (!currentUser || !familyId) {
@@ -451,20 +459,30 @@ function ParentAllowanceRoute(props: {
   }
 
   const viewer = { uid: currentUser.id, name: currentUser.name, role: currentUser.role };
-  const selected = members.find((m) => m.id === effectiveUid);
+
+  // F3: when no child resolves, do not render a nameless header over a NaN
+  // balance with a ledger beneath it — show the safe empty/no-member state.
+  if (!effectiveChild) {
+    return (
+      <Placeholder
+        title="Allowance"
+        note="No child accounts yet. Add a child to track their allowance."
+      />
+    );
+  }
 
   return (
     <AllowanceHistoryScreen
+      key={effectiveChild.id}
       viewer={viewer}
       selectedMember={{
-        uid: selected?.id ?? '',
-        name: selected?.name ?? '',
-        balanceCents: selected?.allowanceBalance ?? Number.NaN,
+        uid: effectiveChild.id,
+        name: effectiveChild.name,
+        balanceCents: effectiveChild.allowanceBalance,
       }}
-      members={members}
+      members={children}
       feed={feed}
       onSelectMember={setSelectedUid}
-      nowMs={Date.now()}
     />
   );
 }
