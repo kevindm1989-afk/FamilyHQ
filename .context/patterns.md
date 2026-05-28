@@ -25,6 +25,36 @@ short code example
 
 ## Entries
 
+## Exact-payload write contract for constrained user-doc updates
+
+**When to use:** any client write whose firestore.rules contract is
+`affectedKeys().hasOnly([...])` — i.e. a tightly bounded update on a
+broadly-readable doc (typical for `users/{uid}`: rename, isActive flip;
+future: theme, profile edit).
+**How:** the service function builds a literal object with EXACTLY the
+allowed keys; never spread the full doc, never merge an "incoming patch"
+shape. Validate input type + bounds BEFORE the write (a non-string name, a
+non-boolean isActive, an over-length value rejects with a generic PII-free
+error — `updateDoc` is never called on bad input). Test the payload shape
+with `Object.keys(captured.data).sort()` deeply equal to the allowed set,
+PLUS a forbidden-keys loop asserting per-field absence (catches both extras
+and a future full-doc spread regression). Map any Firestore failure to a
+single generic user-safe message; never echo input (name, uid) into the
+error.
+**Example:**
+```
+// service
+await updateDoc(doc(db, 'users', uid), { name: trimmed }); // EXACTLY {name}
+// test
+expect(Object.keys(captured.data).sort()).toEqual(['name']);
+for (const k of ['role','familyId','isActive','email','allowanceBalance','theme']) {
+  expect(Object.prototype.hasOwnProperty.call(captured.data, k)).toBe(false);
+}
+```
+**When not to use:** unbounded admin writes (parent-on-own-doc theme, etc.
+that the rule does not constrain) or transactional multi-field writes (e.g.
+chore approval) — those have a different contract shape.
+
 ## Multi-tenant Firestore: flat top-level collections + immutable `familyId`, isolation in rules
 
 **When to use:** a single Firebase project serving many independent tenants
