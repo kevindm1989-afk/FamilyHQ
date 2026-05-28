@@ -169,6 +169,13 @@ run_gate "semgrep" semgrep --config auto --error --quiet .
 # Dead code (Node)
 [ "$has_node" = true ] && run_gate "knip" npx --no-install knip
 
+# Production bundle build — catches anything tsc/test miss at the bundler
+# level: a dynamic import path vitest happens to resolve but vite doesn't,
+# a Workbox/PWA config that errors on real build, a tree-shake that drops
+# something used. Runs vite directly (npm run build re-runs tsc, which is
+# already a Tier 1 gate).
+[ "$has_node" = true ] && run_gate "build" npx --no-install vite build --logLevel=error
+
 # --- Tier 3: Tests ---
 section "Tier 3: Tests"
 
