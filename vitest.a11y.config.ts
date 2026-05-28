@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 
 /**
  * A11y gate config (Phase 4 / Task 17). Picks up ONLY the dedicated a11y
@@ -11,7 +12,11 @@ import react from '@vitejs/plugin-react';
  * the `toHaveNoViolations` matcher and the jest-dom matchers).
  */
 export default defineConfig({
-  plugins: [react()],
+  // VitePWA is included so it can resolve the `virtual:pwa-register/react`
+  // module that `PwaUpdatePrompt.tsx` imports (test-time; the SW itself does
+  // not run under jsdom). Without it, importing the prompt's a11y test fails
+  // at module resolution.
+  plugins: [react(), VitePWA({ registerType: 'prompt' })],
   test: {
     globals: true,
     environment: 'jsdom',
