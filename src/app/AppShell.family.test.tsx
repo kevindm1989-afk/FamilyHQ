@@ -89,6 +89,12 @@ let familyState: {
   loading: boolean;
 };
 
+// Mock the lazy firebase/config import so FamilyManagementRoute's resolveDb()
+// returns a non-null db shim. Without this the Sec1 null-short-circuit fires
+// before the service spies are reached. Sibling Sec1 test pins the opposite
+// (factory throws -> resolveDb returns null -> spies NOT called).
+vi.mock('../firebase/config', () => ({ db: { __db: true } }));
+
 vi.mock('../hooks/useFamily', () => ({
   useFamily: () => familyState,
   FamilyProvider: ({ children }: { children: React.ReactNode }) => children,

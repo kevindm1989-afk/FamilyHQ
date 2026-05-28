@@ -50,19 +50,31 @@ export async function renameMember(
   uid: string,
   name: string,
 ): Promise<void> {
-  const trimmed = name.trim();
-  // Validate BEFORE any write — a blank/whitespace-only or over-length name is
-  // rejected. Surface ONLY the generic PII-free copy (never the raw input/uid).
-  if (trimmed.length === 0 || trimmed.length > NAME_MAX_LENGTH) {
-    throw new FamilyManagementError();
-  }
   try {
-    // EXACT payload — only `name`. Never spread the full user doc; never include
-    // role / familyId / email / allowanceBalance / theme. The rules contract is
-    // `affectedKeys().hasOnly(['name','isActive'])`.
+    // Sec2 — the validation/trim runs INSIDE the try so a non-string `name`
+    // (TS escape hatch via `unknown as string`, e.g. number / null /
+    // undefined / object) maps to FamilyManagementError, NOT a raw TypeError
+    // from `(undefined).trim()`. Every failure path surfaces the generic
+    // PII-free copy.
+    if (typeof name !== 'string') {
+      throw new FamilyManagementError();
+    }
+    const trimmed = name.trim();
+    // Validate BEFORE any write — a blank/whitespace-only or over-length name
+    // is rejected. Surface ONLY the generic PII-free copy (never the raw
+    // input/uid).
+    if (trimmed.length === 0 || trimmed.length > NAME_MAX_LENGTH) {
+      throw new FamilyManagementError();
+    }
+    // EXACT payload — only `name`. Never spread the full user doc; never
+    // include role / familyId / email / allowanceBalance / theme. The rules
+    // contract is `affectedKeys().hasOnly(['name','isActive'])`.
     await updateDoc(doc(deps.db, USERS_COLLECTION, uid), { name: trimmed });
-  } catch {
-    // Never surface a raw Firebase code / PII (uid, member name) to the caller.
+  } catch (err) {
+    // Preserve a real FamilyManagementError (carries the generic copy already);
+    // re-wrap anything else (raw Firebase code, TypeError, etc.) into the
+    // generic PII-free error.
+    if (err instanceof FamilyManagementError) throw err;
     throw new FamilyManagementError();
   }
 }
@@ -84,8 +96,15 @@ export async function setMemberActive(
   isActive: boolean,
 ): Promise<void> {
   try {
+    // Sec3 — a TS escape hatch (`'true' as unknown as boolean`) must NOT
+    // round-trip into Firestore as a string. Reject any non-boolean BEFORE
+    // updateDoc with the generic PII-free error.
+    if (typeof isActive !== 'boolean') {
+      throw new FamilyManagementError();
+    }
     await updateDoc(doc(deps.db, USERS_COLLECTION, uid), { isActive });
-  } catch {
+  } catch (err) {
+    if (err instanceof FamilyManagementError) throw err;
     throw new FamilyManagementError();
   }
 }

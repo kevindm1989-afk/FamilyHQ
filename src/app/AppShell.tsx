@@ -33,7 +33,11 @@ import {
 } from '../features/chores/choresParentService';
 import { FamilyManagementScreen } from '../features/family/FamilyManagementScreen';
 import { useAllFamilyMembers } from '../features/family/useAllFamilyMembers';
-import { renameMember, setMemberActive } from '../features/family/familyManagementService';
+import {
+  FamilyManagementError,
+  renameMember,
+  setMemberActive,
+} from '../features/family/familyManagementService';
 import type { EventTag } from '../lib/types';
 import { ROUTES, canAccess, hidesBottomNav, type RouteMeta, type ScreenId } from './routes';
 
@@ -607,10 +611,10 @@ function FamilyManagementRoute(): ReactElement {
 
   // The Firestore handle is resolved at action time (lazy import keeps the
   // shell module SDK-free at top level — mirrors BoardRoute / ChoresRoute). A
-  // failing dynamic import (e.g. config missing in a test harness) falls
-  // through with a null db — the service still raises a user-safe
-  // FamilyManagementError, the screen toasts the generic copy, and no raw
-  // Firebase text leaks to the UI.
+  // failing dynamic import (e.g. config missing in a test harness) returns
+  // null — Sec1: the handler must SHORT-CIRCUIT in that case (raise a
+  // FamilyManagementError so the screen toasts the generic copy) and MUST NOT
+  // call the service with a `db as Firestore` null-lie cast.
   const resolveDb = async (): Promise<Firestore | null> => {
     try {
       const { db } = await import('../firebase/config');
@@ -622,12 +626,20 @@ function FamilyManagementRoute(): ReactElement {
 
   const handleRename = async (uid: string, name: string): Promise<void> => {
     const db = await resolveDb();
-    await renameMember({ db: db as Firestore }, uid, name);
+    if (db === null) {
+      // Sec1 — no service call, no null cast. The screen's .catch surfaces
+      // the generic toast.
+      throw new FamilyManagementError();
+    }
+    await renameMember({ db }, uid, name);
   };
 
   const handleSetActive = async (uid: string, isActive: boolean): Promise<void> => {
     const db = await resolveDb();
-    await setMemberActive({ db: db as Firestore }, uid, isActive);
+    if (db === null) {
+      throw new FamilyManagementError();
+    }
+    await setMemberActive({ db }, uid, isActive);
   };
 
   return (

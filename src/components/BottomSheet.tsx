@@ -21,6 +21,14 @@ export interface BottomSheetProps {
    * BottomSheet.test.tsx.
    */
   fallbackFocusRef?: RefObject<HTMLElement>;
+  /**
+   * Optional id of an element whose text becomes the dialog's accessible
+   * description (A3 — destructive confirm sheets must associate their
+   * consequence sentence via aria-describedby). When provided, the underlying
+   * dialog renders `aria-describedby={describedById}`. When omitted the
+   * attribute is not present — no behavior change for existing consumers.
+   */
+  describedById?: string;
 }
 
 const FOCUSABLE_SELECTOR =
@@ -37,7 +45,7 @@ const FOCUSABLE_SELECTOR =
  * Enter motion is opacity + slide-up (reduced-motion: opacity-only).
  */
 export function BottomSheet(props: BottomSheetProps): ReactElement | null {
-  const { open, title, onClose, children, fallbackFocusRef } = props;
+  const { open, title, onClose, children, fallbackFocusRef, describedById } = props;
   const sheetRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   // The element that had focus before the sheet opened, restored on close.
@@ -158,6 +166,7 @@ export function BottomSheet(props: BottomSheetProps): ReactElement | null {
         role="dialog"
         aria-modal="true"
         aria-label={title}
+        aria-describedby={describedById}
         tabIndex={-1}
         className="relative w-full max-w-app rounded-t-sheet bg-surface-card px-16 pb-24 pt-12 shadow-sheet focus:outline-none"
       >

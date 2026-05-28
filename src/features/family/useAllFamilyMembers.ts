@@ -45,6 +45,22 @@ function toUser(snap: QueryDocumentSnapshot): UserWithId {
   return { id: snap.id, ...data };
 }
 
+/**
+ * F5 — deterministic display order. Sorts a COPY (never mutates the caller's
+ * array) alphabetically by name (case-insensitive, locale-aware via
+ * `localeCompare(.., undefined, { sensitivity: 'base' })`) with the uid as a
+ * stable secondary tiebreak. Firestore returns docs in arbitrary order and
+ * the order can shuffle between snapshots; this stabilizes the rendered
+ * order across snapshots.
+ */
+export function sortMembers(members: UserWithId[]): UserWithId[] {
+  return members.slice().sort((a, b) => {
+    const cmp = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    if (cmp !== 0) return cmp;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
 export function useAllFamilyMembers(familyId: string | null): UseAllFamilyMembersResult {
   const [members, setMembers] = useState<UserWithId[]>([]);
   const [loading, setLoading] = useState<boolean>(familyId !== null);
@@ -78,7 +94,25 @@ export function useAllFamilyMembers(familyId: string | null): UseAllFamilyMember
           buildQuery(db, familyId),
           (snap) => {
             const docs = (snap as { docs: QueryDocumentSnapshot[] }).docs;
-            const sig = docs.map((d) => d.id).join(',');
+            // F1 — sign the snapshot by the rendered FIELD values, not the id
+            // set alone. An id-only signature drops a rename or isActive flip
+            // because the id set is unchanged. The signature combines id + the
+            // fields the screen reads (name, role, isActive, familyId,
+            // allowanceBalance) so any change forces a re-apply, while an
+            // identical re-fire of the same doc set still dedupes.
+            const sig = docs
+              .map((d) => {
+                const data = d.data() as User;
+                return [
+                  d.id,
+                  data.name,
+                  data.role,
+                  String(data.isActive),
+                  data.familyId,
+                  String(data.allowanceBalance),
+                ].join(':');
+              })
+              .join(',');
             if (sig === lastSnapshotSig.current) {
               setLoading(false);
               return;
@@ -88,8 +122,15 @@ export function useAllFamilyMembers(familyId: string | null): UseAllFamilyMember
             // newer live snapshot has superseded it.
             refreshToken.current += 1;
             // Defense-in-depth: filter by familyId in JS too so a prefix
-            // collision in the cache cannot leak across families.
-            setMembers(deriveAllMembers(docs.map(toUser), familyId));
+            // collision in the cache cannot leak across families. F5 — then
+            // sort deterministically (alphabetical by name, case-insensitive,
+            // with uid as a secondary tiebreak) so display order does not
+            // depend on Firestore doc order.
+            setMembers(sortMembers(deriveAllMembers(docs.map(toUser), familyId)));
+            // F2 — a successful snapshot CLEARS any prior listener error
+            // (mirror the allowance hook F6 pin). Firestore may resume after a
+            // transient error; the user-visible error must clear.
+            setError(null);
             setLoading(false);
           },
           () => {
@@ -124,7 +165,7 @@ export function useAllFamilyMembers(familyId: string | null): UseAllFamilyMember
       // doc set. A late snapshot replaying that doc set after this fresh refresh
       // would carry the OLD signature; if we wrote the fresh sig here, that old
       // redundant snapshot would mismatch and clobber the fresh result.
-      setMembers(deriveAllMembers(docs.map(toUser), familyId));
+      setMembers(sortMembers(deriveAllMembers(docs.map(toUser), familyId)));
       setError(null);
     } catch {
       if (token !== refreshToken.current) return;

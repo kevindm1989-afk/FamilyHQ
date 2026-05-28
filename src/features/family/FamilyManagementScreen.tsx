@@ -9,7 +9,8 @@
  *  - RENAME -> per-row "Rename {name}" -> BottomSheet w/ labelled input + Save/Cancel
  *  - DEACTIVATE -> per-active-MEMBER-row "Deactivate {name}" -> confirm BottomSheet
  *                  (never on any parent, never on the viewer's own row)
- *  - REACTIVATE -> per-inactive-row one-tap "Reactivate {name}" (no confirm)
+ *  - REACTIVATE -> per-inactive-row one-tap "Reactivate {name}" (no confirm; also
+ *                  never on the viewer's own row — F6 defensive race guard)
  *  - ERROR -> single user-safe toast (no raw Firebase, no PII)
  *
  * Privacy (ADR-0008): NO email anywhere on screen — `User` carries no email
@@ -20,7 +21,7 @@
  * Firebase is OUT of this screen — props inject the data and the action
  * callbacks (mirrors ChoresParentScreen / BoardScreen).
  */
-import { useEffect, useId, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Avatar, Badge, BottomSheet, EmptyState, Skeleton } from '../../components';
 import { ToastViewport } from '../../app/ToastViewport';
 import { useToast } from '../../hooks/useToast';
@@ -60,6 +61,19 @@ interface ConfirmTarget {
   name: string;
 }
 
+/**
+ * F5 — deterministic display order. Sort active and inactive lists
+ * alphabetically by name (case-insensitive, locale-aware) with the uid as a
+ * stable secondary tiebreak. We sort a COPY (never mutate the prop array).
+ */
+function sortByNameThenUid(list: UserWithId[]): UserWithId[] {
+  return list.slice().sort((a, b) => {
+    const cmp = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    if (cmp !== 0) return cmp;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
 export function FamilyManagementScreen(props: FamilyManagementScreenProps): ReactElement {
   const { viewer, members, loading, error, onRename, onSetActive } = props;
   const { showToast } = useToast();
@@ -67,14 +81,42 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(null);
 
+  // F3 — per-uid (or per-action) in-flight set. A double-tap of any action
+  // must call the underlying callback ONCE while the first promise is in
+  // flight; the action's button reflects busy via `disabled`. After
+  // resolution (success OR failure) the action is removed from the set.
+  // Keys: `reactivate:${uid}`, `deactivate:${uid}`, `rename:${uid}`.
+  const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
+  const beginPending = (key: string): boolean => {
+    if (pending.has(key)) return false;
+    setPending((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+    return true;
+  };
+  const endPending = (key: string): void => {
+    setPending((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
+
   // The error string is surfaced as a single toast — mirror the rest of the app
   // (toast-everything rule). Sanitised callers guarantee it is PII-free.
   useEffect(() => {
     if (error) showToast(error);
   }, [error, showToast]);
 
-  const activeMembers = members.filter((m) => m.isActive);
-  const inactiveMembers = members.filter((m) => !m.isActive);
+  // F5 — sort before splitting so the order is deterministic and stable
+  // across snapshots (the hook also sorts, but defending here keeps the
+  // screen correct when fed unsorted data in tests / future callers).
+  const sorted = useMemo(() => sortByNameThenUid(members), [members]);
+  const activeMembers = sorted.filter((m) => m.isActive);
+  const inactiveMembers = sorted.filter((m) => !m.isActive);
 
   const handleOpenRename = (member: UserWithId, btn: HTMLButtonElement | null): void => {
     // Focus the trigger so BottomSheet's `previouslyFocused` can capture it
@@ -91,29 +133,60 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
   };
 
   const handleReactivate = (member: UserWithId): void => {
+    const key = `reactivate:${member.id}`;
+    // F3 — collapse a double-tap to a single call.
+    if (!beginPending(key)) return;
     void onSetActive(member.id, true)
       .then(() => showToast(MEMBER_REACTIVATED))
-      .catch(() => showToast(FAMILY_GENERIC_ERROR));
+      .catch(() => showToast(FAMILY_GENERIC_ERROR))
+      .finally(() => endPending(key));
   };
 
   const handleRenameSubmit = (newName: string): void => {
     if (!renameTarget) return;
-    void onRename(renameTarget.uid, newName)
+    const target = renameTarget;
+    // F8 — UI-side no-op: if the trimmed value equals the current name, do
+    // NOT call onRename. The server would deny on `affectedKeys().size() > 0`,
+    // surfacing a confusing generic-error toast for a save the user perceives
+    // as identical. Close the sheet silently.
+    if (newName === target.name) {
+      setRenameTarget(null);
+      return;
+    }
+    const key = `rename:${target.uid}`;
+    if (!beginPending(key)) return;
+    void onRename(target.uid, newName)
       .then(() => {
         showToast(RENAME_SUCCESS);
+        // F4 — sheet closes on SUCCESS (and on failure via .catch). Putting
+        // setRenameTarget(null) in both branches keeps the close deterministic.
         setRenameTarget(null);
       })
-      .catch(() => showToast(FAMILY_GENERIC_ERROR));
+      .catch(() => {
+        showToast(FAMILY_GENERIC_ERROR);
+        // F4 — sheet closes on REJECTION too. Staying open compounds the
+        // double-tap risk and confuses retry semantics.
+        setRenameTarget(null);
+      })
+      .finally(() => endPending(key));
   };
 
   const handleConfirmDeactivate = (): void => {
     if (!confirmTarget) return;
-    void onSetActive(confirmTarget.uid, false)
+    const target = confirmTarget;
+    const key = `deactivate:${target.uid}`;
+    if (!beginPending(key)) return;
+    void onSetActive(target.uid, false)
       .then(() => {
         showToast(MEMBER_DEACTIVATED);
         setConfirmTarget(null);
       })
-      .catch(() => showToast(FAMILY_GENERIC_ERROR));
+      .catch(() => {
+        // F10 — confirm sheet closes on failure too.
+        showToast(FAMILY_GENERIC_ERROR);
+        setConfirmTarget(null);
+      })
+      .finally(() => endPending(key));
   };
 
   return (
@@ -134,6 +207,7 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
               heading="Active members"
               members={activeMembers}
               viewer={viewer}
+              pending={pending}
               onOpenRename={handleOpenRename}
               onOpenConfirm={handleOpenConfirm}
               onReactivate={handleReactivate}
@@ -142,6 +216,7 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
               heading="Inactive members"
               members={inactiveMembers}
               viewer={viewer}
+              pending={pending}
               onOpenRename={handleOpenRename}
               onOpenConfirm={handleOpenConfirm}
               onReactivate={handleReactivate}
@@ -153,6 +228,7 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
       {renameTarget && (
         <RenameSheet
           target={renameTarget}
+          pending={pending.has(`rename:${renameTarget.uid}`)}
           onCancel={() => setRenameTarget(null)}
           onSubmit={handleRenameSubmit}
         />
@@ -161,6 +237,7 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
       {confirmTarget && (
         <ConfirmDeactivateSheet
           target={confirmTarget}
+          pending={pending.has(`deactivate:${confirmTarget.uid}`)}
           onCancel={() => setConfirmTarget(null)}
           onConfirm={handleConfirmDeactivate}
         />
@@ -175,25 +252,30 @@ interface MemberSectionProps {
   heading: string;
   members: UserWithId[];
   viewer: UserWithId;
+  pending: ReadonlySet<string>;
   onOpenRename: (member: UserWithId, btn: HTMLButtonElement | null) => void;
   onOpenConfirm: (member: UserWithId, btn: HTMLButtonElement | null) => void;
   onReactivate: (member: UserWithId) => void;
 }
 
 function MemberSection(props: MemberSectionProps): ReactElement {
-  const { heading, members, viewer, onOpenRename, onOpenConfirm, onReactivate } = props;
+  const { heading, members, viewer, pending, onOpenRename, onOpenConfirm, onReactivate } = props;
   return (
     <section className="flex flex-col gap-12">
       <h2 className="text-title font-bold text-ink">{heading}</h2>
       {members.length === 0 ? (
         <EmptyState message="No one here yet." />
       ) : (
-        <ul className="flex flex-col gap-8" aria-label={heading}>
+        // A1 — the <ul> carries NO aria-label. The section's <h2> is the
+        // authoritative accessible name; duplicating it on the list would be
+        // redundant for AT.
+        <ul className="flex flex-col gap-8">
           {members.map((m) => (
             <li key={m.id}>
               <MemberRow
                 member={m}
                 viewer={viewer}
+                pending={pending}
                 onOpenRename={onOpenRename}
                 onOpenConfirm={onOpenConfirm}
                 onReactivate={onReactivate}
@@ -209,19 +291,22 @@ function MemberSection(props: MemberSectionProps): ReactElement {
 interface MemberRowProps {
   member: UserWithId;
   viewer: UserWithId;
+  pending: ReadonlySet<string>;
   onOpenRename: (member: UserWithId, btn: HTMLButtonElement | null) => void;
   onOpenConfirm: (member: UserWithId, btn: HTMLButtonElement | null) => void;
   onReactivate: (member: UserWithId) => void;
 }
 
 function MemberRow(props: MemberRowProps): ReactElement {
-  const { member, viewer, onOpenRename, onOpenConfirm, onReactivate } = props;
+  const { member, viewer, pending, onOpenRename, onOpenConfirm, onReactivate } = props;
   const isSelf = member.id === viewer.id;
   // Deactivate is OFFERED ONLY on role==='member' active rows (never any parent,
   // never on the viewer self). Parent-on-parent deactivation is deferred (v1).
   const canDeactivate = member.isActive && member.role === 'member' && !isSelf;
-  // Reactivate is OFFERED on every inactive row.
-  const canReactivate = !member.isActive;
+  // Reactivate is OFFERED on every inactive row EXCEPT the viewer's own (F6 —
+  // defensive against an isActive race; rules deny self-edits of isActive too).
+  const canReactivate = !member.isActive && !isSelf;
+  const reactivatePending = pending.has(`reactivate:${member.id}`);
 
   return (
     <div className="flex items-center gap-12 rounded-control border border-surface-line bg-surface-card px-14 py-12">
@@ -268,8 +353,12 @@ function MemberRow(props: MemberRowProps): ReactElement {
           <button
             type="button"
             aria-label={`Reactivate ${member.name}`}
+            // F3 — disable while a Reactivate is in flight to collapse a
+            // double-tap to a single call. The click handler stays bound; the
+            // pending-set guard inside the handler is the source of truth.
+            disabled={reactivatePending}
             onClick={() => onReactivate(member)}
-            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control bg-brand px-14 text-body font-semibold text-brand-on transition-colors duration-cardPress ease-out hover:bg-brand-dark focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none"
+            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control bg-brand px-14 text-body font-semibold text-brand-on transition-colors duration-cardPress ease-out hover:bg-brand-dark focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus disabled:opacity-60 motion-reduce:transition-none"
           >
             Reactivate
           </button>
@@ -300,12 +389,13 @@ function BalanceAmount(props: { cents: number; name: string }): ReactElement {
 
 interface RenameSheetProps {
   target: RenameTarget;
+  pending: boolean;
   onCancel: () => void;
   onSubmit: (newName: string) => void;
 }
 
 function RenameSheet(props: RenameSheetProps): ReactElement {
-  const { target, onCancel, onSubmit } = props;
+  const { target, pending, onCancel, onSubmit } = props;
   const [value, setValue] = useState<string>(target.name);
   const [touchedInvalid, setTouchedInvalid] = useState(false);
   const inputId = useId();
@@ -319,6 +409,8 @@ function RenameSheet(props: RenameSheetProps): ReactElement {
 
   const trimmed = value.trim();
   const isEmpty = trimmed.length === 0;
+  // A5/F7 — without maxLength on the input, the user can type past the cap.
+  // The error branch is now reachable, surfaced as an aria-live alert below.
   const isOverLength = trimmed.length > NAME_MAX_LENGTH;
   const canSave = !isEmpty && !isOverLength;
 
@@ -329,6 +421,13 @@ function RenameSheet(props: RenameSheetProps): ReactElement {
     }
     onSubmit(trimmed);
   };
+
+  const errorMessage =
+    touchedInvalid && !canSave
+      ? isOverLength
+        ? `Name is too long — keep it under ${NAME_MAX_LENGTH + 1} characters.`
+        : 'Please enter a name.'
+      : null;
 
   return (
     <BottomSheet open title={`Rename ${target.name}`} onClose={onCancel}>
@@ -343,10 +442,13 @@ function RenameSheet(props: RenameSheetProps): ReactElement {
               ref={inputRef}
               type="text"
               value={value}
-              aria-required="true"
+              // A8 — no aria-required (the input is pre-filled and has no
+              // native `required` attribute; aria-required would be a lie).
               aria-invalid={touchedInvalid && !canSave ? 'true' : undefined}
               aria-describedby={touchedInvalid && !canSave ? errorId : undefined}
-              maxLength={NAME_MAX_LENGTH}
+              // A5/F7 — NO maxLength. Silent truncation is a cognitive harm;
+              // the over-length state is surfaced as a visible/live error
+              // below and Save is short-circuited via canSave.
               onChange={(e) => {
                 setValue(e.target.value);
                 if (touchedInvalid) setTouchedInvalid(false);
@@ -354,13 +456,14 @@ function RenameSheet(props: RenameSheetProps): ReactElement {
               className="w-full bg-transparent text-body text-ink placeholder:text-ink-mute2 focus:outline-none"
             />
           </div>
-          {touchedInvalid && !canSave && (
+          {errorMessage && (
             <p
               id={errorId}
               role="alert"
+              aria-live="polite"
               className="text-meta font-semibold text-status-danger-text"
             >
-              Please enter a name.
+              {errorMessage}
             </p>
           )}
         </div>
@@ -368,8 +471,12 @@ function RenameSheet(props: RenameSheetProps): ReactElement {
           <button
             type="button"
             onClick={handleSave}
+            // F3 — disabled while the rename is in flight to collapse a
+            // double-tap to a single call. canSave-driven aria-disabled stays
+            // as the validation gate.
+            disabled={pending}
             aria-disabled={canSave ? undefined : 'true'}
-            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control bg-brand px-20 text-body font-semibold text-brand-on transition-colors duration-cardPress ease-out hover:bg-brand-dark focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus aria-disabled:opacity-60 motion-reduce:transition-none"
+            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control bg-brand px-20 text-body font-semibold text-brand-on transition-colors duration-cardPress ease-out hover:bg-brand-dark focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus disabled:opacity-60 aria-disabled:opacity-60 motion-reduce:transition-none"
           >
             Save
           </button>
@@ -388,16 +495,26 @@ function RenameSheet(props: RenameSheetProps): ReactElement {
 
 interface ConfirmDeactivateSheetProps {
   target: ConfirmTarget;
+  pending: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }
 
 function ConfirmDeactivateSheet(props: ConfirmDeactivateSheetProps): ReactElement {
-  const { target, onCancel, onConfirm } = props;
+  const { target, pending, onCancel, onConfirm } = props;
+  // A3 — the consequence sentence is associated with the dialog via
+  // aria-describedby (BottomSheet extension). The id is stable per mount
+  // via useId().
+  const consequenceId = useId();
   return (
-    <BottomSheet open title={`Deactivate ${target.name}`} onClose={onCancel}>
+    <BottomSheet
+      open
+      title={`Deactivate ${target.name}`}
+      describedById={consequenceId}
+      onClose={onCancel}
+    >
       <div className="flex flex-col gap-16">
-        <p className="text-body text-ink">
+        <p id={consequenceId} className="text-body text-ink">
           {target.name} will no longer be able to sign in or earn allowance. You can reactivate them
           later.
         </p>
@@ -405,7 +522,10 @@ function ConfirmDeactivateSheet(props: ConfirmDeactivateSheetProps): ReactElemen
           <button
             type="button"
             onClick={onConfirm}
-            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control bg-status-danger px-20 text-body font-semibold text-onAccent transition-colors duration-cardPress ease-out hover:bg-status-danger-text focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none"
+            // F3 — disabled while the deactivate is in flight to collapse a
+            // double-tap.
+            disabled={pending}
+            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control bg-status-danger px-20 text-body font-semibold text-onAccent transition-colors duration-cardPress ease-out hover:bg-status-danger-text focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus disabled:opacity-60 motion-reduce:transition-none"
           >
             Deactivate
           </button>
