@@ -1,0 +1,921 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Family HQ — interactive preview</title>
+    <style>
+      /* Design tokens — taken VERBATIM from design-tokens.json (light palette).
+         No Tailwind here; the production app uses Tailwind extended with the
+         same values, this file inlines them so it runs with zero setup. */
+      :root {
+        --brand: #3730A3;
+        --brand-dark: #312E81;
+        --brand-light: #EEF2FF;
+        --brand-on: #FFFFFF;
+        --accent: #F59E0B;
+        --accent-light: #FEF3C7;
+        --accent-on: #FFFFFF;
+        --bg: #F9FAFB;
+        --card: #FFFFFF;
+        --line: #E5E7EB;
+        --line2: #F1F5F9;
+        --ink: #0F172A;
+        --ink2: #334155;
+        --mute: #64748B;
+        --mute2: #94A3B8;
+        --on-dark: #FFFFFF;
+        --school-dot: #3B82F6; --school-bg: #DBEAFE; --school-text: #1D4ED8;
+        --sports-dot: #10B981; --sports-bg: #D1FAE5; --sports-text: #047857;
+        --family-dot: #3730A3; --family-bg: #EEF2FF; --family-text: #3730A3;
+        --work-dot: #6B7280;   --work-bg:   #E5E7EB; --work-text:   #374151;
+        --ok: #10B981; --ok-light: #D1FAE5; --ok-text: #047857;
+        --warn: #F59E0B; --warn-light: #FEF3C7; --warn-text: #B45309;
+        --danger: #EF4444; --danger-light: #FEE2E2; --danger-text: #B91C1C;
+        --focus: #3730A3;
+        /* Type scale (px from handoff). */
+        --t-display: 32px;
+        --t-title: 22px;
+        --t-topbar: 17px;
+        --t-bodyLg: 16px;
+        --t-body: 15px;
+        --t-meta: 14px;
+        --t-label: 13px;
+        --t-badge: 12px;
+        --t-caption: 11px;
+        /* Radii. */
+        --r-control: 12px;
+        --r-card: 16px;
+        --r-pill: 999px;
+        /* Shadow. */
+        --shadow-card: 0 1px 2px rgba(15,23,42,0.04), 0 4px 12px rgba(15,23,42,0.05);
+        /* Layout. */
+        --max-w: 420px;
+        --tap: 44px;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
+        font-size: var(--t-body);
+        line-height: 1.45;
+        -webkit-font-smoothing: antialiased;
+      }
+      button { font: inherit; cursor: pointer; }
+      a { color: var(--brand); }
+      :focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 2px;
+        border-radius: 4px;
+      }
+      .app {
+        max-width: var(--max-w);
+        margin: 0 auto;
+        min-height: 100vh;
+        background: var(--bg);
+        display: flex;
+        flex-direction: column;
+      }
+      /* Skip link (WCAG 2.4.1). */
+      .skip-link {
+        position: absolute;
+        left: -9999px;
+        top: 12px;
+        background: var(--brand);
+        color: var(--brand-on);
+        padding: 8px 16px;
+        border-radius: var(--r-control);
+        z-index: 100;
+      }
+      .skip-link:focus { left: 16px; }
+      /* TopBar. */
+      .topbar {
+        height: 56px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        background: var(--card);
+        border-bottom: 1px solid var(--line);
+        position: sticky; top: 0; z-index: 10;
+      }
+      .topbar h1 {
+        margin: 0;
+        font-size: var(--t-topbar);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: var(--ink);
+      }
+      .avatar {
+        min-width: var(--tap); min-height: var(--tap);
+        background: var(--brand-light);
+        color: var(--brand);
+        border: 0;
+        border-radius: var(--r-pill);
+        padding: 0 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+        font-size: var(--t-label);
+      }
+      .avatar-dot {
+        width: 28px; height: 28px;
+        border-radius: var(--r-pill);
+        background: var(--brand);
+        color: var(--brand-on);
+        display: grid; place-items: center;
+        font-weight: 700;
+        font-size: 13px;
+      }
+      .avatar-dot.amber { background: var(--accent); color: var(--accent-on); }
+      /* Main content scroll area. */
+      main.content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        padding-bottom: 96px;
+      }
+      /* Bottom nav. */
+      .bottomnav {
+        position: fixed;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 0;
+        width: 100%;
+        max-width: var(--max-w);
+        background: var(--card);
+        border-top: 1px solid var(--line);
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
+      }
+      .bottomnav button {
+        background: transparent;
+        border: 0;
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        color: var(--mute);
+        font-size: var(--t-caption);
+        font-weight: 600;
+        min-height: var(--tap);
+      }
+      .bottomnav button[aria-current="page"] { color: var(--brand); }
+      .bottomnav svg { width: 24px; height: 24px; }
+      /* Card. */
+      .card {
+        background: var(--card);
+        border-radius: var(--r-card);
+        box-shadow: var(--shadow-card);
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      .card h2 {
+        margin: 0 0 12px;
+        font-size: var(--t-title);
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        color: var(--ink);
+      }
+      .display {
+        font-size: var(--t-display);
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        line-height: 1.1;
+        color: var(--ink);
+        margin: 0;
+      }
+      .meta { font-size: var(--t-meta); color: var(--mute); }
+      .label { font-size: var(--t-label); color: var(--ink2); font-weight: 600; }
+      /* Pills / badges. */
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: var(--r-pill);
+        font-size: var(--t-badge);
+        font-weight: 600;
+      }
+      .pill.school { background: var(--school-bg); color: var(--school-text); }
+      .pill.sports { background: var(--sports-bg); color: var(--sports-text); }
+      .pill.family { background: var(--family-bg); color: var(--family-text); }
+      .pill.work   { background: var(--work-bg);   color: var(--work-text); }
+      .pill.ok     { background: var(--ok-light);  color: var(--ok-text); }
+      .pill.warn   { background: var(--warn-light);color: var(--warn-text); }
+      .pill.danger { background: var(--danger-light); color: var(--danger-text); }
+      .dot {
+        width: 8px; height: 8px;
+        border-radius: var(--r-pill);
+        display: inline-block;
+      }
+      /* Buttons. */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: var(--tap);
+        padding: 0 20px;
+        border-radius: var(--r-control);
+        border: 0;
+        font-weight: 700;
+        font-size: var(--t-body);
+        background: var(--brand);
+        color: var(--brand-on);
+      }
+      .btn.lg { min-height: 52px; font-size: var(--t-bodyLg); width: 100%; }
+      .btn.ghost {
+        background: transparent;
+        color: var(--brand);
+        border: 1px solid var(--line);
+      }
+      .btn.danger { background: var(--danger); color: var(--brand-on); }
+      .btn.icon { padding: 0 14px; }
+      .btn.sm { min-height: 36px; padding: 0 14px; font-size: var(--t-label); }
+      /* Inputs. */
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 12px;
+      }
+      .field label { font-size: var(--t-label); font-weight: 600; color: var(--ink2); }
+      .field input {
+        height: var(--tap);
+        padding: 0 14px;
+        border-radius: var(--r-control);
+        border: 1px solid var(--line);
+        background: var(--card);
+        font-size: var(--t-body);
+        color: var(--ink);
+      }
+      .field input:focus { border-color: var(--brand); outline: 2px solid var(--focus); outline-offset: 1px; }
+      /* List item row. */
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--line2);
+      }
+      .row:last-child { border-bottom: 0; }
+      .row .lhs { display: flex; align-items: center; gap: 12px; min-width: 0; }
+      .row .lhs strong { font-size: var(--t-body); color: var(--ink); font-weight: 600; display: block; }
+      .row .lhs small { font-size: var(--t-meta); color: var(--mute); }
+      /* Empty state. */
+      .empty {
+        text-align: center;
+        padding: 32px 16px;
+        color: var(--mute);
+      }
+      .empty svg { width: 64px; height: 64px; opacity: 0.6; margin-bottom: 8px; }
+      /* Demo banner. */
+      .demo-banner {
+        background: var(--accent-light);
+        color: var(--accent-text, var(--warn-text));
+        padding: 8px 16px;
+        font-size: var(--t-meta);
+        text-align: center;
+        border-bottom: 1px solid var(--line);
+      }
+      .demo-controls {
+        background: var(--card);
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        padding: 8px 16px;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        font-size: var(--t-label);
+      }
+      .demo-controls strong { color: var(--mute); font-weight: 600; }
+      .demo-controls button {
+        background: transparent;
+        border: 1px solid var(--line);
+        color: var(--ink2);
+        border-radius: var(--r-pill);
+        padding: 4px 10px;
+        font-size: var(--t-label);
+        font-weight: 600;
+      }
+      .demo-controls button[aria-pressed="true"] {
+        background: var(--brand);
+        color: var(--brand-on);
+        border-color: var(--brand);
+      }
+      /* Calendar mini. */
+      .calendar {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 4px;
+      }
+      .calendar .dow {
+        text-align: center;
+        font-size: var(--t-caption);
+        font-weight: 700;
+        color: var(--mute);
+        padding: 4px 0;
+      }
+      .calendar .day {
+        aspect-ratio: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 4px;
+        border-radius: 8px;
+        font-size: var(--t-meta);
+        position: relative;
+        border: 0;
+        background: transparent;
+        color: var(--ink);
+      }
+      .calendar .day.today {
+        background: var(--brand);
+        color: var(--brand-on);
+        font-weight: 700;
+      }
+      .calendar .day.empty { color: var(--mute2); }
+      .calendar .day .dots {
+        display: flex;
+        gap: 2px;
+        margin-top: auto;
+      }
+      .calendar .day .dots .dot { width: 4px; height: 4px; }
+      /* Hero greeting. */
+      .hero {
+        padding: 16px 0 8px;
+      }
+      .hero p { margin: 0; color: var(--mute); font-size: var(--t-meta); }
+      /* Action chip row. */
+      .chip-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .chip {
+        background: var(--card);
+        border: 0;
+        border-radius: var(--r-card);
+        box-shadow: var(--shadow-card);
+        padding: 16px;
+        text-align: left;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-height: 80px;
+      }
+      .chip-icon {
+        width: 32px; height: 32px;
+        border-radius: 10px;
+        background: var(--brand-light);
+        color: var(--brand);
+        display: grid; place-items: center;
+      }
+      .chip strong { font-size: var(--t-body); font-weight: 700; color: var(--ink); }
+      .chip small { font-size: var(--t-meta); color: var(--mute); }
+      /* Toast. */
+      .toast {
+        position: fixed;
+        bottom: 100px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--ink);
+        color: var(--on-dark);
+        padding: 12px 20px;
+        border-radius: var(--r-pill);
+        box-shadow: var(--shadow-card);
+        z-index: 50;
+        font-size: var(--t-meta);
+        animation: toast-in 0.2s ease-out;
+      }
+      @keyframes toast-in {
+        from { opacity: 0; transform: translate(-50%, 8px); }
+        to   { opacity: 1; transform: translate(-50%, 0); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * { animation: none !important; transition: none !important; }
+      }
+      /* Login screen layout. */
+      .login {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 24px;
+        text-align: center;
+      }
+      .login form { text-align: left; }
+      .login-footer { margin-top: 32px; text-align: center; }
+      .login-footer a { font-size: var(--t-meta); color: var(--mute); }
+      /* Accessibility statement. */
+      .a11y h1 { font-size: var(--t-display); margin: 8px 0; }
+      .a11y h2 { font-size: var(--t-title); margin: 24px 0 8px; }
+      .a11y p, .a11y li { font-size: var(--t-body); color: var(--ink); line-height: 1.55; }
+      .a11y time { color: var(--mute); font-size: var(--t-meta); }
+      .a11y ul { padding-left: 24px; }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to main content</a>
+    <div id="root"></div>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.3.1",
+          "react-dom/client": "https://esm.sh/react-dom@18.3.1/client"
+        }
+      }
+    </script>
+
+    <script type="module">
+      import React from 'react';
+      import { createRoot } from 'react-dom/client';
+
+      const { useState, useMemo, useEffect, createElement: h, Fragment } = React;
+      // Tiny hyperscript helpers so screens read like JSX without a Babel runtime.
+      const e = h;
+      const c = (tag, props, ...kids) => h(tag, props, ...kids);
+
+      // ───────────────────────── mock data ─────────────────────────
+      const MEMBERS = [
+        { id: 'm1', name: 'Alex',  role: 'parent', initial: 'A', accent: 'brand' },
+        { id: 'm2', name: 'Jamie', role: 'parent', initial: 'J', accent: 'amber' },
+        { id: 'm3', name: 'Riley', role: 'member', initial: 'R', accent: 'brand' },
+        { id: 'm4', name: 'Quinn', role: 'member', initial: 'Q', accent: 'amber' },
+      ];
+
+      const TODAY = new Date();
+      const fmtDate = (d) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      const fmtTime = (d) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      const addDays = (n) => { const d = new Date(TODAY); d.setDate(d.getDate()+n); return d; };
+
+      const EVENTS = [
+        { id: 'e1', title: 'Soccer practice',      tag: 'sports', when: addDays(0), who: 'Riley' },
+        { id: 'e2', title: 'Parent-teacher night', tag: 'school', when: addDays(1), who: 'Jamie' },
+        { id: 'e3', title: 'Grandma visiting',     tag: 'family', when: addDays(3), who: 'All'   },
+        { id: 'e4', title: 'Riley dentist',        tag: 'school', when: addDays(5), who: 'Riley' },
+        { id: 'e5', title: 'Quinn piano recital',  tag: 'school', when: addDays(9), who: 'Quinn' },
+      ];
+
+      const POSTS = [
+        { id: 'p1', author: 'Alex',  when: '2h ago',  body: 'Picking up Riley at 5 — Jamie can you grab Quinn from piano?', reactions: 2 },
+        { id: 'p2', author: 'Jamie', when: '1d ago',  body: 'Reminder: family dinner Sunday at Grandma’s. Bringing the salad this time.', reactions: 4 },
+        { id: 'p3', author: 'Riley', when: '2d ago',  body: 'Made the soccer team! ⚽', reactions: 5 },
+      ];
+
+      const CHORES = [
+        { id: 'c1', title: 'Take out garbage',     who: 'Riley', status: 'done',     value: 2.00 },
+        { id: 'c2', title: 'Tidy living room',     who: 'Quinn', status: 'pending',  value: 1.50 },
+        { id: 'c3', title: 'Walk the dog',         who: 'Riley', status: 'pending',  value: 1.00 },
+        { id: 'c4', title: 'Load the dishwasher',  who: 'Quinn', status: 'approved', value: 1.00 },
+        { id: 'c5', title: 'Vacuum upstairs',      who: 'Riley', status: 'approved', value: 2.50 },
+      ];
+
+      const LEDGER = [
+        { id: 'l1', label: 'Vacuum upstairs',     when: '2 days ago', delta:  2.50 },
+        { id: 'l2', label: 'Load the dishwasher', when: '3 days ago', delta:  1.00 },
+        { id: 'l3', label: 'Cash withdrawal',     when: '5 days ago', delta: -8.00 },
+        { id: 'l4', label: 'Take out garbage',    when: '6 days ago', delta:  2.00 },
+        { id: 'l5', label: 'Walk the dog',        when: '8 days ago', delta:  1.00 },
+      ];
+      const LEDGER_BALANCE = LEDGER.reduce((s,r) => s + r.delta, 12.50);
+
+      // ───────────────────────── shared chrome ─────────────────────────
+      const Avatar = ({ user, onClick }) => e('button', {
+        className: 'avatar',
+        onClick,
+        'aria-label': `Account: ${user.name} (${user.role})`,
+      },
+        e('span', { className: 'avatar-dot' + (user.accent === 'amber' ? ' amber' : '') }, user.initial),
+        e('span', null, user.name),
+      );
+
+      const TopBar = ({ title, user, onAvatar }) => e('header', { className: 'topbar' },
+        e('h1', null, title),
+        user ? e(Avatar, { user, onClick: onAvatar }) : null,
+      );
+
+      const navItems = [
+        { id: 'dashboard', label: 'Home', icon: 'M3 11l9-8 9 8v10a2 2 0 0 1-2 2h-4v-7H9v7H5a2 2 0 0 1-2-2V11z' },
+        { id: 'calendar',  label: 'Calendar', icon: 'M3 5h18v16H3V5zm0 5h18M7 3v4m10-4v4' },
+        { id: 'board',     label: 'Board',    icon: 'M4 4h16v12H4z M8 20l4-4 4 4' },
+        { id: 'chores',    label: 'Chores',   icon: 'M5 12l4 4 10-10' },
+      ];
+      const BottomNav = ({ active, onChange }) => e('nav', { className: 'bottomnav', 'aria-label': 'Primary' },
+        navItems.map((n) => e('button', {
+          key: n.id,
+          'aria-current': active === n.id ? 'page' : undefined,
+          onClick: () => onChange(n.id),
+        },
+          e('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true },
+            e('path', { d: n.icon })),
+          e('span', null, n.label),
+        )),
+      );
+
+      // ───────────────────────── screens ─────────────────────────
+
+      const LoginScreen = ({ onSignIn, onGoAccessibility }) => {
+        const [mode, setMode] = useState('signin');
+        return e('main', { id: 'main', className: 'content', tabIndex: -1 },
+          e('div', { className: 'login' },
+            e('h1', { className: 'display', style: { color: 'var(--brand)' } }, 'Family HQ'),
+            e('p', { className: 'meta', style: { marginTop: 8 } },
+              mode === 'signup' ? 'Create your family home base.' :
+              mode === 'forgot' ? 'Reset your password.' :
+                                  'Your shared family home base.'),
+            e('form', { style: { marginTop: 24 }, onSubmit: (ev) => { ev.preventDefault(); onSignIn(); } },
+              mode === 'signup' && e(Fragment, null,
+                e('div', { className: 'field' }, e('label', null, 'Family name'), e('input', { defaultValue: 'The Andersons' })),
+                e('div', { className: 'field' }, e('label', null, 'Your name'), e('input', { defaultValue: 'Alex' })),
+              ),
+              e('div', { className: 'field' }, e('label', null, 'Email'), e('input', { type: 'email', defaultValue: 'alex@example.com' })),
+              mode !== 'forgot' && e('div', { className: 'field' }, e('label', null, 'Password'), e('input', { type: 'password', defaultValue: '••••••••' })),
+              e('button', { type: 'submit', className: 'btn lg' },
+                mode === 'signup' ? 'Create family' : mode === 'forgot' ? 'Send reset link' : 'Sign in'),
+            ),
+            e('div', { style: { marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center' } },
+              mode === 'signin' && e(Fragment, null,
+                e('button', { className: 'btn ghost sm', onClick: () => setMode('signup') }, 'New here? Create a family'),
+                e('button', { className: 'btn ghost sm', onClick: () => setMode('forgot') }, 'Forgot password?'),
+              ),
+              mode !== 'signin' && e('button', { className: 'btn ghost sm', onClick: () => setMode('signin') }, 'Back to sign in'),
+            ),
+            e('nav', { className: 'login-footer', 'aria-label': 'Site resources' },
+              e('a', { href: '#', onClick: (ev) => { ev.preventDefault(); onGoAccessibility(); } }, 'Accessibility statement'),
+            ),
+          ),
+        );
+      };
+
+      const Dashboard = ({ role, currentUser, onNavigate, onAddChore, onAddEvent }) => {
+        const todays = EVENTS.filter((ev) => ev.when.toDateString() === TODAY.toDateString());
+        const upcoming = EVENTS.filter((ev) => ev.when > TODAY).slice(0, 3);
+        const myChores = CHORES.filter((c) => role === 'parent' || c.who === currentUser.name);
+        const pending = myChores.filter((c) => c.status === 'pending');
+        const greeting = (() => {
+          const h = new Date().getHours();
+          return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+        })();
+        return e('main', { id: 'main', className: 'content', tabIndex: -1 },
+          e('section', { className: 'hero' },
+            e('h2', { className: 'display' }, `${greeting}, ${currentUser.name}.`),
+            e('p', null, role === 'parent' ? 'Here’s the family today.' : 'Here’s what’s on for you.'),
+          ),
+          role === 'parent' && e('div', { className: 'chip-row' },
+            e('button', { className: 'chip', onClick: onAddChore },
+              e('div', { className: 'chip-icon' }, '+'),
+              e('strong', null, 'Add chore'),
+              e('small', null, 'Assign + value'),
+            ),
+            e('button', { className: 'chip', onClick: onAddEvent },
+              e('div', { className: 'chip-icon' }, '+'),
+              e('strong', null, 'Add event'),
+              e('small', null, 'Calendar entry'),
+            ),
+          ),
+          e('section', { className: 'card', 'aria-labelledby': 'today-h' },
+            e('h2', { id: 'today-h' }, 'Today'),
+            todays.length === 0
+              ? e('div', { className: 'empty' }, 'No events today.')
+              : todays.map((ev) => e('div', { key: ev.id, className: 'row' },
+                  e('div', { className: 'lhs' },
+                    e('span', { className: `pill ${ev.tag}` }, e('span', { className: 'dot', style: { background: `var(--${ev.tag}-dot)` } }), ev.tag),
+                    e('div', null,
+                      e('strong', null, ev.title),
+                      e('small', null, `${fmtTime(ev.when)} · ${ev.who}`),
+                    ),
+                  ),
+                )),
+          ),
+          e('section', { className: 'card', 'aria-labelledby': 'up-h' },
+            e('h2', { id: 'up-h' }, 'Upcoming'),
+            upcoming.map((ev) => e('div', { key: ev.id, className: 'row' },
+              e('div', { className: 'lhs' },
+                e('span', { className: `pill ${ev.tag}` }, ev.tag),
+                e('div', null,
+                  e('strong', null, ev.title),
+                  e('small', null, `${fmtDate(ev.when)} · ${ev.who}`),
+                ),
+              ),
+            )),
+            e('button', { className: 'btn ghost sm', style: { marginTop: 12 }, onClick: () => onNavigate('calendar') }, 'Open calendar →'),
+          ),
+          e('section', { className: 'card', 'aria-labelledby': 'chores-h' },
+            e('h2', { id: 'chores-h' }, role === 'parent' ? 'Approval queue' : 'Your chores'),
+            (role === 'parent' ? CHORES.filter((c) => c.status === 'pending' || c.status === 'done') : pending).slice(0,4).map((ch) =>
+              e('div', { key: ch.id, className: 'row' },
+                e('div', { className: 'lhs' },
+                  e('div', null,
+                    e('strong', null, ch.title),
+                    e('small', null, `${ch.who} · $${ch.value.toFixed(2)}`),
+                  ),
+                ),
+                e('span', { className: `pill ${ch.status === 'done' ? 'warn' : ch.status === 'approved' ? 'ok' : 'school'}` },
+                  ch.status === 'done' ? 'Awaiting approval' : ch.status === 'approved' ? 'Approved' : 'To do'),
+              ),
+            ),
+            e('button', { className: 'btn ghost sm', style: { marginTop: 12 }, onClick: () => onNavigate('chores') }, 'Open chores →'),
+          ),
+          e('section', { className: 'card', 'aria-labelledby': 'board-h' },
+            e('h2', { id: 'board-h' }, 'Family board'),
+            POSTS.slice(0,2).map((p) => e('div', { key: p.id, className: 'row' },
+              e('div', { className: 'lhs' },
+                e('div', null,
+                  e('strong', null, `${p.author} · `, e('span', { className: 'meta' }, p.when)),
+                  e('small', null, p.body),
+                ),
+              ),
+            )),
+            e('button', { className: 'btn ghost sm', style: { marginTop: 12 }, onClick: () => onNavigate('board') }, 'Open board →'),
+          ),
+        );
+      };
+
+      const CalendarScreen = ({ role, onAdd }) => {
+        const monthName = TODAY.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+        const first = new Date(TODAY.getFullYear(), TODAY.getMonth(), 1);
+        const last  = new Date(TODAY.getFullYear(), TODAY.getMonth()+1, 0);
+        const startBlank = first.getDay();
+        const days = [];
+        for (let i = 0; i < startBlank; i++) days.push(null);
+        for (let d = 1; d <= last.getDate(); d++) {
+          const date = new Date(TODAY.getFullYear(), TODAY.getMonth(), d);
+          const dayEvents = EVENTS.filter((ev) => ev.when.toDateString() === date.toDateString());
+          days.push({ d, date, events: dayEvents });
+        }
+        const dows = ['S','M','T','W','T','F','S'];
+        return e('main', { id: 'main', className: 'content', tabIndex: -1 },
+          e('section', { className: 'hero' },
+            e('h2', { className: 'display' }, 'Calendar'),
+            e('p', null, monthName),
+          ),
+          e('section', { className: 'card' },
+            e('div', { className: 'calendar', role: 'grid', 'aria-label': monthName },
+              dows.map((d, i) => e('div', { key: 'h'+i, className: 'dow', role: 'columnheader' }, d)),
+              days.map((day, i) =>
+                day === null
+                  ? e('div', { key: 'b'+i, className: 'day empty', 'aria-hidden': true })
+                  : e('div', { key: 'd'+i, className: 'day' + (day.date.toDateString() === TODAY.toDateString() ? ' today' : ''), role: 'gridcell' },
+                      e('span', null, day.d),
+                      day.events.length > 0 && e('span', { className: 'dots' },
+                        day.events.slice(0,3).map((ev, j) => e('span', { key: j, className: 'dot', style: { background: `var(--${ev.tag}-dot)` } }))),
+                    ),
+              ),
+            ),
+          ),
+          e('section', { className: 'card', 'aria-labelledby': 'up-cal' },
+            e('h2', { id: 'up-cal' }, 'Upcoming'),
+            EVENTS.map((ev) => e('div', { key: ev.id, className: 'row' },
+              e('div', { className: 'lhs' },
+                e('span', { className: `pill ${ev.tag}` }, e('span', { className: 'dot', style: { background: `var(--${ev.tag}-dot)` } }), ev.tag),
+                e('div', null,
+                  e('strong', null, ev.title),
+                  e('small', null, `${fmtDate(ev.when)} · ${fmtTime(ev.when)} · ${ev.who}`),
+                ),
+              ),
+            )),
+          ),
+          role === 'parent' && e('button', { className: 'btn lg', onClick: onAdd }, '+ Add event'),
+        );
+      };
+
+      const BoardScreen = ({ onCompose }) => e('main', { id: 'main', className: 'content', tabIndex: -1 },
+        e('section', { className: 'hero' },
+          e('h2', { className: 'display' }, 'Board'),
+          e('p', null, 'Family announcements and notes.'),
+        ),
+        POSTS.map((p) => e('article', { key: p.id, className: 'card', 'aria-label': `Post by ${p.author}` },
+          e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 } },
+            e('strong', null, p.author),
+            e('span', { className: 'meta' }, p.when),
+          ),
+          e('p', { style: { margin: 0 } }, p.body),
+          e('div', { style: { marginTop: 12, display: 'flex', gap: 12, alignItems: 'center' } },
+            e('button', { className: 'btn ghost sm' }, `♥ ${p.reactions}`),
+            e('button', { className: 'btn ghost sm' }, 'Reply'),
+          ),
+        )),
+        e('button', { className: 'btn lg', onClick: onCompose }, '+ New post'),
+      );
+
+      const ChoresScreen = ({ role, currentUser }) => {
+        const visible = role === 'parent' ? CHORES : CHORES.filter((c) => c.who === currentUser.name);
+        const groups = {
+          'Pending':  visible.filter((c) => c.status === 'pending'),
+          'Awaiting approval': visible.filter((c) => c.status === 'done'),
+          'Approved': visible.filter((c) => c.status === 'approved'),
+        };
+        return e('main', { id: 'main', className: 'content', tabIndex: -1 },
+          e('section', { className: 'hero' },
+            e('h2', { className: 'display' }, 'Chores'),
+            e('p', null, role === 'parent' ? 'Approve completed chores so allowance posts.' : 'Mark done when you finish.'),
+          ),
+          Object.entries(groups).map(([heading, items]) => items.length > 0 && e('section', { key: heading, className: 'card' },
+            e('h2', null, heading),
+            items.map((ch) => e('div', { key: ch.id, className: 'row' },
+              e('div', { className: 'lhs' },
+                e('div', null,
+                  e('strong', null, ch.title),
+                  e('small', null, `${ch.who} · $${ch.value.toFixed(2)}`),
+                ),
+              ),
+              role === 'parent' && ch.status === 'done'
+                ? e('div', { style: { display: 'flex', gap: 6 } },
+                    e('button', { className: 'btn sm' }, 'Approve'),
+                    e('button', { className: 'btn ghost sm' }, 'Reject'),
+                  )
+                : role !== 'parent' && ch.status === 'pending'
+                ? e('button', { className: 'btn sm' }, 'Mark done')
+                : e('span', { className: `pill ${ch.status === 'done' ? 'warn' : 'ok'}` }, heading),
+            )),
+          )),
+          role === 'parent' && e('button', { className: 'btn lg' }, '+ Add chore'),
+        );
+      };
+
+      const AllowanceScreen = ({ currentUser }) => e('main', { id: 'main', className: 'content', tabIndex: -1 },
+        e('section', { className: 'hero' },
+          e('h2', { className: 'display' }, 'Allowance'),
+          e('p', null, `${currentUser.name}’s ledger`),
+        ),
+        e('section', { className: 'card', style: { textAlign: 'center' } },
+          e('p', { className: 'meta', style: { marginBottom: 4 } }, 'Current balance'),
+          e('p', { className: 'display' }, `$${LEDGER_BALANCE.toFixed(2)}`),
+        ),
+        e('section', { className: 'card' },
+          e('h2', null, 'History'),
+          LEDGER.map((l) => e('div', { key: l.id, className: 'row' },
+            e('div', { className: 'lhs' },
+              e('div', null,
+                e('strong', null, l.label),
+                e('small', null, l.when),
+              ),
+            ),
+            e('span', { className: 'label', style: { color: l.delta < 0 ? 'var(--danger-text)' : 'var(--ok-text)' } },
+              `${l.delta < 0 ? '-' : '+'}$${Math.abs(l.delta).toFixed(2)}`),
+          )),
+        ),
+      );
+
+      const FamilyScreen = ({ onClose }) => e('main', { id: 'main', className: 'content', tabIndex: -1 },
+        e('section', { className: 'hero' },
+          e('h2', { className: 'display' }, 'Family'),
+          e('p', null, 'Members & access.'),
+        ),
+        e('section', { className: 'card' },
+          MEMBERS.map((m) => e('div', { key: m.id, className: 'row' },
+            e('div', { className: 'lhs' },
+              e('span', { className: 'avatar-dot' + (m.accent === 'amber' ? ' amber' : '') }, m.initial),
+              e('div', null,
+                e('strong', null, m.name),
+                e('small', null, m.role === 'parent' ? 'Parent · full access' : 'Member · own chores + allowance'),
+              ),
+            ),
+            e('button', { className: 'btn ghost sm' }, 'Edit'),
+          )),
+        ),
+        e('button', { className: 'btn lg' }, '+ Add member'),
+        e('button', { className: 'btn ghost sm', style: { marginTop: 12, width: '100%' }, onClick: onClose }, 'Back'),
+      );
+
+      const AccountScreen = ({ user, onSignOut, onAccessibility, onFamily, onClose }) => e('main', { id: 'main', className: 'content', tabIndex: -1 },
+        e('section', { className: 'hero' },
+          e('h2', { className: 'display' }, 'Account'),
+          e('p', null, `Signed in as ${user.name} (${user.role})`),
+        ),
+        user.role === 'parent' && e('button', { className: 'btn ghost lg', style: { width: '100%', marginBottom: 12 }, onClick: onFamily }, 'Manage family →'),
+        e('button', { className: 'btn ghost lg', style: { width: '100%', marginBottom: 12 }, onClick: onAccessibility }, 'Accessibility statement & feedback →'),
+        e('button', { className: 'btn danger lg', onClick: onSignOut }, 'Sign out'),
+        e('button', { className: 'btn ghost sm', style: { marginTop: 16, width: '100%' }, onClick: onClose }, 'Back'),
+      );
+
+      const AccessibilityScreen = ({ onBack, signedIn }) => e('main', { id: 'main', className: 'content a11y', tabIndex: -1 },
+        !signedIn && e('p', null, e('a', { href: '#', onClick: (ev) => { ev.preventDefault(); onBack(); } }, '← Back to sign in')),
+        e('h1', null, 'Accessibility at Family HQ'),
+        e('p', { className: 'meta' }, 'Last reviewed: ', e('time', { dateTime: '2026-05-28' }, '2026-05-28')),
+        e('h2', null, 'Our commitment'),
+        e('p', null, 'Family HQ is built for every member of every family. We design and develop with accessibility as a baseline — not an afterthought — and we want to hear from you when we get it wrong.'),
+        e('h2', null, 'Conformance target'),
+        e('p', null, 'We aim to meet ', e('strong', null, 'WCAG 2.1 Level AA'), '. This is the legal minimum for public-facing services under the Accessibility for Ontarians with Disabilities Act (AODA).'),
+        e('h2', null, 'Known limitations'),
+        e('ul', null,
+          e('li', null, e('strong', null, 'Real-user assistive-technology testing'), ' is scheduled but has not yet been completed against this build.'),
+          e('li', null, e('strong', null, 'Independent third-party audit'), ' is scheduled before public launch.'),
+          e('li', null, e('strong', null, 'French-language interface'), ' is not yet available.'),
+        ),
+        e('h2', null, 'Report a barrier'),
+        e('p', null, 'Contact us if you encounter a barrier or need information in an alternative format:'),
+        e('p', null, e('a', { href: 'mailto:accessibility@familyhq.app' }, 'accessibility@familyhq.app')),
+        e('p', null, 'We aim to acknowledge every report within two business days.'),
+        signedIn && e('button', { className: 'btn ghost sm', style: { marginTop: 16 }, onClick: onBack }, '← Back'),
+      );
+
+      // ───────────────────────── app ─────────────────────────
+      function App() {
+        const [signedIn, setSignedIn] = useState(true);
+        const [userId, setUserId] = useState('m1'); // Alex / parent by default
+        const [tab, setTab] = useState('dashboard');
+        const [overlay, setOverlay] = useState(null); // 'account' | 'family' | 'accessibility' | null
+        const [toast, setToast] = useState(null);
+
+        const currentUser = MEMBERS.find((m) => m.id === userId);
+        const role = currentUser.role;
+
+        useEffect(() => {
+          if (!toast) return;
+          const t = setTimeout(() => setToast(null), 2400);
+          return () => clearTimeout(t);
+        }, [toast]);
+
+        const showToast = (msg) => setToast(msg);
+
+        const titleFor = (tab) => ({
+          dashboard: 'Family HQ',
+          calendar:  'Calendar',
+          board:     'Board',
+          chores:    'Chores',
+        }[tab] || 'Family HQ');
+
+        if (!signedIn) {
+          if (overlay === 'accessibility') {
+            return e(Fragment, null,
+              e(TopBar, { title: 'Family HQ' }),
+              e(AccessibilityScreen, { signedIn: false, onBack: () => setOverlay(null) }),
+            );
+          }
+          return e(Fragment, null,
+            e(TopBar, { title: 'Family HQ' }),
+            e(LoginScreen, {
+              onSignIn: () => { setSignedIn(true); showToast('Signed in.'); },
+              onGoAccessibility: () => setOverlay('accessibility'),
+            }),
+          );
+        }
+
+        let body;
+        if (overlay === 'account') {
+          body = e(AccountScreen, {
+            user: currentUser,
+            onSignOut: () => { setSignedIn(false); setOverlay(null); setTab('dashboard'); showToast('Signed out.'); },
+            onAccessibility: () => setOverlay('accessibility'),
+            onFamily: () => setOverlay('family'),
+            onClose: () => setOverlay(null),
+          });
+        } else if (overlay === 'family') {
+          body = e(FamilyScreen, { onClose: () => setOverlay('account') });
+        } else if (overlay === 'accessibility') {
+          body = e(AccessibilityScreen, { signedIn: true, onBack: () => setOverlay('account') });
+        } else if (tab === 'dashboard') {
+          body = e(Dashboard, {
+            role, currentUser,
+            onNavigate: setTab,
+            onAddChore: () => { setTab('chores'); showToast('Add chore — demo only.'); },
+            onAddEvent: () => { setTab('calendar'); showToast('Add event — demo only.'); },
+          });
+        } else if (tab === 'calendar') {
+          body = e(CalendarScreen, { role, onAdd: () => showToast('Add event — demo only.') });
+        } else if (tab === 'board') {
+          body = e(BoardScreen, { onCompose: () => showToast('Compose — demo only.') });
+        } else if (tab === 'chores') {
+          body = e(ChoresScreen, { role, currentUser });
+        }
+
+        return e(Fragment, null,
+          e('div', { className: 'demo-banner' },
+            'PREVIEW — mock data, no real backend. Use the controls below to switch identity.'),
+          e('div', { className: 'demo-controls' },
+            e('strong', null, 'Sign in as:'),
+            MEMBERS.map((m) => e('button', {
+              key: m.id,
+              'aria-pressed': userId === m.id,
+              onClick: () => { setUserId(m.id); setOverlay(null); setTab('dashboard'); },
+            }, `${m.name} (${m.role})`)),
+          ),
+          e(TopBar, {
+            title: titleFor(tab),
+            user: currentUser,
+            onAvatar: () => setOverlay(overlay === 'account' ? null : 'account'),
+          }),
+          body,
+          !overlay && e(BottomNav, { active: tab, onChange: setTab }),
+          toast && e('div', { className: 'toast', role: 'status', 'aria-live': 'polite' }, toast),
+        );
+      }
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(e('div', { className: 'app' }, e(App)));
+    </script>
+  </body>
+</html>
