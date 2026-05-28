@@ -25,7 +25,7 @@
  * Isolation: each test sets the mutable family fixture + clears spies before
  * render; in-memory router seeded at `/`; no clock/network/RNG.
  */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Role, UserWithId } from '../lib/types';
@@ -118,14 +118,24 @@ import { ToastProvider } from '../hooks/useToast';
 import { AppShell } from './AppShell';
 import { ROUTES } from './routes';
 
-function renderAt(path: string) {
-  return render(
+async function renderAt(path: string) {
+  const r = render(
     <ToastProvider>
       <MemoryRouter initialEntries={[path]}>
         <AppShell />
       </MemoryRouter>
     </ToastProvider>,
   );
+  // Route components are React.lazy-loaded behind Suspense. The RouteFallback
+  // renders a Skeleton with the unique label "Loading…" (the AppShell loading
+  // state uses "Loading your family…"; screens' own skeletons use feed-
+  // specific labels). Wait for the route's fallback to leave the DOM before
+  // running synchronous queries. waitFor handles both "fallback never
+  // appeared (already cached)" and "fallback appeared then resolved".
+  await waitFor(() => {
+    expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+  });
+  return r;
 }
 
 beforeEach(() => {
@@ -145,7 +155,7 @@ afterEach(() => {
 });
 
 describe('AppShell — `/` renders the real DashboardScreen, not the Placeholder', () => {
-  it('renders the real DashboardScreen (sections + refresh) at `/`, not the Placeholder note', () => {
+  it('renders the real DashboardScreen (sections + refresh) at `/`, not the Placeholder note', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'member',
@@ -153,7 +163,7 @@ describe('AppShell — `/` renders the real DashboardScreen, not the Placeholder
       members: [memberUser],
       loading: false,
     };
-    renderAt(ROUTES.dashboard.path);
+    await renderAt(ROUTES.dashboard.path);
     // The Placeholder renders an <h1> + a bare "N members in your family." note
     // and NO section regions / refresh control. The real DashboardScreen renders
     // section landmarks and a single refresh control — assert on what ONLY the
@@ -165,7 +175,7 @@ describe('AppShell — `/` renders the real DashboardScreen, not the Placeholder
 });
 
 describe('AppShell — Dashboard role gating (cosmetic per ADR-0002)', () => {
-  it('a MEMBER viewer renders the balance + own-chores member sections', () => {
+  it('a MEMBER viewer renders the balance + own-chores member sections', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'member',
@@ -173,13 +183,13 @@ describe('AppShell — Dashboard role gating (cosmetic per ADR-0002)', () => {
       members: [memberUser],
       loading: false,
     };
-    renderAt(ROUTES.dashboard.path);
+    await renderAt(ROUTES.dashboard.path);
     expect(screen.getByText(/current balance/i)).toHaveTextContent(/\$38\.50/);
     expect(screen.getByRole('region', { name: /my chores/i })).toBeInTheDocument();
     expect(screen.queryByRole('region', { name: /approval/i })).not.toBeInTheDocument();
   });
 
-  it('a PARENT viewer renders Approvals and NOT a balance/own-chores section', () => {
+  it('a PARENT viewer renders Approvals and NOT a balance/own-chores section', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'parent',
@@ -187,7 +197,7 @@ describe('AppShell — Dashboard role gating (cosmetic per ADR-0002)', () => {
       members: [parentUser, memberUser],
       loading: false,
     };
-    renderAt(ROUTES.dashboard.path);
+    await renderAt(ROUTES.dashboard.path);
     expect(screen.getByRole('region', { name: /approval/i })).toBeInTheDocument();
     expect(screen.queryByText(/current balance/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: /my chores/i })).not.toBeInTheDocument();
@@ -195,7 +205,7 @@ describe('AppShell — Dashboard role gating (cosmetic per ADR-0002)', () => {
 });
 
 describe('AppShell — Dashboard hook scoping (privacy: own-uid, never family-wide for a member)', () => {
-  it('a MEMBER wires the per-uid scoped hooks with the member’s OWN uid + familyId', () => {
+  it('a MEMBER wires the per-uid scoped hooks with the member’s OWN uid + familyId', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'member',
@@ -203,7 +213,7 @@ describe('AppShell — Dashboard hook scoping (privacy: own-uid, never family-wi
       members: [memberUser],
       loading: false,
     };
-    renderAt(ROUTES.dashboard.path);
+    await renderAt(ROUTES.dashboard.path);
 
     // Own chores: scoped to (ownUid, familyId) — never a family-wide query.
     expect(useMyChores).toHaveBeenCalledWith('uid-member-a', 'fam-A');
@@ -213,7 +223,7 @@ describe('AppShell — Dashboard hook scoping (privacy: own-uid, never family-wi
     expect(useFamilyChores).not.toHaveBeenCalled();
   });
 
-  it('a PARENT sources approvals from the family-wide chore feed, not a member ledger', () => {
+  it('a PARENT sources approvals from the family-wide chore feed, not a member ledger', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'parent',
@@ -221,7 +231,7 @@ describe('AppShell — Dashboard hook scoping (privacy: own-uid, never family-wi
       members: [parentUser, memberUser],
       loading: false,
     };
-    renderAt(ROUTES.dashboard.path);
+    await renderAt(ROUTES.dashboard.path);
 
     expect(useFamilyChores).toHaveBeenCalledWith('fam-A');
     // The parent dashboard has no own-balance section, so no per-member ledger.
@@ -230,7 +240,7 @@ describe('AppShell — Dashboard hook scoping (privacy: own-uid, never family-wi
 });
 
 describe('AppShell — Dashboard refresh fans out to every feed', () => {
-  it('clicking refresh triggers each wired member feed’s refresh()', () => {
+  it('clicking refresh triggers each wired member feed’s refresh()', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'member',
@@ -238,7 +248,7 @@ describe('AppShell — Dashboard refresh fans out to every feed', () => {
       members: [memberUser],
       loading: false,
     };
-    renderAt(ROUTES.dashboard.path);
+    await renderAt(ROUTES.dashboard.path);
 
     fireEvent.click(screen.getByRole('button', { name: /refresh/i }));
 

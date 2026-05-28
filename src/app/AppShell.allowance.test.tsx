@@ -25,7 +25,7 @@
  * router seeded at the route under test; no clock/network/RNG; mocks cleared
  * afterEach (order-independent).
  */
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Role, UserWithId } from '../lib/types';
@@ -90,14 +90,21 @@ import { ToastProvider } from '../hooks/useToast';
 import { AppShell } from './AppShell';
 import { ROUTES } from './routes';
 
-function renderAt(path: string) {
-  return render(
+async function renderAt(path: string) {
+  const r = render(
     <ToastProvider>
       <MemoryRouter initialEntries={[path]}>
         <AppShell />
       </MemoryRouter>
     </ToastProvider>,
   );
+  // Wait for the React.lazy route chunk to resolve — the RouteFallback
+  // renders a Skeleton labelled "Loading…". See AppShell.dashboard.test.tsx
+  // for the rationale; per-feature lazy splits landed in feature/per-route-splits.
+  await waitFor(() => {
+    expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+  });
+  return r;
 }
 
 afterEach(() => {
@@ -105,7 +112,7 @@ afterEach(() => {
 });
 
 describe('AppShell — ParentAllowanceRoute default selection (F1: default-select a CHILD, never a parent)', () => {
-  it('default-selects a CHILD even when a parent sorts first in the members list', () => {
+  it('default-selects a CHILD even when a parent sorts first in the members list', async () => {
     // Parent is first; the route must still default the picker to a child.
     familyState = {
       familyId: 'fam-A',
@@ -114,7 +121,7 @@ describe('AppShell — ParentAllowanceRoute default selection (F1: default-selec
       members: [parentUser, childA, childB],
       loading: false,
     };
-    renderAt(ROUTES.allowance.path);
+    await renderAt(ROUTES.allowance.path);
 
     // The selected toggle (aria-pressed=true) must be a CHILD, not the parent.
     const pressed = screen
@@ -128,7 +135,7 @@ describe('AppShell — ParentAllowanceRoute default selection (F1: default-selec
     expect(/dana rivera/i.test(pressed[0]?.textContent ?? '')).toBe(false);
   });
 
-  it('shows the default CHILD’s balance at the top, never the parent’s balance', () => {
+  it('shows the default CHILD’s balance at the top, never the parent’s balance', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'parent',
@@ -136,7 +143,7 @@ describe('AppShell — ParentAllowanceRoute default selection (F1: default-selec
       members: [parentUser, childA, childB],
       loading: false,
     };
-    renderAt(ROUTES.allowance.path);
+    await renderAt(ROUTES.allowance.path);
 
     // A child's balance ($38.50 or $12.00) — not the parent's $9,999.99.
     expect(
@@ -148,7 +155,7 @@ describe('AppShell — ParentAllowanceRoute default selection (F1: default-selec
     expect(childBalanceShown, 'the top balance must be the default child’s balance').toBe(true);
   });
 
-  it('does not render a parent as a selectable picker toggle', () => {
+  it('does not render a parent as a selectable picker toggle', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'parent',
@@ -156,13 +163,13 @@ describe('AppShell — ParentAllowanceRoute default selection (F1: default-selec
       members: [parentUser, childA, childB],
       loading: false,
     };
-    renderAt(ROUTES.allowance.path);
+    await renderAt(ROUTES.allowance.path);
     expect(screen.queryByRole('button', { name: /dana rivera/i })).not.toBeInTheDocument();
   });
 });
 
 describe('AppShell — ParentAllowanceRoute fallback (F3: no nameless header over a NaN balance)', () => {
-  it('when NO child can be resolved (only parents in the family), the header is not a nameless NaN header', () => {
+  it('when NO child can be resolved (only parents in the family), the header is not a nameless NaN header', async () => {
     // The active-members list resolves to no child. The route must not render a
     // blank-name header over a NaN/garbage balance with a ledger beneath it.
     familyState = {
@@ -172,7 +179,7 @@ describe('AppShell — ParentAllowanceRoute fallback (F3: no nameless header ove
       members: [parentUser], // no child members
       loading: false,
     };
-    renderAt(ROUTES.allowance.path);
+    await renderAt(ROUTES.allowance.path);
 
     // A nameless header over the invalid-money indicator (NaN balance -> "—") is
     // the F3 failure shape. There must be no "$NaN" anywhere, and the parent's
@@ -186,7 +193,7 @@ describe('AppShell — ParentAllowanceRoute fallback (F3: no nameless header ove
     expect(screen.queryByRole('button', { name: /dana rivera/i })).not.toBeInTheDocument();
   });
 
-  it('resolves the default to a CHILD when both a parent and children are present (resolvable fallback)', () => {
+  it('resolves the default to a CHILD when both a parent and children are present (resolvable fallback)', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'parent',
@@ -194,7 +201,7 @@ describe('AppShell — ParentAllowanceRoute fallback (F3: no nameless header ove
       members: [parentUser, childB], // parent first, one child
       loading: false,
     };
-    renderAt(ROUTES.allowance.path);
+    await renderAt(ROUTES.allowance.path);
 
     // The resolvable fallback must pick the child (Ben), not the parent.
     const pressed = screen

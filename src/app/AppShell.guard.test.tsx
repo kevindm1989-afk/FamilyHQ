@@ -21,7 +21,7 @@
  * seeded at the route under test (no real navigation/history). Each test owns its
  * mocks; no shared mutable state.
  */
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Role, UserWithId } from '../lib/types';
@@ -73,14 +73,20 @@ import { ToastProvider } from '../hooks/useToast';
 import { AppShell } from './AppShell';
 import { ROUTES } from './routes';
 
-function renderAt(path: string) {
-  return render(
+async function renderAt(path: string) {
+  const r = render(
     <ToastProvider>
       <MemoryRouter initialEntries={[path]}>
         <AppShell />
       </MemoryRouter>
     </ToastProvider>,
   );
+  // Wait for the React.lazy route chunk to resolve — RouteFallback Skeleton
+  // label is "Loading…". See AppShell.dashboard.test.tsx for the rationale.
+  await waitFor(() => {
+    expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+  });
+  return r;
 }
 
 afterEach(() => {
@@ -88,7 +94,7 @@ afterEach(() => {
 });
 
 describe('AppShell — add_event route guard (Finding D, defense-in-depth)', () => {
-  it('a MEMBER at the add_event route is BOUNCED off the calendar route entirely (guard, not just role-gated chrome)', () => {
+  it('a MEMBER at the add_event route is BOUNCED off the calendar route entirely (guard, not just role-gated chrome)', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'member',
@@ -96,7 +102,7 @@ describe('AppShell — add_event route guard (Finding D, defense-in-depth)', () 
       members: [memberUser],
       loading: false,
     };
-    renderAt(ROUTES.add_event.path);
+    await renderAt(ROUTES.add_event.path);
 
     // Guard-specific: without the route guard the member RENDERS the CalendarRoute
     // (its day cells / Calendar heading) at /calendar/new. The FAB alone is also
@@ -111,7 +117,7 @@ describe('AppShell — add_event route guard (Finding D, defense-in-depth)', () 
     ).not.toBeInTheDocument();
   });
 
-  it('the redirected MEMBER lands on the dashboard (welcome), not the calendar route', () => {
+  it('the redirected MEMBER lands on the dashboard (welcome), not the calendar route', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'member',
@@ -119,14 +125,14 @@ describe('AppShell — add_event route guard (Finding D, defense-in-depth)', () 
       members: [memberUser],
       loading: false,
     };
-    renderAt(ROUTES.add_event.path);
+    await renderAt(ROUTES.add_event.path);
     expect(
       screen.getByRole('heading', { name: /welcome/i }),
       'the guard must redirect a member to the dashboard, mirroring add_chore',
     ).toBeInTheDocument();
   });
 
-  it('a PARENT at the add_event route IS allowed through (guard does not over-block)', () => {
+  it('a PARENT at the add_event route IS allowed through (guard does not over-block)', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'parent',
@@ -134,7 +140,7 @@ describe('AppShell — add_event route guard (Finding D, defense-in-depth)', () 
       members: [parentUser],
       loading: false,
     };
-    renderAt(ROUTES.add_event.path);
+    await renderAt(ROUTES.add_event.path);
     // A parent reaches the calendar + its Add Event FAB.
     expect(screen.getByRole('button', { name: /add event|new event/i })).toBeInTheDocument();
   });

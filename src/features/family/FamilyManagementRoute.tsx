@@ -1,0 +1,72 @@
+/**
+ * Family Management route — parent-only (the `guard('family', ...)` wrapper at
+ * the Routes layer already bounces a member to the dashboard). Wires the screen
+ * to live data: viewer = currentUser; members = the all-status feed (active +
+ * inactive) from useAllFamilyMembers(familyId); the rename / activate actions
+ * route through familyManagementService and surface a single toast per result.
+ * Firebase config is imported lazily (mirrors the other routes) so the route
+ * chunk stays SDK-free at the top level.
+ *
+ * Default-exported for React.lazy in AppShell.
+ */
+import type { ReactElement } from 'react';
+import type { Firestore } from 'firebase/firestore';
+import { Placeholder } from '../../app/Placeholder';
+import { useFamily } from '../../hooks/useFamily';
+import { FamilyManagementScreen } from './FamilyManagementScreen';
+import { useAllFamilyMembers } from './useAllFamilyMembers';
+import { FamilyManagementError, renameMember, setMemberActive } from './familyManagementService';
+
+export default function FamilyManagementRoute(): ReactElement {
+  const { familyId, currentUser } = useFamily();
+  const feed = useAllFamilyMembers(familyId);
+
+  if (!currentUser || !familyId) {
+    return <Placeholder title="Family" />;
+  }
+
+  // The Firestore handle is resolved at action time (lazy import keeps the
+  // route chunk SDK-free at top level — mirrors BoardRoute / ChoresRoute). A
+  // failing dynamic import (e.g. config missing in a test harness) returns
+  // null — Sec1: the handler must SHORT-CIRCUIT in that case (raise a
+  // FamilyManagementError so the screen toasts the generic copy) and MUST NOT
+  // call the service with a `db as Firestore` null-lie cast.
+  const resolveDb = async (): Promise<Firestore | null> => {
+    try {
+      const { db } = await import('../../firebase/config');
+      return db;
+    } catch {
+      return null;
+    }
+  };
+
+  const handleRename = async (uid: string, name: string): Promise<void> => {
+    const db = await resolveDb();
+    if (db === null) {
+      // Sec1 — no service call, no null cast. The screen's .catch surfaces
+      // the generic toast.
+      throw new FamilyManagementError();
+    }
+    await renameMember({ db }, uid, name);
+  };
+
+  const handleSetActive = async (uid: string, isActive: boolean): Promise<void> => {
+    const db = await resolveDb();
+    if (db === null) {
+      throw new FamilyManagementError();
+    }
+    await setMemberActive({ db }, uid, isActive);
+  };
+
+  return (
+    <FamilyManagementScreen
+      viewer={currentUser}
+      members={feed.members}
+      loading={feed.loading}
+      error={feed.error}
+      onRename={handleRename}
+      onSetActive={handleSetActive}
+      onRefresh={() => void feed.refresh()}
+    />
+  );
+}

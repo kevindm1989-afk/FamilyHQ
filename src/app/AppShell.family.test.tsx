@@ -171,14 +171,20 @@ import { ToastProvider } from '../hooks/useToast';
 import { AppShell } from './AppShell';
 import { ROUTES } from './routes';
 
-function renderAt(path: string) {
-  return render(
+async function renderAt(path: string) {
+  const r = render(
     <ToastProvider>
       <MemoryRouter initialEntries={[path]}>
         <AppShell />
       </MemoryRouter>
     </ToastProvider>,
   );
+  // Wait for the React.lazy route chunk to resolve — RouteFallback Skeleton
+  // label is "Loading…". See AppShell.dashboard.test.tsx for rationale.
+  await waitFor(() => {
+    expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
+  });
+  return r;
 }
 
 function rowFor(name: string): HTMLElement {
@@ -202,7 +208,7 @@ afterEach(() => {
 // `/family` renders the REAL screen, not the existing Placeholder
 // =====================================================================
 describe('AppShell — `/family` renders the real FamilyManagementScreen, not the Placeholder', () => {
-  it('a PARENT at `/family` sees the real screen (the active + inactive sections)', () => {
+  it('a PARENT at `/family` sees the real screen (the active + inactive sections)', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'parent',
@@ -210,7 +216,7 @@ describe('AppShell — `/family` renders the real FamilyManagementScreen, not th
       members: [parentViewer, coParent, activeChild],
       loading: false,
     };
-    renderAt(ROUTES.family.path);
+    await renderAt(ROUTES.family.path);
     // The placeholder renders "Coming soon — this section lands in the next phase."
     // — the real screen renders the active + inactive section headings.
     expect(
@@ -234,7 +240,7 @@ describe('AppShell — `/family` renders the real FamilyManagementScreen, not th
 // guard('family') — member-viewer redirect
 // =====================================================================
 describe('AppShell — guard("family"): member viewers are bounced to the dashboard', () => {
-  it('a MEMBER at `/family` is REDIRECTED to the dashboard (parent-only route)', () => {
+  it('a MEMBER at `/family` is REDIRECTED to the dashboard (parent-only route)', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'member',
@@ -242,14 +248,14 @@ describe('AppShell — guard("family"): member viewers are bounced to the dashbo
       members: [memberViewer],
       loading: false,
     };
-    renderAt(ROUTES.family.path);
+    await renderAt(ROUTES.family.path);
     // Family Management screen content must not render at all for a member.
     expect(screen.queryByText(/active members|inactive members/i)).toBeNull();
     expect(screen.queryByRole('button', { name: /rename/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /deactivate/i })).toBeNull();
   });
 
-  it('a PARENT is NOT redirected away from `/family` (guard does not over-block)', () => {
+  it('a PARENT is NOT redirected away from `/family` (guard does not over-block)', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'parent',
@@ -257,7 +263,7 @@ describe('AppShell — guard("family"): member viewers are bounced to the dashbo
       members: [parentViewer, activeChild],
       loading: false,
     };
-    renderAt(ROUTES.family.path);
+    await renderAt(ROUTES.family.path);
     // A parent sees the screen affordances.
     expect(
       screen.getByRole('button', { name: /rename\s+maya/i }),
@@ -280,15 +286,15 @@ describe('AppShell — Family route is wired to useAllFamilyMembers (active + in
     };
   });
 
-  it('calls useAllFamilyMembers with the caller\'s familyId (not cross-family)', () => {
-    renderAt(ROUTES.family.path);
+  it('calls useAllFamilyMembers with the caller\'s familyId (not cross-family)', async () => {
+    await renderAt(ROUTES.family.path);
     expect(useAllFamilyMembersMock).toHaveBeenCalled();
     const calls = useAllFamilyMembersMock.mock.calls;
     expect(calls.some((c) => c[0] === 'fam-A')).toBe(true);
   });
 
-  it('renders both active and inactive members surfaced by the hook', () => {
-    renderAt(ROUTES.family.path);
+  it('renders both active and inactive members surfaced by the hook', async () => {
+    await renderAt(ROUTES.family.path);
     expect(screen.getByText('Maya Kim')).toBeInTheDocument();
     expect(screen.getByText('Ben Kim')).toBeInTheDocument();
     expect(screen.getByText('Sarah Kim')).toBeInTheDocument();
@@ -310,7 +316,7 @@ describe('AppShell — Rename action wired to familyManagementService.renameMemb
   });
 
   it('clicking Rename + Save calls renameMember(uid, trimmedName) at the service boundary', async () => {
-    renderAt(ROUTES.family.path);
+    await renderAt(ROUTES.family.path);
     fireEvent.click(screen.getByRole('button', { name: /rename\s+maya/i }));
     const dialog = screen.getByRole('dialog');
     const input = within(dialog).getByRole('textbox') as HTMLInputElement;
@@ -340,7 +346,7 @@ describe('AppShell — (de)activate actions wired to familyManagementService.set
   });
 
   it('confirming Deactivate on an active member row calls setMemberActive(uid, false)', async () => {
-    renderAt(ROUTES.family.path);
+    await renderAt(ROUTES.family.path);
     fireEvent.click(within(rowFor('Maya Kim')).getByRole('button', { name: /deactivate\s+maya/i }));
     const dialog = screen.getByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: /deactivate|confirm|yes/i }));
@@ -353,7 +359,7 @@ describe('AppShell — (de)activate actions wired to familyManagementService.set
   });
 
   it('Reactivate on an inactive row calls setMemberActive(uid, true) — NO confirm sheet required', async () => {
-    renderAt(ROUTES.family.path);
+    await renderAt(ROUTES.family.path);
     fireEvent.click(
       within(rowFor('Ben Kim')).getByRole('button', { name: /reactivate\s+ben/i }),
     );
@@ -370,7 +376,7 @@ describe('AppShell — (de)activate actions wired to familyManagementService.set
 // Self-deactivation NEVER offered at the wiring level either
 // =====================================================================
 describe('AppShell — self-deactivation never offered on the viewer parent row (defense-in-depth)', () => {
-  it('the viewer parent row has NO Deactivate control (rules deny self anyway; UI must not even show it)', () => {
+  it('the viewer parent row has NO Deactivate control (rules deny self anyway; UI must not even show it)', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'parent',
@@ -378,14 +384,14 @@ describe('AppShell — self-deactivation never offered on the viewer parent row 
       members: [parentViewer, coParent, activeChild, inactiveChild],
       loading: false,
     };
-    renderAt(ROUTES.family.path);
+    await renderAt(ROUTES.family.path);
     expect(
       within(rowFor('Sarah Kim')).queryByRole('button', { name: /deactivate/i }),
       "the viewer's own row must never offer Deactivate",
     ).toBeNull();
   });
 
-  it('the co-parent row has NO Deactivate control either (v1: parent-on-parent NOT offered; M31 deferred)', () => {
+  it('the co-parent row has NO Deactivate control either (v1: parent-on-parent NOT offered; M31 deferred)', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'parent',
@@ -393,13 +399,13 @@ describe('AppShell — self-deactivation never offered on the viewer parent row 
       members: [parentViewer, coParent, activeChild, inactiveChild],
       loading: false,
     };
-    renderAt(ROUTES.family.path);
+    await renderAt(ROUTES.family.path);
     expect(
       within(rowFor('Alex Kim')).queryByRole('button', { name: /deactivate/i }),
     ).toBeNull();
   });
 
-  it('the ONLY Deactivate button on the page targets the active MEMBER-role child', () => {
+  it('the ONLY Deactivate button on the page targets the active MEMBER-role child', async () => {
     familyState = {
       familyId: 'fam-A',
       role: 'parent',
@@ -407,7 +413,7 @@ describe('AppShell — self-deactivation never offered on the viewer parent row 
       members: [parentViewer, coParent, activeChild, inactiveChild],
       loading: false,
     };
-    renderAt(ROUTES.family.path);
+    await renderAt(ROUTES.family.path);
     const deactivates = screen.queryAllByRole('button', { name: /deactivate/i });
     expect(deactivates).toHaveLength(1);
     const label = (deactivates[0]?.getAttribute('aria-label') ?? deactivates[0]?.textContent ?? '').toLowerCase();
