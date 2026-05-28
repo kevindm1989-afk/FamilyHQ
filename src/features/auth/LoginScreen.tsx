@@ -2,15 +2,23 @@ import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, TextField } from '../../components';
 import { useToast } from '../../hooks/useToast';
-import { AuthActionError, sendPasswordReset, signIn, signUpFoundingParent } from './authService';
 
 type Mode = 'signin' | 'signup' | 'forgot';
 
 /**
  * Login screen (Task 4/7). Functional, minimal: sign-in, founding-parent
  * sign-up, and password reset. Every action routes through the toast; errors
- * are already user-safe (PII-free) at the service boundary. Firebase config is
- * imported lazily so this module stays SDK-free at load time.
+ * are already user-safe (PII-free) at the service boundary.
+ *
+ * NOTHING firebase-related is imported statically here — not the SDK, not the
+ * config module, not authService. The login form is the entry point for a
+ * cold load (the user isn't signed in yet), so every kilobyte gates time to
+ * interactive. authService + firebase are pulled on form submit via
+ * `withApi`, which is the only path that needs them.
+ *
+ * useAuth.ts also dynamic-imports authService. As long as BOTH consumers
+ * stay dynamic, Rollup keeps authService (and the Firebase SDK behind it)
+ * in its own chunk — a single static reference anywhere reverts it.
  */
 export function LoginScreen(): ReactElement {
   const { showToast } = useToast();
@@ -21,17 +29,29 @@ export function LoginScreen(): ReactElement {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // Match on the error's name string instead of `instanceof AuthActionError`
+  // so we don't need to statically import the class — that would pull
+  // authService (and thereby Firebase) into the login bundle.
+  // authService sets `name = 'AuthActionError'` at the throw site.
   const userSafeError = (e: unknown): string =>
-    e instanceof AuthActionError ? e.message : 'Something went wrong. Please try again.';
+    e instanceof Error && e.name === 'AuthActionError'
+      ? e.message
+      : 'Something went wrong. Please try again.';
 
-  async function withConfig<T>(
-    fn: (deps: {
-      auth: import('firebase/auth').Auth;
-      db: import('firebase/firestore').Firestore;
-    }) => Promise<T>,
+  async function withApi<T>(
+    fn: (
+      api: typeof import('./authService'),
+      deps: {
+        auth: import('firebase/auth').Auth;
+        db: import('firebase/firestore').Firestore;
+      },
+    ) => Promise<T>,
   ): Promise<T> {
-    const { auth, db } = await import('../../firebase/config');
-    return fn({ auth, db });
+    const [api, cfg] = await Promise.all([
+      import('./authService'),
+      import('../../firebase/config'),
+    ]);
+    return fn(api, { auth: cfg.auth, db: cfg.db });
   }
 
   async function onSubmit(e: React.FormEvent): Promise<void> {
@@ -40,15 +60,15 @@ export function LoginScreen(): ReactElement {
     setBusy(true);
     try {
       if (mode === 'signin') {
-        await withConfig(({ auth }) => signIn({ auth }, email, password));
+        await withApi((api, { auth }) => api.signIn({ auth }, email, password));
         showToast('Signed in.');
       } else if (mode === 'signup') {
-        await withConfig(({ auth, db }) =>
-          signUpFoundingParent({ auth, db }, { familyName, name, email, password }),
+        await withApi((api, { auth, db }) =>
+          api.signUpFoundingParent({ auth, db }, { familyName, name, email, password }),
         );
         showToast('Family created. Welcome to Family HQ.');
       } else {
-        await withConfig(({ auth }) => sendPasswordReset({ auth }, email));
+        await withApi((api, { auth }) => api.sendPasswordReset({ auth }, email));
         showToast('If that email exists, a reset link is on its way.');
       }
     } catch (err) {

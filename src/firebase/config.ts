@@ -50,3 +50,11 @@ if (useEmulator) {
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
   connectFirestoreEmulator(db, '127.0.0.1', 8080);
 }
+
+// Re-export the auth-state listener so useAuth can subscribe to it via the
+// dynamic config import — no second dynamic-import promise to manage, and no
+// static `firebase/auth` reference in any always-loaded module. Without this
+// re-export, useAuth would need a static `import { onAuthStateChanged }` from
+// firebase/auth, which would pull the entire Firebase Auth SDK into the main
+// bundle and undo the lazy chunking.
+export { onAuthStateChanged } from 'firebase/auth';

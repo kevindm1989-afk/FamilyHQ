@@ -48,19 +48,20 @@ vi.mock('../features/auth/authService', () => ({
 const fakeAuth = { __auth: true };
 const fakeDb = { __db: true };
 
-vi.mock('../firebase/config', () => ({
-  auth: fakeAuth,
-  db: fakeDb,
-}));
-
 // Capture the onAuthStateChanged callback so a test can drive it with a user.
+// useAuth now reaches onAuthStateChanged via the firebase/config re-export
+// (single dynamic-import promise; keeps firebase/auth out of the main bundle).
+// Mock the re-export at the config boundary; firebase/auth no longer needs
+// to be mocked here because useAuth has no static reference to it.
 let authCallback: ((user: unknown) => void) | undefined;
 const onAuthStateChanged = vi.fn((_auth: unknown, cb: (user: unknown) => void) => {
   authCallback = cb;
   return () => {};
 });
 
-vi.mock('firebase/auth', () => ({
+vi.mock('../firebase/config', () => ({
+  auth: fakeAuth,
+  db: fakeDb,
   onAuthStateChanged: (...a: [unknown, (user: unknown) => void]) => onAuthStateChanged(...a),
 }));
 

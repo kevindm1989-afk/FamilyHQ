@@ -6,17 +6,32 @@
  * Phase-3 placeholders. The "Family HQ" brand mark renders in the loading and
  * logged-out states so the shell always shows something real.
  */
-import type { ReactElement } from 'react';
+import { Suspense, lazy, type ReactElement } from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
-import { AccessibilityStatementScreen } from '../features/accessibility/AccessibilityStatementScreen';
 import { LoginScreen } from '../features/auth/LoginScreen';
 import { AuthProvider, useAuth } from '../hooks/useAuth';
-import { FamilyProvider } from '../hooks/useFamily';
 import { ToastProvider } from '../hooks/useToast';
-import { AppShell } from './AppShell';
 import { PwaUpdatePrompt } from './PwaUpdatePrompt';
 import { ROUTES } from './routes';
 import { ToastViewport } from './ToastViewport';
+
+// AuthedApp wraps FamilyProvider + AppShell + every feature screen + every
+// Firestore-backed hook + the full feature service surface. Loaded eagerly,
+// it would force a signed-out visitor to download the entire authed app
+// (~700 KB of Firebase + features) just to render the login form. The lazy
+// boundary lives at AuthedApp rather than AppShell so FamilyProvider's
+// static `firebase/firestore` import also stays out of the main bundle.
+// Fetched once auth succeeds; Suspense renders BrandSplash in between, which
+// already matches the auth-loading state visually.
+const AuthedApp = lazy(() => import('./AuthedApp'));
+
+// Static info page — no reason to ship in the main bundle when most users
+// never visit it. Reachable from both the login footer and the AccountScreen.
+const AccessibilityStatementScreen = lazy(() =>
+  import('../features/accessibility/AccessibilityStatementScreen').then((m) => ({
+    default: m.AccessibilityStatementScreen,
+  })),
+);
 
 function BrandSplash(): ReactElement {
   return (
@@ -39,19 +54,21 @@ function Gate(): ReactElement {
   // internal <Routes>.
   if (!authUser) {
     return (
-      <Routes>
-        <Route
-          path={ROUTES.accessibility.path}
-          element={<AccessibilityStatementScreen mode="public" />}
-        />
-        <Route path="*" element={<LoginScreen />} />
-      </Routes>
+      <Suspense fallback={<BrandSplash />}>
+        <Routes>
+          <Route
+            path={ROUTES.accessibility.path}
+            element={<AccessibilityStatementScreen mode="public" />}
+          />
+          <Route path="*" element={<LoginScreen />} />
+        </Routes>
+      </Suspense>
     );
   }
   return (
-    <FamilyProvider>
-      <AppShell />
-    </FamilyProvider>
+    <Suspense fallback={<BrandSplash />}>
+      <AuthedApp />
+    </Suspense>
   );
 }
 
