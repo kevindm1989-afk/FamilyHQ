@@ -21,6 +21,54 @@ Append newest on top. Be specific — vague lessons don't prevent anything.
 
 ## Entries
 
+## 2026-05-28 — Day-bucketing must use ONE local-day basis on BOTH sides; an ISO substring is UTC
+
+**Symptom:** Three separate features (allowance history grouping, dashboard
+upcoming-events filter, calendar) each independently mis-bucketed dates: an
+evening earning grouped under the next UTC day instead of the viewer's local
+day; an event dated today disappeared from "upcoming" after UTC rolled over.
+Each landed green in tests until a non-UTC `TZ` was set.
+**Root cause:** Two bases mixed in one comparison: `iso.slice(0,10)` /
+`new Date('YYYY-MM-DD').toISOString().slice(0,10)` is the UTC day; `Date.now()`
+formatted for display is the LOCAL day. A bare `YYYY-MM-DD` parsed with
+`new Date(...)` is UTC midnight — in a UTC-behind zone it shifts a day back.
+Date-only fixtures hid all of this until tests ran under
+`process.env.TZ='America/Los_Angeles'`.
+**Fix:** Reduce both sides to a local `YYYY-MM-DD` via the date PARTS
+(`getFullYear/getMonth/getDate`); for a bare `YYYY-MM-DD` input, build via
+`new Date(year, month-1, day)` (LOCAL), not `new Date('YYYY-MM-DD')`. Run
+TZ-sensitive tests under a non-UTC TZ.
+**Prevention:** When comparing two dates by day, derive BOTH from the same
+basis via local parts. Never `iso.slice(0,10)` for "today"; never
+`new Date('YYYY-MM-DD')` for a local-day input. TZ-sensitive tests run under
+a non-UTC TZ. Three occurrences here is the rule-of-three — see the follow-up
+to extract a shared `localDayKey(ms)` helper before a fourth feature copies it.
+
+## 2026-05-28 — Snapshot-dedupe signatures for feed hooks must include rendered FIELD values, not just doc ids
+
+**Symptom:** `useAllFamilyMembers` was cloned from `useFamilyChores`'s
+`docs.map(d => d.id).join(',')` signature. After a parent renamed or
+(de)activated a member, the service write succeeded (toast fired) but the
+list silently failed to re-render — the id set was unchanged, so the dedupe
+short-circuited and dropped the snapshot.
+**Root cause:** `useFamilyChores` only LOOKED correct: chore writes happen to
+also mutate `createdAt`, which forces a different doc-content-driven re-fire,
+which the listener delivers; the id-only signature was never the actual
+dedupe gate. For `users`, a rename / `isActive` flip does NOT mutate any
+field the id-only signature observed — so a redundant re-fire and a genuine
+update became indistinguishable.
+**Fix:** Sign the snapshot by `id + every field the screen reads`
+(`name, role, isActive, familyId, allowanceBalance`) — same `id:f1:f2:…`
+shape, joined per doc, joined across docs. An identical re-fire still
+dedupes; any mutation forces a re-apply.
+**Prevention:** A snapshot-dedupe signature is a contract over the RENDERED
+fields, not over the doc-id set. Before cloning a feed-hook signature into a
+new collection, list the fields the new surface reads and bake every one of
+them into the signature — including `isActive` (toggles) and any
+display-name field (renames). If the source hook's signature looks too thin,
+audit whether the source surface only worked by accident (a side-channel
+mutation like `createdAt`).
+
 ## 2026-05-27 — `assertFails` only matches PERMISSION_DENIED, not app-level transaction aborts
 
 **Symptom:** Allowance-approval abort tests (double-approve, approve-pending,
