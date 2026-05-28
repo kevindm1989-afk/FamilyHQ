@@ -15,7 +15,10 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react';
-import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
+// Type-only — erased at compile time, so no firebase/auth runtime dependency
+// is created. The actual onAuthStateChanged function is re-exported from
+// firebase/config and reached via the dynamic loadFirebaseConfig() promise.
+import type { User as FirebaseUser } from 'firebase/auth';
 
 export interface AuthState {
   authUser: FirebaseUser | null;
@@ -57,7 +60,7 @@ export function AuthProvider(props: { children: ReactNode }): ReactElement {
     let unsub: (() => void) | undefined;
     let cancelled = false;
     void loadFirebaseConfig()
-      .then(({ auth, db }) => {
+      .then(({ auth, db, onAuthStateChanged }) => {
         if (cancelled) return;
         unsub = onAuthStateChanged(auth, (user) => {
           // Finding 3 + Finding A — startup uid-guard, FAIL CLOSED. On a
