@@ -349,6 +349,7 @@ describe('FamilyManagementScreen — Reactivate affordance on every inactive row
 describe('FamilyManagementScreen — Rename flow (BottomSheet, labelled input, validation, save/cancel)', () => {
   function openRenameSheet(name: string): void {
     fireEvent.click(
+      // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- test fixture name, not user input
       screen.getByRole('button', { name: new RegExp(`rename\\s+${name}`, 'i') }),
     );
   }
@@ -1006,6 +1007,7 @@ describe('FamilyManagementScreen — A3: destructive confirm dialog has aria-des
 // =====================================================================
 describe('FamilyManagementScreen — A5/F7: rename input has no maxLength; over-length surfaces an inline error', () => {
   function openRenameSheet(name: string): HTMLInputElement {
+    // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- test fixture name, not user input
     fireEvent.click(screen.getByRole('button', { name: new RegExp(`rename\\s+${name}`, 'i') }));
     const dialog = screen.getByRole('dialog');
     return within(dialog).getByRole('textbox') as HTMLInputElement;
