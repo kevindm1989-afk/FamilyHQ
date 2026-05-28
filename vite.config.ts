@@ -57,7 +57,10 @@ export default defineConfig({
     setupFiles: ['./test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}', 'test/**/*.{test,spec}.{ts,tsx}'],
     // Rules tests run under their own config + the emulator (npm run test:rules).
-    exclude: ['test/rules/**', 'node_modules/**'],
+    // A11y tests under src/__a11y__/ run as their own tier via `npm run a11y`
+    // (verify.sh Tier 4); excluded here so they execute exactly once per
+    // verifier invocation, not twice.
+    exclude: ['test/rules/**', 'node_modules/**', 'src/__a11y__/**'],
     // Coverage reporting (provider + reporters) is configured by the test-writer
     // when real tests land, so we don't pin an unused coverage engine in the
     // empty shell. Run with `vitest run --coverage` once `@vitest/coverage-v8`
