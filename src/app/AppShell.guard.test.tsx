@@ -76,7 +76,7 @@ import { ROUTES } from './routes';
 async function renderAt(path: string) {
   const r = render(
     <ToastProvider>
-      <MemoryRouter initialEntries={[path]}>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }} initialEntries={[path]}>
         <AppShell />
       </MemoryRouter>
     </ToastProvider>,
