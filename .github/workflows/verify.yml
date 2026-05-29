@@ -93,6 +93,20 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      - name: Cache Firebase emulator JARs
+        # The CLI downloads the Firestore + Auth emulator JARs on first use
+        # (~50 MB combined) and warns about repeated downloads in CI. Cache
+        # the canonical location so subsequent runs reuse the same JARs.
+        # Key on the firebase-tools version from package-lock.json so a CLI
+        # bump invalidates the cache.
+        if: ${{ hashFiles('e2e/authed/**') != '' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            firebase-emulators-${{ runner.os }}-
+
       # --- Run the gate stack ---
 
       - name: Make verify.sh executable
