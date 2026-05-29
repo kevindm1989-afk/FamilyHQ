@@ -22,15 +22,12 @@
  * — the service fixes those (status='pending', createdBy=author, familyId=own).
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
+import { useTranslation } from 'react-i18next';
 import { BottomSheet } from '../../components';
 import { ToastViewport } from '../../app/ToastViewport';
 import { useToast } from '../../hooks/useToast';
 import type { RecurrenceFrequency, Role, UserWithId } from '../../lib/types';
-import {
-  CHORE_ADD_SUCCESS,
-  CHORE_PARENT_GENERIC_ERROR,
-  MONEY_MAX_CENTS,
-} from './choresParentService';
+import { MONEY_MAX_CENTS } from './choresParentService';
 
 export interface AddChoreValue {
   title: string;
@@ -117,6 +114,7 @@ function toCents(value: string): number {
 }
 
 export function AddChore(props: AddChoreProps): ReactElement {
+  const { t } = useTranslation();
   const { open, onClose, members, onAdd, today } = props;
   const { showToast } = useToast();
 
@@ -179,10 +177,10 @@ export function AddChore(props: AddChoreProps): ReactElement {
     };
     void onAdd(value)
       .then(() => {
-        showToast(CHORE_ADD_SUCCESS);
+        showToast(t('chores.toast.added'));
         onClose();
       })
-      .catch(() => showToast(CHORE_PARENT_GENERIC_ERROR))
+      .catch(() => showToast(t('chores.toast.generic')))
       .finally(() => setSubmitting(false));
   };
 
@@ -190,13 +188,13 @@ export function AddChore(props: AddChoreProps): ReactElement {
 
   return (
     <>
-      <BottomSheet open={open} title="Add Chore" onClose={onClose}>
+      <BottomSheet open={open} title={t('chores.addChore.sheetTitle')} onClose={onClose}>
         <div className="flex flex-col gap-16">
           {/* Title — autofocus-eligible (first focusable), aria-required. The
               visible <label> is the accessible name (no aria-label override). */}
           <div className="flex flex-col gap-6">
             <label htmlFor={titleId} className="text-label font-semibold text-ink-2">
-              What needs doing?
+              {t('chores.addChore.whatLabel')}
             </label>
             <div className="flex h-field items-center rounded-control border border-surface-line bg-surface-card px-14 focus-within:border-brand focus-within:ring-focus focus-within:ring-brand focus-within:ring-offset-focus">
               <input
@@ -216,7 +214,7 @@ export function AddChore(props: AddChoreProps): ReactElement {
               move the selection (a11y BLOCKER). */}
           <fieldset className="flex flex-col gap-8">
             <legend id={assignLabelId} className="text-label font-semibold text-ink-2">
-              Assign to
+              {t('chores.addChore.assignTo')}
             </legend>
             <div role="radiogroup" aria-labelledby={assignLabelId} className="flex flex-wrap gap-8">
               {members.map((m) => {
@@ -253,14 +251,14 @@ export function AddChore(props: AddChoreProps): ReactElement {
           {/* Due date — Today / Tomorrow / Pick date radios (roving tabindex). */}
           <fieldset className="flex flex-col gap-8">
             <legend id={dueLabelId} className="text-label font-semibold text-ink-2">
-              Due
+              {t('chores.addChore.dueLegend')}
             </legend>
             <div role="radiogroup" aria-labelledby={dueLabelId} className="flex flex-wrap gap-8">
               {(
                 [
-                  { id: 'today', label: 'Today' },
-                  { id: 'tomorrow', label: 'Tomorrow' },
-                  { id: 'pick', label: 'Pick date' },
+                  { id: 'today', label: t('chores.addChore.due.today') },
+                  { id: 'tomorrow', label: t('chores.addChore.due.tomorrow') },
+                  { id: 'pick', label: t('chores.addChore.due.pickDate') },
                 ] as { id: DueChoice; label: string }[]
               ).map((opt) => {
                 const selected = due === opt.id;
@@ -287,7 +285,7 @@ export function AddChore(props: AddChoreProps): ReactElement {
             {due === 'pick' && (
               <div className="flex flex-col gap-6">
                 <label htmlFor={dateInputId} className="text-label font-semibold text-ink-2">
-                  Pick a due date
+                  {t('chores.addChore.pickDateLabel')}
                 </label>
                 <div className="flex h-field items-center rounded-control border border-surface-line bg-surface-card px-14 focus-within:border-brand focus-within:ring-focus focus-within:ring-brand focus-within:ring-offset-focus">
                   <input
@@ -308,7 +306,7 @@ export function AddChore(props: AddChoreProps): ReactElement {
           <div className="flex gap-12">
             <div className="flex flex-1 flex-col gap-6">
               <label htmlFor={pointsId} className="text-label font-semibold text-ink-2">
-                Point value
+                {t('chores.addChore.pointValue')}
               </label>
               <div className="flex h-field items-center rounded-control border border-surface-line bg-surface-card px-14 focus-within:border-brand focus-within:ring-focus focus-within:ring-brand focus-within:ring-offset-focus">
                 <input
@@ -324,7 +322,7 @@ export function AddChore(props: AddChoreProps): ReactElement {
             </div>
             <div className="flex flex-1 flex-col gap-6">
               <label htmlFor={dollarsId} className="text-label font-semibold text-ink-2">
-                Dollar reward
+                {t('chores.addChore.dollarReward')}
               </label>
               <div className="flex h-field items-center rounded-control border border-surface-line bg-surface-card px-14 focus-within:border-brand focus-within:ring-focus focus-within:ring-brand focus-within:ring-offset-focus">
                 <input
@@ -350,21 +348,23 @@ export function AddChore(props: AddChoreProps): ReactElement {
                 type="checkbox"
                 role="switch"
                 checked={isRecurring}
-                aria-label="Recurring"
+                aria-label={t('chores.addChore.recurringAriaLabel')}
                 onChange={(e) => setIsRecurring(e.target.checked)}
                 className="h-20 w-20 rounded-control border-surface-line text-brand focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
               />
-              <span className="text-body font-semibold text-ink">Repeats</span>
+              <span className="text-body font-semibold text-ink">
+                {t('chores.addChore.repeats')}
+              </span>
             </label>
             <fieldset className="flex flex-col gap-8">
               <legend id={freqLabelId} className="text-label font-semibold text-ink-2">
-                How often
+                {t('chores.addChore.howOften')}
               </legend>
               <div role="radiogroup" aria-labelledby={freqLabelId} className="flex flex-wrap gap-8">
                 {(
                   [
-                    { id: 'weekly', label: 'Weekly' },
-                    { id: 'biweekly', label: 'Every other week' },
+                    { id: 'weekly', label: t('chores.addChore.recurrence.weekly') },
+                    { id: 'biweekly', label: t('chores.addChore.recurrence.biweekly') },
                   ] as { id: RecurrenceFrequency; label: string }[]
                 ).map((opt) => {
                   const selected = recurrenceFrequency === opt.id;
@@ -409,7 +409,7 @@ export function AddChore(props: AddChoreProps): ReactElement {
             onClick={handleSubmit}
             className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control bg-brand px-20 text-body font-semibold text-brand-on transition-colors duration-cardPress ease-out hover:bg-brand-dark active:bg-brand-dark focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus aria-disabled:opacity-60 motion-reduce:transition-none"
           >
-            Add chore
+            {t('chores.addChore.submit')}
           </button>
         </div>
       </BottomSheet>

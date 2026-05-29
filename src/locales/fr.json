@@ -220,6 +220,91 @@
     }
   },
 
+  "chores": {
+    "title": "Tâches",
+    "yourBalance": "Votre solde",
+    "loadingMine": "Chargement de vos tâches…",
+    "loadingAll": "Chargement des tâches…",
+    "emptyMine": "Vous êtes à jour — aucune tâche en ce moment.",
+    "emptyAll": "Aucune tâche — ajoutez-en une pour commencer.",
+    "emptyForMember": "Aucune tâche pour ce membre — ajoutez-en une.",
+    "section": {
+      "toDo": "À faire",
+      "waitingForApproval": "En attente d’approbation",
+      "recentlyApproved": "Récemment approuvées",
+      "needsAnotherTry": "À refaire"
+    },
+    "status": {
+      "pending": "À faire",
+      "waiting": "En attente",
+      "approved": "Approuvé",
+      "needsAnotherTry": "À refaire",
+      "sentBack": "Retourné"
+    },
+    "noReasonGiven": "Aucune raison donnée.",
+    "rejectionReasonPrefix": "Raison du renvoi :",
+    "due": "Échéance",
+    "worthLabel": "valeur {{amount}}",
+    "earnedSuffix": "{{amount}} gagné",
+    "tryAgain": "Réessayer",
+    "tryAgainLabel": "Réessayer : {{title}}",
+    "markDone": "Marquer comme terminé",
+    "markDoneLabel": "Marquer comme terminé : {{title}}",
+    "recurrence": {
+      "weekly": "Hebdomadaire",
+      "biweekly": "Aux deux semaines"
+    },
+    "memberBalancesLabel": "Soldes des membres",
+    "awaitingApprovalLabel": "En attente d’approbation",
+    "awaitingApprovalCount_one": "{{count}} en attente d’approbation",
+    "awaitingApprovalCount_other": "{{count}} en attente d’approbation",
+    "filterByMember": "Filtrer par membre",
+    "filterAll": "Tous",
+    "choresList": "Tâches",
+    "addChoreFab": "Ajouter une tâche",
+    "thisMember": "ce membre",
+    "approve": "Approuver",
+    "reject": "Refuser",
+    "sendBack": "Renvoyer",
+    "approveLabel": "Approuver {{title}} pour {{assignee}}",
+    "rejectLabel": "Refuser {{title}} pour {{assignee}}",
+    "reasonPrompt": "Pourquoi le renvoyez-vous ?",
+    "reasonRequired": "Veuillez ajouter une courte raison avant de renvoyer.",
+    "rewardSuffix": "récompense",
+    "rewardLabel": "récompense {{amount}}",
+    "balanceLabel": "Solde de {{name}} {{amount}}",
+    "balanceUnavailable": "Solde de {{name}} indisponible",
+    "toast": {
+      "completed": "Marqué comme terminé — en attente d’approbation",
+      "approved": "Approuvé — allocation mise à jour.",
+      "rejected": "Retourné à refaire.",
+      "added": "Tâche ajoutée.",
+      "generic": "Une erreur est survenue. Veuillez réessayer."
+    },
+    "addChore": {
+      "sheetTitle": "Ajouter une tâche",
+      "whatLabel": "Que faut-il faire ?",
+      "assignTo": "Assigner à",
+      "dueLegend": "Échéance",
+      "pickDateLabel": "Choisissez une date d’échéance",
+      "pointValue": "Points",
+      "dollarReward": "Récompense en dollars",
+      "repeats": "Récurrence",
+      "howOften": "À quelle fréquence",
+      "recurringAriaLabel": "Récurrent",
+      "submit": "Ajouter une tâche",
+      "due": {
+        "today": "Aujourd’hui",
+        "tomorrow": "Demain",
+        "pickDate": "Choisir une date"
+      },
+      "recurrence": {
+        "weekly": "Hebdomadaire",
+        "biweekly": "Aux deux semaines"
+      }
+    }
+  },
+
   "accessibility": {
     "title": "Accessibilité chez Family HQ",
     "lastReviewed": "Dernière révision : <1>{{date}}</1>",

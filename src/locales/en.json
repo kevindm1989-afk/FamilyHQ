@@ -220,6 +220,91 @@
     }
   },
 
+  "chores": {
+    "title": "Chores",
+    "yourBalance": "Your balance",
+    "loadingMine": "Loading your chores…",
+    "loadingAll": "Loading chores…",
+    "emptyMine": "You’re all caught up — no chores right now.",
+    "emptyAll": "No chores yet — add a chore to get started.",
+    "emptyForMember": "No chores for this member yet — add a chore.",
+    "section": {
+      "toDo": "To do",
+      "waitingForApproval": "Waiting for approval",
+      "recentlyApproved": "Recently approved",
+      "needsAnotherTry": "Needs another try"
+    },
+    "status": {
+      "pending": "To do",
+      "waiting": "Waiting",
+      "approved": "Approved",
+      "needsAnotherTry": "Needs another try",
+      "sentBack": "Sent back"
+    },
+    "noReasonGiven": "No reason given.",
+    "rejectionReasonPrefix": "Why it was sent back:",
+    "due": "Due",
+    "worthLabel": "worth {{amount}}",
+    "earnedSuffix": "{{amount}} earned",
+    "tryAgain": "Try again",
+    "tryAgainLabel": "Try again: {{title}}",
+    "markDone": "Mark done",
+    "markDoneLabel": "Mark done: {{title}}",
+    "recurrence": {
+      "weekly": "Weekly",
+      "biweekly": "Biweekly"
+    },
+    "memberBalancesLabel": "Member balances",
+    "awaitingApprovalLabel": "Awaiting approval",
+    "awaitingApprovalCount_one": "{{count}} awaiting approval",
+    "awaitingApprovalCount_other": "{{count}} awaiting approval",
+    "filterByMember": "Filter by member",
+    "filterAll": "All",
+    "choresList": "Chores",
+    "addChoreFab": "Add chore",
+    "thisMember": "this member",
+    "approve": "Approve",
+    "reject": "Reject",
+    "sendBack": "Send back",
+    "approveLabel": "Approve {{title}} for {{assignee}}",
+    "rejectLabel": "Reject {{title}} for {{assignee}}",
+    "reasonPrompt": "Why are you sending it back?",
+    "reasonRequired": "Please add a short reason before sending it back.",
+    "rewardSuffix": "reward",
+    "rewardLabel": "reward {{amount}}",
+    "balanceLabel": "{{name}} balance {{amount}}",
+    "balanceUnavailable": "{{name}} balance unavailable",
+    "toast": {
+      "completed": "Marked complete — waiting for approval",
+      "approved": "Approved — allowance updated.",
+      "rejected": "Sent back to try again.",
+      "added": "Chore added.",
+      "generic": "Something went wrong. Please try again."
+    },
+    "addChore": {
+      "sheetTitle": "Add Chore",
+      "whatLabel": "What needs doing?",
+      "assignTo": "Assign to",
+      "dueLegend": "Due",
+      "pickDateLabel": "Pick a due date",
+      "pointValue": "Point value",
+      "dollarReward": "Dollar reward",
+      "repeats": "Repeats",
+      "howOften": "How often",
+      "recurringAriaLabel": "Recurring",
+      "submit": "Add chore",
+      "due": {
+        "today": "Today",
+        "tomorrow": "Tomorrow",
+        "pickDate": "Pick date"
+      },
+      "recurrence": {
+        "weekly": "Weekly",
+        "biweekly": "Every other week"
+      }
+    }
+  },
+
   "accessibility": {
     "title": "Accessibility at Family HQ",
     "lastReviewed": "Last reviewed: <1>{{date}}</1>",
