@@ -26,16 +26,14 @@
  * guard is PER-CHORE (Finding 3) so a stuck row never blocks another.
  */
 import { useEffect, useId, useRef, useState, type ReactElement } from 'react';
+import { useTranslation } from 'react-i18next';
 import { EmptyState, Fab, Skeleton } from '../../components';
 import { ToastViewport } from '../../app/ToastViewport';
 import { useToast } from '../../hooks/useToast';
-import type { Role, UserWithId } from '../../lib/types';
+import type { ChoreStatus, Role, UserWithId } from '../../lib/types';
 import { statusBadgeClass, type ChoreWithId } from './choresMemberService';
 import {
   ALL_MEMBERS_TAB_ID,
-  CHORE_APPROVE_SUCCESS,
-  CHORE_PARENT_GENERIC_ERROR,
-  CHORE_REJECT_SUCCESS,
   MONEY_INVALID_INDICATOR,
   approvalQueue,
   choresForTab,
@@ -64,21 +62,21 @@ export interface ChoresParentScreenProps {
   onAddChore: () => void;
 }
 
-const DATE_FORMAT = new Intl.DateTimeFormat('en-CA', {
-  month: 'long',
-  day: 'numeric',
-  year: 'numeric',
-});
-
-function friendlyDueDate(iso: string): string {
+function friendlyDueDate(iso: string, locale: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   if (!m) return iso;
-  return DATE_FORMAT.format(new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12)));
+  return new Intl.DateTimeFormat(locale, {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12)));
 }
 
 export function ChoresParentScreen(props: ChoresParentScreenProps): ReactElement {
+  const { t, i18n } = useTranslation();
   const { members, feed, onApprove, onReject, onAddChore } = props;
   const { showToast } = useToast();
+  const locale = i18n.resolvedLanguage ?? 'en';
 
   const [selectedTab, setSelectedTab] = useState<string>(ALL_MEMBERS_TAB_ID);
   // The chore currently in the reject-reason flow (null when no reason form is
@@ -127,10 +125,10 @@ export function ChoresParentScreen(props: ChoresParentScreenProps): ReactElement
     markSubmitting(choreId, true);
     void onApprove(choreId)
       .then(() => {
-        showToast(CHORE_APPROVE_SUCCESS);
+        showToast(t('chores.toast.approved'));
         pendingFocusRef.current = true;
       })
-      .catch(() => showToast(CHORE_PARENT_GENERIC_ERROR))
+      .catch(() => showToast(t('chores.toast.generic')))
       .finally(() => markSubmitting(choreId, false));
   };
 
@@ -146,13 +144,13 @@ export function ChoresParentScreen(props: ChoresParentScreenProps): ReactElement
     markSubmitting(choreId, true);
     void onReject(choreId, trimmed)
       .then(() => {
-        showToast(CHORE_REJECT_SUCCESS);
+        showToast(t('chores.toast.rejected'));
         setRejectingId(null);
         setReason('');
         setReasonInvalid(false);
         pendingFocusRef.current = true;
       })
-      .catch(() => showToast(CHORE_PARENT_GENERIC_ERROR))
+      .catch(() => showToast(t('chores.toast.generic')))
       .finally(() => markSubmitting(choreId, false));
   };
 
@@ -174,11 +172,11 @@ export function ChoresParentScreen(props: ChoresParentScreenProps): ReactElement
   return (
     <>
       <section className="flex flex-col gap-16 px-16 pt-4 pb-24">
-        <h1 className="text-display font-display font-extrabold text-ink">Chores</h1>
+        <h1 className="text-display font-display font-extrabold text-ink">{t('chores.title')}</h1>
 
         {/* Per-member allowance balance chips (dynamic from active members). */}
         {members.length > 0 && (
-          <ul className="flex flex-wrap gap-8" aria-label="Member balances">
+          <ul className="flex flex-wrap gap-8" aria-label={t('chores.memberBalancesLabel')}>
             {members.map((m) => (
               <li
                 key={m.id}
@@ -192,9 +190,9 @@ export function ChoresParentScreen(props: ChoresParentScreenProps): ReactElement
         )}
 
         {feed.loading ? (
-          <Skeleton label="Loading chores…" />
+          <Skeleton label={t('chores.loadingAll')} />
         ) : !hasAnyChores ? (
-          <EmptyState message="No chores yet — add a chore to get started." />
+          <EmptyState message={t('chores.emptyAll')} />
         ) : (
           <>
             {/* Approvals queue — complete chores awaiting parent action. */}
@@ -205,14 +203,14 @@ export function ChoresParentScreen(props: ChoresParentScreenProps): ReactElement
                   tabIndex={-1}
                   className="text-title font-bold text-ink outline-none focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
                 >
-                  {awaitingCount} awaiting approval
+                  {t('chores.awaitingApprovalCount', { count: awaitingCount })}
                 </h2>
-                <ul className="flex flex-col gap-8" aria-label="Awaiting approval">
+                <ul className="flex flex-col gap-8" aria-label={t('chores.awaitingApprovalLabel')}>
                   {queue.map((chore) => (
                     <li key={chore.id}>
                       <ApprovalRow
                         chore={chore}
-                        assigneeName={nameById.get(chore.assignedTo) ?? 'this member'}
+                        assigneeName={nameById.get(chore.assignedTo) ?? t('chores.thisMember')}
                         rejecting={rejectingId === chore.id}
                         reason={reason}
                         reasonInvalid={reasonInvalid}
@@ -234,7 +232,7 @@ export function ChoresParentScreen(props: ChoresParentScreenProps): ReactElement
             {/* Member filter toggles — All + one per active member (dynamic).
                 Real toggle buttons with aria-pressed (NOT a composite tablist):
                 each is individually focusable and announced as a toggle. */}
-            <div aria-label="Filter by member" className="flex flex-wrap gap-8">
+            <div aria-label={t('chores.filterByMember')} className="flex flex-wrap gap-8">
               {tabs.map((tab) => {
                 const selected = selectedTab === tab.id;
                 return (
@@ -249,19 +247,19 @@ export function ChoresParentScreen(props: ChoresParentScreenProps): ReactElement
                         : 'border-surface-line bg-surface-card text-ink'
                     }`}
                   >
-                    {tab.label}
+                    {tab.id === ALL_MEMBERS_TAB_ID ? t('chores.filterAll') : tab.label}
                   </button>
                 );
               })}
             </div>
 
             {visibleChores.length === 0 ? (
-              <EmptyState message="No chores for this member yet — add a chore." />
+              <EmptyState message={t('chores.emptyForMember')} />
             ) : (
-              <ul className="flex flex-col gap-8" aria-label="Chores">
+              <ul className="flex flex-col gap-8" aria-label={t('chores.choresList')}>
                 {visibleChores.map((chore) => (
                   <li key={chore.id}>
-                    <ChoreCard chore={chore} />
+                    <ChoreCard chore={chore} locale={locale} />
                   </li>
                 ))}
               </ul>
@@ -271,7 +269,7 @@ export function ChoresParentScreen(props: ChoresParentScreenProps): ReactElement
       </section>
 
       <div className="fixed bottom-fab-from-bottom right-16 z-fab">
-        <Fab label="Add chore" onClick={onAddChore} />
+        <Fab label={t('chores.addChoreFab')} onClick={onAddChore} />
       </div>
 
       <ToastViewport />
@@ -283,12 +281,13 @@ export function ChoresParentScreen(props: ChoresParentScreenProps): ReactElement
  * (with an accessible name) when the cents value is non-finite/invalid — never a
  * misleading "$0.00" (Finding 8). */
 function BalanceAmount(props: { name: string; cents: number }): ReactElement {
+  const { t } = useTranslation();
   const { name, cents } = props;
   if (!isValidMoneyCents(cents)) {
     return (
       <span
         className="text-body font-bold text-ink-mute"
-        aria-label={`${name} balance unavailable`}
+        aria-label={t('chores.balanceUnavailable', { name })}
       >
         {MONEY_INVALID_INDICATOR}
       </span>
@@ -297,7 +296,7 @@ function BalanceAmount(props: { name: string; cents: number }): ReactElement {
   return (
     <span
       className="text-body font-bold text-accent-dark"
-      aria-label={`${name} balance ${formatMoney(cents)}`}
+      aria-label={t('chores.balanceLabel', { name, amount: formatMoney(cents) })}
     >
       {formatMoney(cents)}
     </span>
@@ -318,6 +317,7 @@ interface ApprovalRowProps {
 }
 
 function ApprovalRow(props: ApprovalRowProps): ReactElement {
+  const { t } = useTranslation();
   const {
     chore,
     assigneeName,
@@ -349,7 +349,7 @@ function ApprovalRow(props: ApprovalRowProps): ReactElement {
             chore.status,
           )}`}
         >
-          Waiting
+          {t('chores.status.waiting')}
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-12 text-meta text-ink-mute">
@@ -358,8 +358,8 @@ function ApprovalRow(props: ApprovalRowProps): ReactElement {
         </span>
         {/* Dollar reward shown as VISIBLE formatted money, labelled as a dollar
             reward — NOT mislabelled "points" (Finding 4). */}
-        <span aria-label={`reward ${formatMoney(chore.dollarValue)}`}>
-          {formatMoney(chore.dollarValue)} reward
+        <span aria-label={t('chores.rewardLabel', { amount: formatMoney(chore.dollarValue) })}>
+          {formatMoney(chore.dollarValue)} {t('chores.rewardSuffix')}
         </span>
       </div>
 
@@ -370,20 +370,20 @@ function ApprovalRow(props: ApprovalRowProps): ReactElement {
           disabled={submitting}
           aria-disabled={submitting ? 'true' : undefined}
           aria-busy={submitting ? 'true' : undefined}
-          aria-label={`Approve ${chore.title} for ${assigneeName}`}
+          aria-label={t('chores.approveLabel', { title: chore.title, assignee: assigneeName })}
           className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control bg-status-ok px-20 text-body font-semibold text-status-ok-text transition-colors duration-cardPress ease-out hover:bg-status-ok-light focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus disabled:opacity-60 motion-reduce:transition-none"
         >
-          Approve
+          {t('chores.approve')}
         </button>
         <button
           type="button"
           onClick={onStartReject}
           aria-expanded={rejecting}
           aria-controls={regionId}
-          aria-label={`Reject ${chore.title} for ${assigneeName}`}
+          aria-label={t('chores.rejectLabel', { title: chore.title, assignee: assigneeName })}
           className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control border border-surface-line px-20 text-body font-semibold text-ink transition-colors duration-cardPress ease-out hover:bg-surface-line2 focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none"
         >
-          Reject
+          {t('chores.reject')}
         </button>
       </div>
 
@@ -394,7 +394,7 @@ function ApprovalRow(props: ApprovalRowProps): ReactElement {
             id={labelId}
             className="text-label font-semibold text-ink-2"
           >
-            Why are you sending it back?
+            {t('chores.reasonPrompt')}
           </label>
           <div className="flex h-field items-center rounded-control border border-surface-line bg-surface-card px-14 focus-within:border-brand focus-within:ring-focus focus-within:ring-brand focus-within:ring-offset-focus">
             <input
@@ -415,7 +415,7 @@ function ApprovalRow(props: ApprovalRowProps): ReactElement {
               role="alert"
               className="text-meta font-semibold text-status-danger-text"
             >
-              Please add a short reason before sending it back.
+              {t('chores.reasonRequired')}
             </p>
           )}
           <button
@@ -426,7 +426,7 @@ function ApprovalRow(props: ApprovalRowProps): ReactElement {
             aria-busy={submitting ? 'true' : undefined}
             className="inline-flex min-h-tap min-w-tap items-center justify-center self-start rounded-control bg-status-danger px-20 text-body font-semibold text-onAccent transition-colors duration-cardPress ease-out hover:bg-status-danger-text focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus disabled:opacity-60 motion-reduce:transition-none"
           >
-            Send back
+            {t('chores.sendBack')}
           </button>
         </div>
       )}
@@ -434,13 +434,14 @@ function ApprovalRow(props: ApprovalRowProps): ReactElement {
   );
 }
 
-function ChoreCard(props: { chore: ChoreWithId }): ReactElement {
-  const { chore } = props;
-  const STATUS_LABEL: Record<string, string> = {
-    pending: 'To do',
-    complete: 'Waiting',
-    approved: 'Approved',
-    rejected: 'Sent back',
+function ChoreCard(props: { chore: ChoreWithId; locale: string }): ReactElement {
+  const { t } = useTranslation();
+  const { chore, locale } = props;
+  const STATUS_I18N_KEY: Record<ChoreStatus, string> = {
+    pending: 'chores.status.pending',
+    complete: 'chores.status.waiting',
+    approved: 'chores.status.approved',
+    rejected: 'chores.status.sentBack',
   };
   return (
     <div className="flex flex-col gap-8 rounded-control border border-surface-line bg-surface-card px-14 py-12">
@@ -451,13 +452,13 @@ function ChoreCard(props: { chore: ChoreWithId }): ReactElement {
             chore.status,
           )}`}
         >
-          {STATUS_LABEL[chore.status] ?? 'To do'}
+          {t(STATUS_I18N_KEY[chore.status] ?? 'chores.status.pending')}
         </span>
       </span>
       <span className="flex flex-wrap items-center gap-12 text-meta text-ink-mute">
         <span className="inline-flex items-center gap-4">
-          Due
-          <time dateTime={chore.dueDate}>{friendlyDueDate(chore.dueDate)}</time>
+          {t('chores.due')}
+          <time dateTime={chore.dueDate}>{friendlyDueDate(chore.dueDate, locale)}</time>
         </span>
         {/* Point value shown SEPARATELY as points. */}
         <span aria-label={`${chore.pointValue} points`}>
@@ -467,10 +468,10 @@ function ChoreCard(props: { chore: ChoreWithId }): ReactElement {
             reward — NOT mislabelled "points" (Finding 4). The money text node is
             money-only so it never reads "reward points". */}
         <span className="inline-flex items-center gap-4">
-          <span aria-label={`reward ${formatMoney(chore.dollarValue)}`}>
+          <span aria-label={t('chores.rewardLabel', { amount: formatMoney(chore.dollarValue) })}>
             {formatMoney(chore.dollarValue)}
           </span>
-          reward
+          {t('chores.rewardSuffix')}
         </span>
       </span>
     </div>

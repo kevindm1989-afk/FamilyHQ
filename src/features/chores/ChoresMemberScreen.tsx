@@ -28,16 +28,12 @@
  * badge), never colour alone. "Mark done" is a real focusable <button>.
  */
 import { useEffect, useId, useRef, useState, type ReactElement, type RefObject } from 'react';
+import { useTranslation } from 'react-i18next';
 import { EmptyState, Skeleton } from '../../components';
 import { ToastViewport } from '../../app/ToastViewport';
 import { useToast } from '../../hooks/useToast';
 import type { ChoreStatus, RecurrenceFrequency, Role } from '../../lib/types';
-import {
-  CHORE_COMPLETE_SUCCESS,
-  CHORE_GENERIC_ERROR,
-  statusBadgeClass,
-  type ChoreWithId,
-} from './choresMemberService';
+import { statusBadgeClass, type ChoreWithId } from './choresMemberService';
 
 export interface ChoresMemberScreenProps {
   familyId: string | null;
@@ -65,16 +61,16 @@ const CURRENCY = new Intl.NumberFormat('en-CA', {
   maximumFractionDigits: 2,
 });
 
-// Badge text label per status (conveys status as TEXT, not colour alone —
-// WCAG 1.4.1). NOTE: the `complete` badge says "Waiting" (NOT "Waiting for
-// approval") so the section heading "Waiting for approval" is the single
-// element carrying that exact phrase — a getByText(/waiting for approval/i)
-// must resolve to one element.
-const STATUS_LABEL: Record<ChoreStatus, string> = {
-  pending: 'To do',
-  complete: 'Waiting',
-  approved: 'Approved',
-  rejected: 'Needs another try',
+// Badge text label per status, resolved via i18n at render. NOTE: the `complete`
+// badge says "Waiting" (NOT "Waiting for approval") so the section heading
+// "Waiting for approval" is the single element carrying that exact phrase —
+// a getByText(/waiting for approval/i) must resolve to one element.
+// WCAG 1.4.1: status conveyed as TEXT, not colour alone.
+const STATUS_I18N_KEY: Record<ChoreStatus, string> = {
+  pending: 'chores.status.pending',
+  complete: 'chores.status.waiting',
+  approved: 'chores.status.approved',
+  rejected: 'chores.status.needsAnotherTry',
 };
 
 // The recognised status enum — an out-of-enum status (stale cache / future
@@ -87,33 +83,29 @@ const KNOWN_STATUSES: ReadonlySet<string> = new Set<ChoreStatus>([
   'rejected',
 ]);
 
-// Visible fallback when a parent sent a chore back without typing a note. A
-// rejected chore must never render a bare empty danger-coloured paragraph.
-const NO_REASON_FALLBACK = 'No reason given.';
-
-const DATE_FORMAT = new Intl.DateTimeFormat('en-CA', {
-  month: 'long',
-  day: 'numeric',
-  year: 'numeric',
-});
-
 /**
  * Friendly, human-readable due date. `dueDate` is a plain ISO date string; parse
  * it at UTC-noon so the displayed calendar day is stable regardless of the
- * viewer's timezone. This is the VISIBLE text inside the `<time>` element (WCAG:
- * the date must not live only in the attribute / aria-label).
+ * viewer's timezone. The formatter is built per call against the active i18n
+ * locale so a French viewer reads "28 mai 2026" instead of "May 28, 2026".
+ * This is the VISIBLE text inside the `<time>` element (WCAG: the date must
+ * not live only in the attribute / aria-label).
  */
-function friendlyDueDate(iso: string): string {
+function friendlyDueDate(iso: string, locale: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   if (!m) return iso;
   const date = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12));
-  return DATE_FORMAT.format(date);
+  return new Intl.DateTimeFormat(locale, {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(date);
 }
 
-const RECURRENCE_LABEL: Record<RecurrenceFrequency, string> = {
-  none: '',
-  weekly: 'Weekly',
-  biweekly: 'Biweekly',
+const RECURRENCE_I18N_KEY: Record<RecurrenceFrequency, string | null> = {
+  none: null,
+  weekly: 'chores.recurrence.weekly',
+  biweekly: 'chores.recurrence.biweekly',
 };
 
 function formatMoney(value: number): string {
@@ -121,8 +113,10 @@ function formatMoney(value: number): string {
 }
 
 export function ChoresMemberScreen(props: ChoresMemberScreenProps): ReactElement {
+  const { t, i18n } = useTranslation();
   const { viewer, feed, onMarkComplete, onViewHistory } = props;
   const { showToast } = useToast();
+  const locale = i18n.resolvedLanguage ?? 'en';
 
   // Per-chore in-flight guard: while a mark-complete write is pending the chore
   // id sits here. The button is disabled and a second click is a no-op, so a
@@ -147,10 +141,10 @@ export function ChoresMemberScreen(props: ChoresMemberScreenProps): ReactElement
         // The toast copy itself contains "waiting for approval", so announcing
         // it synchronously would briefly duplicate that phrase with the section
         // heading; the queued announcement still fires for assistive tech.
-        setTimeout(() => showToast(CHORE_COMPLETE_SUCCESS), 0);
+        setTimeout(() => showToast(t('chores.toast.completed')), 0);
         pendingFocusRef.current = true;
       })
-      .catch(() => showToast(CHORE_GENERIC_ERROR))
+      .catch(() => showToast(t('chores.toast.generic')))
       .finally(() => setSubmittingId(null));
   };
 
@@ -174,13 +168,15 @@ export function ChoresMemberScreen(props: ChoresMemberScreenProps): ReactElement
   return (
     <>
       <section className="flex flex-col gap-16 px-16 pt-4 pb-24">
-        <h1 className="text-display font-display font-extrabold text-ink">Chores</h1>
+        <h1 className="text-display font-display font-extrabold text-ink">{t('chores.title')}</h1>
 
         {/* EARNINGS card — the member's current balance, prominent (amber-light).
             No "earned this month" sum: the transactions ledger is a later
             feature. "View history" is a placeholder affordance for it. */}
         <div className="flex flex-col gap-8 rounded-card bg-accent-light p-16 shadow-card">
-          <span className="text-meta font-semibold text-accent-dark">Your balance</span>
+          <span className="text-meta font-semibold text-accent-dark">
+            {t('chores.yourBalance')}
+          </span>
           <span
             className="text-display font-display font-extrabold text-accent-dark"
             aria-label={`Your balance ${formatMoney(viewer.allowanceBalance)}`}
@@ -200,30 +196,38 @@ export function ChoresMemberScreen(props: ChoresMemberScreenProps): ReactElement
         </div>
 
         {feed.loading ? (
-          <Skeleton label="Loading your chores…" />
+          <Skeleton label={t('chores.loadingMine')} />
         ) : !hasChores ? (
-          <EmptyState message="You're all caught up — no chores right now." />
+          <EmptyState message={t('chores.emptyMine')} />
         ) : (
           <>
             <ChoreSection
-              title="To do"
+              title={t('chores.section.toDo')}
               chores={pending}
+              locale={locale}
               onMarkComplete={handleMarkComplete}
               submittingId={submittingId}
             />
             <ChoreSection
-              title="Waiting for approval"
+              title={t('chores.section.waitingForApproval')}
               chores={waiting}
+              locale={locale}
               faded
               headingRef={waitingHeadingRef}
             />
-            <ChoreSection title="Recently approved" chores={approved} strikeThrough />
+            <ChoreSection
+              title={t('chores.section.recentlyApproved')}
+              chores={approved}
+              locale={locale}
+              strikeThrough
+            />
             {/* Rejected chores get their OWN section with a "Try again" redo
                 affordance (rejected -> complete; the rule now permits it). It
                 reuses the SAME mark-complete action as the pending bucket. */}
             <ChoreSection
-              title="Needs another try"
+              title={t('chores.section.needsAnotherTry')}
               chores={rejected}
+              locale={locale}
               onTryAgain={handleMarkComplete}
               submittingId={submittingId}
             />
@@ -242,6 +246,8 @@ export function ChoresMemberScreen(props: ChoresMemberScreenProps): ReactElement
 interface ChoreSectionProps {
   title: string;
   chores: ChoreWithId[];
+  /** Active locale for friendlyDueDate (passed through from the screen). */
+  locale: string;
   faded?: boolean | undefined;
   strikeThrough?: boolean | undefined;
   onMarkComplete?: ((choreId: string) => void) | undefined;
@@ -254,6 +260,7 @@ function ChoreSection(props: ChoreSectionProps): ReactElement | null {
   const {
     title,
     chores,
+    locale,
     faded,
     strikeThrough,
     onMarkComplete,
@@ -278,6 +285,7 @@ function ChoreSection(props: ChoreSectionProps): ReactElement | null {
           <li key={chore.id}>
             <ChoreRow
               chore={chore}
+              locale={locale}
               faded={faded}
               strikeThrough={strikeThrough}
               onMarkComplete={onMarkComplete}
@@ -293,6 +301,7 @@ function ChoreSection(props: ChoreSectionProps): ReactElement | null {
 
 interface ChoreRowProps {
   chore: ChoreWithId;
+  locale: string;
   faded?: boolean | undefined;
   strikeThrough?: boolean | undefined;
   onMarkComplete?: ((choreId: string) => void) | undefined;
@@ -301,17 +310,19 @@ interface ChoreRowProps {
 }
 
 function ChoreRow(props: ChoreRowProps): ReactElement {
-  const { chore, faded, strikeThrough, onMarkComplete, onTryAgain, submitting } = props;
+  const { t } = useTranslation();
+  const { chore, locale, faded, strikeThrough, onMarkComplete, onTryAgain, submitting } = props;
   const isPending = chore.status === 'pending';
   const isApproved = chore.status === 'approved';
   const isRejected = chore.status === 'rejected';
-  const recurrenceLabel = chore.isRecurring ? RECURRENCE_LABEL[chore.recurrenceFrequency] : '';
+  const recurrenceKey = chore.isRecurring ? RECURRENCE_I18N_KEY[chore.recurrenceFrequency] : null;
+  const recurrenceLabel = recurrenceKey ? t(recurrenceKey) : '';
   const reasonId = useId();
 
   // Robust rejection reason: trim and fall back to a sensible visible line when
   // the parent sent the chore back without a note (absent/empty/whitespace).
   const trimmedReason = (chore.rejectionReason ?? '').trim();
-  const reasonText = trimmedReason.length > 0 ? trimmedReason : NO_REASON_FALLBACK;
+  const reasonText = trimmedReason.length > 0 ? trimmedReason : t('chores.noReasonGiven');
 
   return (
     <div
@@ -334,7 +345,7 @@ function ChoreRow(props: ChoreRowProps): ReactElement {
             chore.status,
           )}`}
         >
-          {STATUS_LABEL[chore.status]}
+          {t(STATUS_I18N_KEY[chore.status])}
         </span>
       </div>
 
@@ -342,19 +353,19 @@ function ChoreRow(props: ChoreRowProps): ReactElement {
         {/* The friendly date is VISIBLE text inside <time> (WCAG: not hidden in
             the attribute / aria-label alone); datetime carries the machine ISO. */}
         <span className="inline-flex items-center gap-4">
-          Due
-          <time dateTime={chore.dueDate}>{friendlyDueDate(chore.dueDate)}</time>
+          {t('chores.due')}
+          <time dateTime={chore.dueDate}>{friendlyDueDate(chore.dueDate, locale)}</time>
         </span>
         {/* Point value (the chore's reward for a member); the dollar value is
             surfaced as the EARNED amount once approved (below), mirroring the
             allowance flow. */}
         <span aria-label={`${chore.pointValue} points`}>{chore.pointValue} pts</span>
-        <span aria-label={`worth ${formatMoney(chore.dollarValue)}`}>
+        <span aria-label={t('chores.worthLabel', { amount: formatMoney(chore.dollarValue) })}>
           {formatMoney(chore.dollarValue)}
         </span>
         {isApproved && (
           <span className="font-semibold text-status-ok-text">
-            {formatMoney(chore.dollarValue)} earned
+            {t('chores.earnedSuffix', { amount: formatMoney(chore.dollarValue) })}
           </span>
         )}
         {recurrenceLabel && (
@@ -366,7 +377,7 @@ function ChoreRow(props: ChoreRowProps): ReactElement {
 
       {isRejected && (
         <p id={reasonId} className="text-meta text-status-danger-text">
-          <span className="font-semibold">Why it was sent back: </span>
+          <span className="font-semibold">{t('chores.rejectionReasonPrefix')} </span>
           {reasonText}
         </p>
       )}
@@ -376,11 +387,11 @@ function ChoreRow(props: ChoreRowProps): ReactElement {
           type="button"
           disabled={submitting}
           aria-disabled={submitting ? 'true' : undefined}
-          aria-label={`Try again: ${chore.title}`}
+          aria-label={t('chores.tryAgainLabel', { title: chore.title })}
           onClick={() => onTryAgain(chore.id)}
           className="inline-flex min-h-tap items-center justify-center self-start rounded-control bg-accent px-20 text-body font-semibold text-onAccent transition-colors duration-cardPress ease-out hover:bg-accent-dark active:bg-accent-dark focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus disabled:opacity-60 motion-reduce:transition-none"
         >
-          Try again
+          {t('chores.tryAgain')}
         </button>
       )}
 
@@ -389,11 +400,11 @@ function ChoreRow(props: ChoreRowProps): ReactElement {
           type="button"
           disabled={submitting}
           aria-disabled={submitting ? 'true' : undefined}
-          aria-label={`Mark done: ${chore.title}`}
+          aria-label={t('chores.markDoneLabel', { title: chore.title })}
           onClick={() => onMarkComplete(chore.id)}
           className="inline-flex min-h-tap items-center justify-center self-start rounded-control bg-accent px-20 text-body font-semibold text-onAccent transition-colors duration-cardPress ease-out hover:bg-accent-dark active:bg-accent-dark focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus disabled:opacity-60 motion-reduce:transition-none"
         >
-          Mark done
+          {t('chores.markDone')}
         </button>
       )}
     </div>
