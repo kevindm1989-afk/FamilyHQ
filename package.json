@@ -17,7 +17,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:rules": "vitest run --config vitest.rules.config.ts",
-    "a11y": "vitest run --config vitest.a11y.config.ts"
+    "a11y": "vitest run --config vitest.a11y.config.ts",
+    "e2e": "vite build && playwright test"
   },
   "_overrides_rationale": "Transitive deps below are flagged by npm audit but reach us only via the dev-only firebase-tools CLI or non-browser code paths of the firebase SDK. Pinned to fixed releases so the high/critical audit gate passes without weakening the gate itself.",
   "overrides": {
@@ -38,6 +39,7 @@
   "devDependencies": {
     "@eslint/js": "9.5.0",
     "@firebase/rules-unit-testing": "3.0.3",
+    "@playwright/test": "1.56",
     "@testing-library/jest-dom": "6.4.6",
     "@testing-library/react": "16.0.0",
     "@types/react": "18.3.3",

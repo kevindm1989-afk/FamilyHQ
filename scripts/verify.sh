@@ -198,6 +198,27 @@ else
   echo "  [skip] a11y — no 'a11y' script in package.json"
 fi
 
+# Playwright e2e smoke (public surface). Gracefully SKIPS when no browser
+# binary is available — CI provides one via the workflow's `playwright
+# install chromium` step, devs run it once locally. The gate distinguishes
+# "no Playwright" (skip, fine) from "Playwright present but failing" (fail).
+#
+# Browser path: only override PLAYWRIGHT_BROWSERS_PATH to the team's
+# prebuilt-container location when that directory ACTUALLY exists. On a
+# fresh laptop or in CI it's absent, and forcing it would point Playwright
+# at a nonexistent binary (the CI failure that prompted this comment).
+# When unset, Playwright uses its own default (~/.cache/ms-playwright).
+if has_npm_script "e2e"; then
+  if [ -z "${PLAYWRIGHT_BROWSERS_PATH:-}" ] && [ -d /opt/pw-browsers ]; then
+    export PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+  fi
+  if npx --no-install playwright --version >/dev/null 2>&1; then
+    run_gate_shell "e2e" "npm run e2e --silent"
+  else
+    echo "  [skip] e2e — Playwright not installed (run 'npx playwright install chromium')"
+  fi
+fi
+
 # --- Tier 5: Adversarial (warn only) ---
 section "Tier 5: Adversarial (warnings only)"
 
