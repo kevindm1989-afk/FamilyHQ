@@ -138,6 +138,14 @@ if [ -f "scripts/token-audit.sh" ]; then
   run_gate_shell "token-audit" "bash scripts/token-audit.sh"
 fi
 
+# Locale drift — every non-en locale file must mirror en.json's key shape
+# exactly. Catches the silent failure mode where a French user sees English
+# fallback because someone forgot to add a key to fr.json. Skipped if
+# src/locales/ doesn't exist or no script is present.
+if [ -f "scripts/locale-drift.cjs" ] && [ -d "src/locales" ]; then
+  run_gate "locale-drift" node scripts/locale-drift.cjs
+fi
+
 # Bail early if Tier 1 failed
 if [ "$overall_status" -ne 0 ]; then
   echo

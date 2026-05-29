@@ -120,10 +120,88 @@ test.describe('Language toggle — real browser round-trip', () => {
   });
 });
 
-// NOTE on the skip link:
-// AppShell (the authed shell) carries a "Skip to main content" link as the
-// first focusable, per WCAG 2.4.1. The LoginScreen does NOT — that is an
-// AODA gap worth a follow-up. The AppShell skip link is exercised by the
-// jsdom integration tests in src/app/AppShell.*.test.tsx; a real-browser
-// version belongs in the authed E2E suite, which is gated on the Firebase
-// emulator wiring (separate PR).
+test.describe('Skip link — WCAG 2.4.1 on the unauthed surface', () => {
+  // Headless Chrome cold-loaded pages don't always carry a focusable
+  // activeElement, so a literal `page.keyboard.press('Tab')` then check of
+  // `:focus` is unreliable. Test the property we ACTUALLY care about
+  // (WCAG 2.4.1's intent): the skip link is the FIRST focusable element in
+  // the document, has the correct accessible name + target, and when
+  // activated, focus lands on the main landmark.
+
+  test('the skip link is the first focusable element on /', async ({ page }) => {
+    await page.goto('/');
+    // Wait for React to mount the skip link before enumerating — without
+    // this the query can run before the unauthed Gate has rendered and
+    // there are no focusables in the document yet.
+    await page.locator('a[href="#main-content"]').first().waitFor();
+
+    // Enumerate every focusable in DOM order. The skip link must be index 0.
+    const firstFocusable = await page.evaluate(() => {
+      const els = Array.from(
+        document.querySelectorAll(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      const first = els[0] as HTMLElement | undefined;
+      return first
+        ? { tag: first.tagName, href: first.getAttribute('href'), text: first.textContent?.trim() }
+        : null;
+    });
+
+    expect(firstFocusable).not.toBeNull();
+    expect(firstFocusable?.tag).toBe('A');
+    expect(firstFocusable?.href).toBe('#main-content');
+    expect(firstFocusable?.text).toMatch(/skip to main content/i);
+  });
+
+  test('focusing the skip link reveals it (sr-only → focus:not-sr-only)', async ({ page }) => {
+    await page.goto('/');
+    const link = page.locator('a[href="#main-content"]').first();
+
+    // Pre-focus: the link exists in DOM (and a11y tree) but is visually
+    // collapsed via Tailwind's `sr-only` (1px clip). Programmatic focus
+    // triggers `focus:not-sr-only` which restores normal flow + a brand-
+    // toned background.
+    await link.focus();
+    await expect(link).toBeFocused();
+
+    // The visible bounding box should be more than the sr-only 1×1 once
+    // the focus utility kicks in. Sanity-check the height — if a future
+    // Tailwind upgrade drops `focus:not-sr-only`, the link stays invisible
+    // and this assertion catches it.
+    const box = await link.boundingBox();
+    expect(box, 'skip link must have a measurable box on focus').not.toBeNull();
+    expect(box!.height, 'sr-only → focus:not-sr-only must restore real height').toBeGreaterThan(8);
+  });
+
+  test('activating the skip link moves focus to <main id="main-content">', async ({ page }) => {
+    await page.goto('/');
+    const link = page.locator('a[href="#main-content"]').first();
+    await link.focus();
+
+    // Press Enter to activate the anchor. The browser navigates the fragment;
+    // the matching <main id="main-content" tabIndex="-1"> becomes the focus
+    // target (LoginScreen sets `focus:outline-none` so the dotted ring is
+    // suppressed but focus IS programmatically moved).
+    await page.keyboard.press('Enter');
+
+    const activeId = await page.evaluate(() => document.activeElement?.id ?? null);
+    expect(activeId).toBe('main-content');
+  });
+
+  test('the skip link is also the first focusable on /accessibility', async ({ page }) => {
+    await page.goto('/accessibility');
+    await page.locator('a[href="#main-content"]').first().waitFor();
+    const firstFocusable = await page.evaluate(() => {
+      const els = Array.from(
+        document.querySelectorAll(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      const first = els[0] as HTMLElement | undefined;
+      return first ? { tag: first.tagName, href: first.getAttribute('href') } : null;
+    });
+    expect(firstFocusable?.tag).toBe('A');
+    expect(firstFocusable?.href).toBe('#main-content');
+  });
+});
