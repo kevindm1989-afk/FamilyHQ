@@ -82,6 +82,17 @@ jobs:
         if: ${{ hashFiles('playwright.config.ts') != '' }}
         run: npx playwright install --with-deps chromium
 
+      - name: Setup Java (required by the Firebase emulators for e2e-authed)
+        # The e2e-authed gate wraps Playwright in `firebase emulators:exec`,
+        # which spawns the Firestore + Auth emulators. Both need a JVM. The
+        # Firestore-rules job already installs Java; mirroring it here so
+        # the verifier's e2e-authed gate doesn't silently skip in CI.
+        if: ${{ hashFiles('e2e/authed/**') != '' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
       # --- Run the gate stack ---
 
       - name: Make verify.sh executable

@@ -227,6 +227,20 @@ if has_npm_script "e2e"; then
   fi
 fi
 
+# Authed e2e — wraps Playwright in `firebase emulators:exec` so a real
+# Firebase Auth + Firestore emulator suite is up for the founding-parent
+# happy path. Skipped gracefully when Playwright OR Java is missing —
+# both are needed and a clear skip beats an opaque failure. CI installs
+# both up front (see .github/workflows/verify.yml).
+if has_npm_script "e2e:authed"; then
+  if npx --no-install playwright --version >/dev/null 2>&1 \
+     && command -v java >/dev/null 2>&1; then
+    run_gate_shell "e2e-authed" "npm run e2e:authed --silent"
+  else
+    echo "  [skip] e2e-authed — Playwright and/or Java not available"
+  fi
+fi
+
 # --- Tier 5: Adversarial (warn only) ---
 section "Tier 5: Adversarial (warnings only)"
 
