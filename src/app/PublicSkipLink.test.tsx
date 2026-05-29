@@ -19,7 +19,7 @@
  * No backend, no Firestore. The Gate's `authUser` branch is left untouched
  * — the authed AppShell skip link continues to be covered elsewhere.
  */
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Stub useAuth so Gate renders the unauthed branch deterministically.
@@ -40,11 +40,21 @@ vi.mock('./ToastViewport', () => ({ ToastViewport: () => null }));
 
 // Reset i18n language between tests so a previous fr-leaning test cannot
 // pollute the en assertion below.
+//
+// Order matters in afterEach: explicitly `cleanup()` the rendered tree BEFORE
+// flipping the language back. RTL's auto-cleanup fires AFTER every afterEach,
+// so without this manual call the still-mounted Gate (from the test we just
+// finished) re-renders in response to the language change, and that re-render
+// is not inside an act() boundary — React then logs an "update to Gate inside
+// a test was not wrapped in act(...)" warning for every test in the file
+// (10 in the suite at the time of writing). Unmounting first means the
+// language change runs against an empty tree, which is what we actually want.
 import i18n from '../i18n';
 beforeEach(async () => {
   await i18n.changeLanguage('en');
 });
 afterEach(async () => {
+  cleanup();
   await i18n.changeLanguage('en');
 });
 

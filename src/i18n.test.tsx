@@ -16,10 +16,38 @@
  * the language at the start and clears localStorage so test order doesn't
  * matter.
  */
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import i18n, { SUPPORTED_LANGUAGES } from './i18n';
 import { LanguageToggle } from './components/LanguageToggle';
+
+// LanguageToggle's onChange handler is fire-and-forget — it calls
+// `void i18n.changeLanguage(next)`, so the language switch + the downstream
+// <Trans> re-renders that React commits when the i18n promise resolves
+// settle in a microtask AFTER the synchronous fireEvent returns. A plain
+// `fireEvent.change` wraps the event dispatch in act() but closes the act
+// boundary before that microtask runs, so the resulting LanguageToggle
+// re-render lands outside act and React logs an "update to LanguageToggle
+// inside a test was not wrapped in act(...)" warning that pollutes CI
+// output.
+//
+// We wrap the event in an awaited `act()` AND explicitly drain the
+// microtask queue inside it (a couple of `await Promise.resolve()`s is the
+// idiomatic way to flush both the i18next promise and the downstream
+// React-i18next state update). The result is a clean commit cycle.
+async function changeLanguageViaSelect(select: HTMLSelectElement, value: string): Promise<void> {
+  await act(async () => {
+    fireEvent.change(select, { target: { value } });
+    // Flush i18n.changeLanguage's promise + the react-i18next subscriber
+    // re-render. We drain by directly awaiting a no-op changeLanguage to
+    // the SAME language — i18next short-circuits when the requested
+    // language matches the current one, which guarantees its event loop
+    // settles without triggering a second real change. This is more
+    // robust than counting microtask ticks (i18next's promise chain
+    // length is an internal detail that can shift between versions).
+    await i18n.changeLanguage(i18n.resolvedLanguage ?? 'en');
+  });
+}
 
 const STORAGE_KEY = 'familyhq.language';
 
@@ -28,6 +56,12 @@ beforeEach(async () => {
   await i18n.changeLanguage('en');
 });
 afterEach(async () => {
+  // Unmount the rendered LanguageToggle BEFORE resetting the language — RTL's
+  // auto-cleanup fires after afterEach, so without this manual call the still-
+  // mounted toggle re-renders in response to changeLanguage and React logs an
+  // "update to LanguageToggle inside a test was not wrapped in act(...)"
+  // warning. Same fix as PublicSkipLink.test.tsx.
+  cleanup();
   await i18n.changeLanguage('en');
   localStorage.clear();
 });
@@ -57,26 +91,26 @@ describe('LanguageToggle — switches the visible string', () => {
     expect(i18n.resolvedLanguage).toBe('en');
     expect(select.value).toBe('en');
 
-    fireEvent.change(select, { target: { value: 'fr' } });
+    await changeLanguageViaSelect(select, 'fr');
     expect(i18n.resolvedLanguage).toBe('fr');
 
-    fireEvent.change(select, { target: { value: 'en' } });
+    await changeLanguageViaSelect(select, 'en');
     expect(i18n.resolvedLanguage).toBe('en');
   });
 
-  it('persists the user’s choice to localStorage (sticks across reloads)', () => {
+  it('persists the user’s choice to localStorage (sticks across reloads)', async () => {
     render(<LanguageToggle />);
     const select = screen.getByRole('combobox') as HTMLSelectElement;
 
-    fireEvent.change(select, { target: { value: 'fr' } });
+    await changeLanguageViaSelect(select, 'fr');
     expect(localStorage.getItem(STORAGE_KEY)).toBe('fr');
   });
 
-  it('rejects an unsupported value (defence-in-depth against UI tampering)', () => {
+  it('rejects an unsupported value (defence-in-depth against UI tampering)', async () => {
     render(<LanguageToggle />);
     const select = screen.getByRole('combobox') as HTMLSelectElement;
 
-    fireEvent.change(select, { target: { value: 'xx-Invalid' } });
+    await changeLanguageViaSelect(select, 'xx-Invalid');
     // i18n.changeLanguage MUST NOT have been called; the resolved language
     // stays on en, and localStorage isn't poisoned with a bogus value.
     expect(i18n.resolvedLanguage).toBe('en');
