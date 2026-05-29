@@ -46,6 +46,13 @@ function main() {
   }
 
   const config = JSON.parse(fs.readFileSync(BUDGETS_PATH, 'utf8'));
+  // `b.pattern` is read from scripts/bundle-budget.json, a file we own
+  // and review like any other source. It is NEVER user-supplied. Semgrep's
+  // detect-non-literal-regexp rule flags any `new RegExp(...)` whose
+  // argument isn't a string literal — it can't trace through the JSON
+  // load + map to prove this is safe. The marker has to sit on the line
+  // IMMEDIATELY ABOVE the matched call for semgrep to associate them.
+  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
   const budgets = config.budgets.map((b) => ({ ...b, regex: new RegExp(b.pattern) }));
 
   const jsFiles = fs.readdirSync(DIST).filter((f) => f.endsWith('.js'));
