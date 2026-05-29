@@ -110,9 +110,20 @@ function Gate(): ReactElement {
   );
 }
 
+// React Router v7 future-flag opt-in. Both flags surface deprecation
+// warnings on every test run AND pin the migration's behaviour change
+// into the codebase now — v7 will turn these on by default, so opting
+// in early means the upgrade is a no-op (instead of a sudden behaviour
+// shift). Same future prop is mirrored on the MemoryRouter wrappers in
+// the test suites below; ROUTER_FUTURE_FLAGS would be the natural
+// constant to extract, but every consumer is in this directory's tests
+// and React Router doesn't export the type publicly enough to make
+// extraction tidier than copy-paste.
+const ROUTER_FUTURE = { v7_startTransition: true, v7_relativeSplatPath: true } as const;
+
 export default function App(): ReactElement {
   return (
-    <BrowserRouter>
+    <BrowserRouter future={ROUTER_FUTURE}>
       <ToastProvider>
         <AuthProvider>
           <Gate />

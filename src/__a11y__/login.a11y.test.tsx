@@ -16,7 +16,7 @@ import { axeA11y } from './fixtures';
 describe('a11y — LoginScreen', () => {
   it('sign-in mode has no axe violations', async () => {
     const { container } = render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ToastProvider>
           <LoginScreen />
         </ToastProvider>
@@ -27,7 +27,7 @@ describe('a11y — LoginScreen', () => {
 
   it('sign-up mode (founding parent) has no axe violations', async () => {
     const { container } = render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ToastProvider>
           <LoginScreen />
         </ToastProvider>
@@ -41,7 +41,7 @@ describe('a11y — LoginScreen', () => {
 
   it('forgot-password mode has no axe violations', async () => {
     const { container } = render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ToastProvider>
           <LoginScreen />
         </ToastProvider>

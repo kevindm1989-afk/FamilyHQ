@@ -25,7 +25,7 @@ afterEach(async () => {
 describe('a11y — AccessibilityStatementScreen (fr)', () => {
   it('public mode has no axe violations in French', async () => {
     const { container } = render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AccessibilityStatementScreen mode="public" />
       </MemoryRouter>,
     );
@@ -34,7 +34,7 @@ describe('a11y — AccessibilityStatementScreen (fr)', () => {
 
   it('in-app mode has no axe violations in French', async () => {
     const { container } = render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AccessibilityStatementScreen mode="in-app" />
       </MemoryRouter>,
     );

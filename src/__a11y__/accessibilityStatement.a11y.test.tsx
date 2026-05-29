@@ -13,7 +13,7 @@ import { axeA11y } from './fixtures';
 describe('a11y — AccessibilityStatementScreen', () => {
   it('public mode has no axe violations', async () => {
     const { container } = render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AccessibilityStatementScreen mode="public" />
       </MemoryRouter>,
     );
@@ -22,7 +22,7 @@ describe('a11y — AccessibilityStatementScreen', () => {
 
   it('in-app mode has no axe violations', async () => {
     const { container } = render(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AccessibilityStatementScreen mode="in-app" />
       </MemoryRouter>,
     );
