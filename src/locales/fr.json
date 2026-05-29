@@ -113,6 +113,51 @@
     }
   },
 
+  "board": {
+    "title": "Babillard",
+    "refresh": "Actualiser le babillard",
+    "loading": "Chargement du babillard…",
+    "empty": "Aucune publication — partagez quelque chose avec la famille.",
+    "listLabel": "Publications familiales",
+    "newPost": "Nouvelle publication",
+    "deletePost": "Supprimer la publication de {{author}}",
+    "toast": {
+      "created": "Publié sur le babillard.",
+      "deleted": "Publication supprimée.",
+      "generic": "Une erreur est survenue. Veuillez réessayer."
+    }
+  },
+
+  "calendar": {
+    "title": "Calendrier",
+    "loading": "Chargement du calendrier…",
+    "prevMonth": "Mois précédent",
+    "nextMonth": "Mois suivant",
+    "showingMonth": "Affichage de {{month}} {{year}}",
+    "showingMonthSplit": "Affichage de <1>{{month}} </1><2>{{year}}</2>",
+    "monthGridLabel": "Calendrier de {{month}} {{year}}",
+    "selectedDayList": "Événements de la journée sélectionnée",
+    "addEvent": "Ajouter un événement",
+    "editEvent": "Modifier {{title}}",
+    "deleteEvent": "Supprimer {{title}}",
+    "dayLabel": {
+      "today": "aujourd’hui",
+      "events_one": "{{count}} événement",
+      "events_other": "{{count}} événements"
+    },
+    "agendaEmpty": "Rien de prévu — profitez de votre journée libre.",
+    "tag": {
+      "school": "École",
+      "sports": "Sports",
+      "family": "Famille",
+      "work": "Travail"
+    },
+    "toast": {
+      "deleted": "Événement supprimé.",
+      "generic": "Une erreur est survenue. Veuillez réessayer."
+    }
+  },
+
   "accessibility": {
     "title": "Accessibilité chez Family HQ",
     "lastReviewed": "Dernière révision : <1>{{date}}</1>",
