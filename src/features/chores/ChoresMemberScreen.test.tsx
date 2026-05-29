@@ -836,7 +836,14 @@ describe('ChoresMemberScreen — "Try again" redo on a rejected chore (rejected 
         />
       </ToastProvider>,
     );
-    expect(screen.getByText(/waiting for approval/i)).toBeInTheDocument();
+    // Target the SECTION HEADING specifically — under vitest 3 the success
+    // toast ("Marked complete — waiting for approval") may still be in the
+    // DOM during the assertion window, so getByText(/waiting for approval/i)
+    // matches both the toast and the heading. Querying by role + name
+    // disambiguates to the heading we actually care about.
+    expect(
+      screen.getByRole('heading', { name: /waiting for approval/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText('Fold laundry')).toBeInTheDocument();
     // The rejected section heading is gone (no rejected chore remains).
     expect(
