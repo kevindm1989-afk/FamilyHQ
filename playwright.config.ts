@@ -54,12 +54,20 @@ export default defineConfig({
   ],
 
   webServer: {
-    // Build + preview the production bundle for each run — the same bundle
-    // CI / users would see. `npm run build` includes `tsc --noEmit && vite
-    // build`; preview serves from dist/.
-    command: 'npm run build && npx vite preview --port 4173 --strictPort',
+    // Preview the production bundle. The build itself runs in the `e2e`
+    // npm script BEFORE Playwright is invoked (`vite build && playwright
+    // test`), so this command only has to start the static preview server
+    // — no rebuild here. The split matters in CI: keeping the build
+    // outside the webServer means a build hang shows as an obvious
+    // script failure instead of an opaque "Timed out waiting 180000ms
+    // from config.webServer" (which was the original failure shape
+    // observed in CI on the PR that introduced this suite).
+    //
+    // --host 127.0.0.1 is explicit so the bound address matches the
+    // URL Playwright polls.
+    command: 'npx vite preview --port 4173 --strictPort --host 127.0.0.1',
     url: `http://127.0.0.1:${PORT}`,
     reuseExistingServer: !process.env.CI,
-    timeout: 180_000,
+    timeout: 30_000,
   },
 });
