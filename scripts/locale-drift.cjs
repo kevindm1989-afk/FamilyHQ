@@ -46,11 +46,14 @@ function loadLocale(name) {
   if (!LOCALE_NAME_RE.test(name)) {
     throw new Error(`locale-drift: rejected locale name "${name}" — must match ${LOCALE_NAME_RE}`);
   }
+  // `name` is gated by LOCALE_NAME_RE above (two-letter primary subtag,
+  // optional region) and the resolved path is verified to sit inside
+  // LOCALES_DIR below. Semgrep can't trace the regex through to this call
+  // so it flags any non-literal argument by default. The nosemgrep marker
+  // must be on the line IMMEDIATELY ABOVE the matched call for semgrep to
+  // associate them — splitting the justification off above this is
+  // deliberate.
   // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
-  // Justification: `name` is gated by LOCALE_NAME_RE above (two-letter
-  // primary subtag, optional region) and the resolved path is verified to
-  // sit inside LOCALES_DIR below. Semgrep can't trace the regex through to
-  // this call so it flags any non-literal argument by default.
   const p = path.resolve(LOCALES_DIR, `${name}.json`);
   // Defence-in-depth: even with the regex above, verify the resolved path
   // is still under LOCALES_DIR. Catches a future change where the regex is
