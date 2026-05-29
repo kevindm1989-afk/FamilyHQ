@@ -205,3 +205,72 @@ test.describe('Skip link — WCAG 2.4.1 on the unauthed surface', () => {
     expect(firstFocusable?.href).toBe('#main-content');
   });
 });
+
+test.describe('LoginScreen — mode switching (signin / signup / forgot)', () => {
+  // Each mode flips the tagline, swaps in/out fields, and changes the submit
+  // label. The flips happen entirely client-side — no backend or emulator
+  // needed — so these are pure rendering contracts that the jsdom
+  // integration tests already cover, ALSO pinned here for the real browser
+  // (catches a future CSS regression that conditionally hides a field or a
+  // routing change that drops a mode).
+
+  test('signup mode reveals Family name + Your name fields and the Create family CTA', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(page.getByText(/your shared family home base/i)).toBeVisible();
+
+    await page.getByRole('button', { name: /create a family/i }).click();
+
+    await expect(page.getByText(/create your family home base/i)).toBeVisible();
+    await expect(page.getByLabel(/family name/i)).toBeVisible();
+    await expect(page.getByLabel(/your name/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /^create family$/i })).toBeVisible();
+    // The mode-switch CTA now points the other way.
+    await expect(page.getByRole('button', { name: /^back to sign in$/i })).toBeVisible();
+  });
+
+  test('forgot-password mode hides the password field and shows the reset CTA', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: /forgot password\?/i }).click();
+
+    await expect(page.getByText(/reset your password/i)).toBeVisible();
+    // Email persists; password input goes away.
+    await expect(page.getByLabel(/email/i)).toBeVisible();
+    await expect(page.getByLabel(/password/i)).not.toBeVisible();
+    await expect(page.getByRole('button', { name: /^send reset link$/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^back to sign in$/i })).toBeVisible();
+  });
+
+  test('switching back to sign-in from forgot mode restores the baseline form', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: /forgot password\?/i }).click();
+    // Confirm we left signin mode first…
+    await expect(page.getByRole('button', { name: /^send reset link$/i })).toBeVisible();
+
+    await page.getByRole('button', { name: /^back to sign in$/i }).click();
+
+    await expect(page.getByText(/your shared family home base/i)).toBeVisible();
+    await expect(page.getByLabel(/email/i)).toBeVisible();
+    await expect(page.getByLabel(/password/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /^sign in$/i })).toBeVisible();
+    // The mode-switch links are back in their signin shapes.
+    await expect(page.getByRole('button', { name: /create a family/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /forgot password\?/i })).toBeVisible();
+  });
+
+  test('the password field is type="password" so the OS hides the input', async ({ page }) => {
+    // CSS / DOM property check that jsdom doesn't faithfully reproduce —
+    // a real browser actually masks the field per the type attribute. The
+    // assertion is on the underlying attribute, not on visible bullets,
+    // because Playwright can't peek through the password masking; the
+    // attribute is the contract the browser keys off.
+    await page.goto('/');
+    const password = page.getByLabel(/password/i);
+    await expect(password).toHaveAttribute('type', 'password');
+  });
+});
