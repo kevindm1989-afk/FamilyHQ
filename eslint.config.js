@@ -43,4 +43,18 @@ export default tseslint.config(
       },
     },
   },
+  {
+    // Node tooling scripts under scripts/ — CommonJS .cjs files (verifier
+    // gates run via `node scripts/<x>.cjs`). They need node globals AND
+    // permission to use require() / __dirname (no-undef +
+    // no-require-imports would otherwise flag them).
+    files: ['scripts/**/*.{cjs,js}'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: { ...globals.node },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
 );
