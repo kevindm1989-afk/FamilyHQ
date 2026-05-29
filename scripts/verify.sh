@@ -184,6 +184,17 @@ run_gate "semgrep" semgrep --config auto --error --quiet .
 # already a Tier 1 gate).
 [ "$has_node" = true ] && run_gate "build" npx --no-install vite build --logLevel=error
 
+# Bundle-size budget — runs AFTER the build gate so dist/assets exists.
+# Catches code-split regressions: a new direct import that pulls Firebase
+# into the login bundle (PR #19's fix), a feature route that grows past
+# its per-route budget, etc. Budgets live in scripts/bundle-budget.json
+# and are deliberately tight — when one needs to grow, the same PR that
+# adds the weight bumps the budget. Skipped if dist/ wasn't produced
+# (the build gate above will have already failed).
+if [ -f "scripts/bundle-budget.cjs" ] && [ -d "dist/assets" ]; then
+  run_gate "bundle-budget" node scripts/bundle-budget.cjs
+fi
+
 # --- Tier 3: Tests ---
 section "Tier 3: Tests"
 
