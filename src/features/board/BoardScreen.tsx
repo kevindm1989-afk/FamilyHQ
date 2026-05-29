@@ -15,17 +15,12 @@
  * tracking, because the `Post` schema has no read-state field.
  */
 import { useId, useState, type ReactElement } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Avatar, Card, EmptyState, Fab, Skeleton } from '../../components';
 import { ToastViewport } from '../../app/ToastViewport';
 import { useToast } from '../../hooks/useToast';
 import type { Role, UserWithId } from '../../lib/types';
-import {
-  authorRole,
-  canDeletePost,
-  POST_DELETE_SUCCESS,
-  POST_GENERIC_ERROR,
-  type PostWithId,
-} from './boardService';
+import { authorRole, canDeletePost, type PostWithId } from './boardService';
 import { ComposePost } from './ComposePost';
 import { relativeTime } from './relativeTime';
 
@@ -58,6 +53,7 @@ const ABSOLUTE_DATE_FORMAT = new Intl.DateTimeFormat('en-CA', {
 });
 
 export function BoardScreen(props: BoardScreenProps): ReactElement {
+  const { t } = useTranslation();
   const { viewer, members, feed, onDeletePost, onCreatePost } = props;
   const { showToast } = useToast();
   const [composeOpen, setComposeOpen] = useState(false);
@@ -65,8 +61,8 @@ export function BoardScreen(props: BoardScreenProps): ReactElement {
 
   const handleDelete = (postId: string): void => {
     void onDeletePost(postId)
-      .then(() => showToast(POST_DELETE_SUCCESS))
-      .catch(() => showToast(POST_GENERIC_ERROR));
+      .then(() => showToast(t('board.toast.deleted')))
+      .catch(() => showToast(t('board.toast.generic')));
   };
 
   const handleCreate = async (content: string): Promise<void> => {
@@ -81,11 +77,11 @@ export function BoardScreen(props: BoardScreenProps): ReactElement {
     <>
       <section className="flex flex-col gap-16 px-16 pt-4 pb-24">
         <div className="flex items-center justify-between">
-          <h1 className="text-display font-display font-extrabold text-ink">Board</h1>
+          <h1 className="text-display font-display font-extrabold text-ink">{t('board.title')}</h1>
           <button
             type="button"
             data-testid="board-refresh"
-            aria-label="Refresh the board"
+            aria-label={t('board.refresh')}
             onClick={() => void feed.refresh()}
             className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
           >
@@ -94,11 +90,11 @@ export function BoardScreen(props: BoardScreenProps): ReactElement {
         </div>
 
         {feed.loading ? (
-          <Skeleton label="Loading the board…" />
+          <Skeleton label={t('board.loading')} />
         ) : feed.posts.length === 0 ? (
-          <EmptyState message="No posts yet — share something with the family." />
+          <EmptyState message={t('board.empty')} />
         ) : (
-          <ul className="flex flex-col gap-12" aria-label="Family posts">
+          <ul className="flex flex-col gap-12" aria-label={t('board.listLabel')}>
             {feed.posts.map((post) => {
               const role = authorRole(members, post.authorId);
               const showDelete = canDeletePost(viewer, post);
@@ -127,7 +123,7 @@ export function BoardScreen(props: BoardScreenProps): ReactElement {
                         {showDelete && (
                           <button
                             type="button"
-                            aria-label={`Delete post by ${post.authorName}`}
+                            aria-label={t('board.deletePost', { author: post.authorName })}
                             onClick={() => handleDelete(post.id)}
                             className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute hover:text-status-danger-text focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
                           >
@@ -145,7 +141,7 @@ export function BoardScreen(props: BoardScreenProps): ReactElement {
         )}
 
         <div className="fixed bottom-fab-from-bottom right-16 z-fab">
-          <Fab label="New post" onClick={() => setComposeOpen(true)} />
+          <Fab label={t('board.newPost')} onClick={() => setComposeOpen(true)} />
         </div>
       </section>
 

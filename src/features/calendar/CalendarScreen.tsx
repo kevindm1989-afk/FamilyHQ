@@ -22,18 +22,12 @@
  * authority boundary; the parent gating here is cosmetic.
  */
 import { useMemo, useState, type ReactElement } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Badge, EmptyState, Fab, Skeleton } from '../../components';
 import { ToastViewport } from '../../app/ToastViewport';
 import { useToast } from '../../hooks/useToast';
 import type { EventTag, Role, UserWithId } from '../../lib/types';
-import {
-  canManageEvents,
-  EVENT_DELETE_SUCCESS,
-  EVENT_GENERIC_ERROR,
-  EVENT_TAG_LABEL,
-  eventTagDotClass,
-  type EventWithId,
-} from './calendarService';
+import { canManageEvents, eventTagDotClass, type EventWithId } from './calendarService';
 import { buildMonthGrid, eventsForDay, type GridDay, type YearMonthDay } from './monthGrid';
 import { AddEvent, type AddEventValue } from './AddEvent';
 
@@ -58,27 +52,24 @@ export interface CalendarScreenProps {
   }) => Promise<void>;
 }
 
-const MONTH_NAMES = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
-
-// S M T W T F S — duplicate letters are fine; each column is its own cell.
-const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-
-// The category display labels live in calendarService (single source of truth,
-// shared with AddEvent and the Dashboard upcoming-events badge).
-const TAG_LABEL = EVENT_TAG_LABEL;
+/**
+ * Locale-aware month names + weekday narrow letters. Built lazily per active
+ * language via Intl.DateTimeFormat so French renders "janvier février …" and
+ * "D L M M J V S" instead of the hardcoded English strings. The reference
+ * dates use a fixed UTC noon to avoid any DST / month-rollover edge.
+ */
+function buildMonthNames(locale: string): string[] {
+  const fmt = new Intl.DateTimeFormat(locale, { month: 'long', timeZone: 'UTC' });
+  return Array.from({ length: 12 }, (_, i) => fmt.format(new Date(Date.UTC(2000, i, 15, 12))));
+}
+function buildWeekdayNarrow(locale: string): string[] {
+  // Sunday-first ordering matches the existing month grid (Sunday = column 0).
+  const fmt = new Intl.DateTimeFormat(locale, { weekday: 'narrow', timeZone: 'UTC' });
+  // 2024-12-29 is a Sunday — use it as the anchor for the 7-day sweep.
+  const sunday = Date.UTC(2024, 11, 29, 12);
+  const day = 24 * 60 * 60 * 1000;
+  return Array.from({ length: 7 }, (_, i) => fmt.format(new Date(sunday + i * day)));
+}
 
 /**
  * Format the time-of-day shown in the agenda.
@@ -105,9 +96,19 @@ function formatTime(iso: string): string {
 }
 
 export function CalendarScreen(props: CalendarScreenProps): ReactElement {
+  const { t, i18n } = useTranslation();
   const { viewer, feed, today, onDeleteEvent, onCreateEvent } = props;
   const { showToast } = useToast();
   const canManage = canManageEvents(viewer);
+  const locale = i18n.resolvedLanguage ?? 'en';
+  const MONTH_NAMES = buildMonthNames(locale);
+  const WEEKDAY_LETTERS = buildWeekdayNarrow(locale);
+  const TAG_LABEL: Record<EventTag, string> = {
+    school: t('calendar.tag.school'),
+    sports: t('calendar.tag.sports'),
+    family: t('calendar.tag.family'),
+    work: t('calendar.tag.work'),
+  };
 
   // The displayed month (starts on the reference month). Prev/Next step it.
   const [view, setView] = useState<{ year: number; month: number }>({
@@ -145,8 +146,8 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
 
   const handleDelete = (eventId: string): void => {
     void onDeleteEvent(eventId)
-      .then(() => showToast(EVENT_DELETE_SUCCESS))
-      .catch(() => showToast(EVENT_GENERIC_ERROR));
+      .then(() => showToast(t('calendar.toast.deleted')))
+      .catch(() => showToast(t('calendar.toast.generic')));
   };
 
   const handleCreate = async (value: AddEventValue): Promise<void> => {
@@ -156,16 +157,16 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
   return (
     <>
       <section className="flex flex-col gap-16 px-16 pt-4 pb-24">
-        <h1 className="text-display font-display font-extrabold text-ink">Calendar</h1>
+        <h1 className="text-display font-display font-extrabold text-ink">{t('calendar.title')}</h1>
 
         {feed.loading ? (
-          <Skeleton label="Loading the calendar…" />
+          <Skeleton label={t('calendar.loading')} />
         ) : (
           <>
             <div className="flex items-center justify-between">
               <button
                 type="button"
-                aria-label="Previous month"
+                aria-label={t('calendar.prevMonth')}
                 onClick={() => stepMonth(-1)}
                 className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute hover:text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
               >
@@ -176,7 +177,7 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
               <h2 className="text-title font-bold text-ink">{monthLabel}</h2>
               <button
                 type="button"
-                aria-label="Next month"
+                aria-label={t('calendar.nextMonth')}
                 onClick={() => stepMonth(1)}
                 className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute hover:text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
               >
@@ -191,10 +192,21 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
                 getByText(/Month YYYY/) query, while still reading as
                 "Showing May 2026" to a screen reader and satisfying a
                 toHaveTextContent match. */}
+            {/* Visually-hidden polite status region that announces the displayed
+                month to assistive tech as it changes (Finding E). The visible
+                text is intentionally SPLIT into separate spans so it does not
+                collide with the heading under a getByText(/Month YYYY/) query
+                (per Finding E + the original test contract), while still reading
+                as "Showing May 2026" / "Affichage de mai 2026" to a screen
+                reader. The i18n string carries a single `<1>` placeholder for
+                the month-year cluster so the split-span structure survives
+                translation. */}
             <p data-testid="month-status" role="status" aria-live="polite" className="sr-only">
-              <span>Showing </span>
-              <span>{MONTH_NAMES[view.month]} </span>
-              <span>{view.year}</span>
+              <Trans
+                i18nKey="calendar.showingMonthSplit"
+                values={{ month: MONTH_NAMES[view.month], year: view.year }}
+                components={{ 1: <span />, 2: <span /> }}
+              />
             </p>
 
             <div
@@ -212,7 +224,10 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
                 incomplete role="grid"). Each day cell is a listitem button. */}
             <ul
               role="list"
-              aria-label={`${monthLabel} calendar`}
+              aria-label={t('calendar.monthGridLabel', {
+                month: MONTH_NAMES[view.month],
+                year: view.year,
+              })}
               className="grid grid-cols-7 gap-4"
             >
               {grid.flat().map((cell) => (
@@ -234,14 +249,19 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
               ))}
             </ul>
 
-            <Agenda events={selectedEvents} canManage={canManage} onDelete={handleDelete} />
+            <Agenda
+              events={selectedEvents}
+              canManage={canManage}
+              onDelete={handleDelete}
+              tagLabel={TAG_LABEL}
+            />
           </>
         )}
       </section>
 
       {canManage && (
         <div className="fixed bottom-fab-from-bottom right-16 z-fab">
-          <Fab label="Add event" onClick={() => setAddOpen(true)} />
+          <Fab label={t('calendar.addEvent')} onClick={() => setAddOpen(true)} />
         </div>
       )}
 
@@ -275,13 +295,17 @@ interface DayCellProps {
 }
 
 function DayCell(props: DayCellProps): ReactElement {
+  const { t } = useTranslation();
   const { cell, monthName, events, selected, onSelect } = props;
   const dots = events.slice(0, 3); // AT MOST 3 dots per day
   // Full-date accessible name (Finding E): month + day + year, plus today/event
   // count so AT users get the same context a sighted user reads from the grid.
-  const label = `${monthName} ${cell.day} ${cell.year}${cell.isToday ? ' (today)' : ''}${
-    events.length > 0 ? `, ${events.length} event${events.length === 1 ? '' : 's'}` : ''
-  }`;
+  // Each appendix is i18n-resolved; the count uses i18next's plural shape so
+  // "1 event" / "12 events" / "1 événement" / "12 événements" stay correct.
+  const todayPart = cell.isToday ? ` (${t('calendar.dayLabel.today')})` : '';
+  const eventsPart =
+    events.length > 0 ? `, ${t('calendar.dayLabel.events', { count: events.length })}` : '';
+  const label = `${monthName} ${cell.day} ${cell.year}${todayPart}${eventsPart}`;
   return (
     <li role="listitem">
       <button
@@ -319,16 +343,19 @@ interface AgendaProps {
   events: EventWithId[];
   canManage: boolean;
   onDelete: (eventId: string) => void;
+  /** Tag → human-readable label map resolved from i18n by the parent. */
+  tagLabel: Record<EventTag, string>;
 }
 
 function Agenda(props: AgendaProps): ReactElement {
-  const { events, canManage, onDelete } = props;
+  const { t } = useTranslation();
+  const { events, canManage, onDelete, tagLabel } = props;
   return (
     <div data-testid="agenda" className="flex flex-col gap-12">
       {events.length === 0 ? (
-        <EmptyState message="Nothing scheduled — enjoy the open day." />
+        <EmptyState message={t('calendar.agendaEmpty')} />
       ) : (
-        <ul className="flex flex-col gap-8" aria-label="Events for the selected day">
+        <ul className="flex flex-col gap-8" aria-label={t('calendar.selectedDayList')}>
           {events.map((event) => {
             const time = formatTime(event.date);
             return (
@@ -343,19 +370,19 @@ function Agenda(props: AgendaProps): ReactElement {
                 )}
                 <span className="flex-1 text-body font-semibold text-ink">{event.title}</span>
                 {/* Category is conveyed as TEXT, never colour alone (WCAG 1.4.1). */}
-                <Badge tone={event.tag}>{TAG_LABEL[event.tag]}</Badge>
+                <Badge tone={event.tag}>{tagLabel[event.tag]}</Badge>
                 {canManage && (
                   <span className="flex items-center gap-4">
                     <button
                       type="button"
-                      aria-label={`Edit ${event.title}`}
+                      aria-label={t('calendar.editEvent', { title: event.title })}
                       className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute hover:text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
                     >
                       <EditIcon />
                     </button>
                     <button
                       type="button"
-                      aria-label={`Delete ${event.title}`}
+                      aria-label={t('calendar.deleteEvent', { title: event.title })}
                       onClick={() => onDelete(event.id)}
                       className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute hover:text-status-danger-text focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
                     >

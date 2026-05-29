@@ -113,6 +113,51 @@
     }
   },
 
+  "board": {
+    "title": "Board",
+    "refresh": "Refresh the board",
+    "loading": "Loading the board…",
+    "empty": "No posts yet — share something with the family.",
+    "listLabel": "Family posts",
+    "newPost": "New post",
+    "deletePost": "Delete post by {{author}}",
+    "toast": {
+      "created": "Posted to the board.",
+      "deleted": "Post deleted.",
+      "generic": "Something went wrong. Please try again."
+    }
+  },
+
+  "calendar": {
+    "title": "Calendar",
+    "loading": "Loading the calendar…",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "showingMonth": "Showing {{month}} {{year}}",
+    "showingMonthSplit": "Showing <1>{{month}} </1><2>{{year}}</2>",
+    "monthGridLabel": "{{month}} {{year}} calendar",
+    "selectedDayList": "Events for the selected day",
+    "addEvent": "Add event",
+    "editEvent": "Edit {{title}}",
+    "deleteEvent": "Delete {{title}}",
+    "dayLabel": {
+      "today": "today",
+      "events_one": "{{count}} event",
+      "events_other": "{{count}} events"
+    },
+    "agendaEmpty": "Nothing scheduled — enjoy the open day.",
+    "tag": {
+      "school": "School",
+      "sports": "Sports",
+      "family": "Family",
+      "work": "Work"
+    },
+    "toast": {
+      "deleted": "Event deleted.",
+      "generic": "Something went wrong. Please try again."
+    }
+  },
+
   "accessibility": {
     "title": "Accessibility at Family HQ",
     "lastReviewed": "Last reviewed: <1>{{date}}</1>",
