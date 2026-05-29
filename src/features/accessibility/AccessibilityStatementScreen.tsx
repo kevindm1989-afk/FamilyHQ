@@ -56,7 +56,9 @@ export function AccessibilityStatementScreen({ mode }: Props): ReactElement {
 
   return (
     <main
-      className="mx-auto flex w-full max-w-app flex-col gap-16 px-24 py-32"
+      id="main-content"
+      tabIndex={-1}
+      className="mx-auto flex w-full max-w-app flex-col gap-16 px-24 py-32 focus:outline-none"
       aria-labelledby={headingId}
     >
       {mode === 'public' && (

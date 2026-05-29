@@ -8,6 +8,7 @@
   "common": {
     "appName": "Family HQ",
     "loading": "Chargement…",
+    "skipToMain": "Aller au contenu principal",
     "loadingFamily": "Chargement de votre famille…",
     "unavailable": "indisponible",
     "back": "Retour",

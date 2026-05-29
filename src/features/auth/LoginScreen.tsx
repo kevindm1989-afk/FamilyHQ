@@ -81,7 +81,11 @@ export function LoginScreen(): ReactElement {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-surface-bg px-24">
+    <main
+      id="main-content"
+      tabIndex={-1}
+      className="flex min-h-screen flex-col items-center justify-center bg-surface-bg px-24 focus:outline-none"
+    >
       <div className="w-full max-w-app">
         <div className="mb-24 text-center">
           <h1 className="text-display font-display font-extrabold text-brand">
