@@ -1,0 +1,34 @@
+{
+  "_meta": {
+    "purpose": "Bundle-size budgets enforced by scripts/bundle-budget.cjs (verify.sh Tier 2). Budgets are in GZIP bytes — that's what users actually pay over the wire. Raw byte sizes vary with esbuild settings; gzip is the stable comparison.",
+    "policy": "When a budget needs to grow, bump it INTENTIONALLY in the same PR that adds the weight. The gate's only job is to make growth visible at review time.",
+    "patterns": "Match against dist/assets/<filename>.js. First matching budget wins; files matching nothing are reported but not budgeted (Firebase third-party chunks deliberately escape — we don't control their size and Vite's chunking is opaque)."
+  },
+
+  "budgets": [
+    {
+      "name": "main entry (login bundle)",
+      "pattern": "^index-[^.-]+\\.js$",
+      "maxGzipBytes": 96000,
+      "note": "What an unauthed visitor downloads on cold load. Was 211 KB before #19's code splits; now 85 KB. Budget at ~96 KB caps regression at ~13% — bump on intentional growth."
+    },
+    {
+      "name": "AuthedApp shell",
+      "pattern": "^AuthedApp-",
+      "maxGzipBytes": 6000,
+      "note": "FamilyProvider + AppShell chrome + AccountScreen. Was 20 KB before #20's per-route splits; now ~4.4 KB. Tight budget keeps the post-auth shell small."
+    },
+    {
+      "name": "per-route chunks",
+      "pattern": "Route-[^.]+\\.js$",
+      "maxGzipBytes": 8000,
+      "note": "Each lazy feature route (Dashboard, Calendar, Board, Chores, Allowance, Family). ChoresRoute is the heaviest at ~5.8 KB (includes AddChore sheet); the rest are 2-5 KB."
+    },
+    {
+      "name": "Accessibility statement",
+      "pattern": "^AccessibilityStatementScreen-",
+      "maxGzipBytes": 6000,
+      "note": "Static AODA-required content. Has a hard upper bound from the section structure + i18n keys (~4 KB today)."
+    }
+  ]
+}
