@@ -158,6 +158,68 @@
     }
   },
 
+  "allowance": {
+    "title": "Allowance",
+    "loading": "Loading allowance history…",
+    "currentBalance": "Current balance",
+    "currentBalanceUnavailable": "Current balance unavailable",
+    "currentBalanceLabel": "Current balance {{amount}}",
+    "memberPickerLabel": "Choose a family member",
+    "empty": "No allowance yet — earnings will show up here.",
+    "loadError": "We could not load the allowance history. Please try again.",
+    "rowSentence": "Earned {{amount}} for {{chore}} on {{date}}",
+    "earnedOn": "Earned"
+  },
+
+  "family": {
+    "title": "Family",
+    "loading": "Loading family…",
+    "emptyAll": "No family members yet — invite someone to get started.",
+    "section": {
+      "active": "Active members",
+      "inactive": "Inactive members",
+      "emptyGroup": "No one here yet."
+    },
+    "role": {
+      "parent": "Parent",
+      "member": "Member"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "action": {
+      "rename": "Rename",
+      "renameLabel": "Rename {{name}}",
+      "deactivate": "Deactivate",
+      "deactivateLabel": "Deactivate {{name}}",
+      "reactivate": "Reactivate",
+      "reactivateLabel": "Reactivate {{name}}"
+    },
+    "rename": {
+      "sheetTitle": "Rename {{name}}",
+      "nameLabel": "Name",
+      "errorEmpty": "Please enter a name.",
+      "errorTooLong": "Name is too long — keep it under {{max}} characters.",
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "confirmDeactivate": {
+      "sheetTitle": "Deactivate {{name}}",
+      "consequence": "{{name}} will no longer be able to sign in or earn allowance. You can reactivate them later.",
+      "confirm": "Deactivate",
+      "cancel": "Cancel"
+    },
+    "balanceLabel": "{{name}} balance {{amount}}",
+    "balanceUnavailable": "{{name}} balance unavailable",
+    "toast": {
+      "renamed": "Name updated.",
+      "deactivated": "Member deactivated.",
+      "reactivated": "Member reactivated.",
+      "generic": "Something went wrong. Please try again."
+    }
+  },
+
   "accessibility": {
     "title": "Accessibility at Family HQ",
     "lastReviewed": "Last reviewed: <1>{{date}}</1>",
