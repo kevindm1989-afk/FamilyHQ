@@ -21,6 +21,18 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // Skip SW generation when the build is for the authed e2e suite
+      // (`vite build --mode emulator`, see package.json's e2e:authed
+      // script + .env.emulator). The `disable` option still emits the
+      // `virtual:pwa-register/react` shim so PwaUpdatePrompt's import
+      // resolves, but the SW itself is never registered — which is what
+      // we need: a SW from one Playwright test was caching the app shell
+      // and serving stale state to the next test in the same emulator
+      // run, breaking the auth-listener flip between sign-in and sign-out
+      // (the negative-path tests in PR #32's commit body have the long
+      // form). PWA's offline contract is for end users, not the emulator
+      // suite — turning it off there is safe.
+      disable: process.env.VITE_DISABLE_PWA === 'true',
       // The new SW installs in the background but waits for an explicit
       // updateServiceWorker(true) call — the prompt component owns that
       // decision so a mid-task user is never reloaded silently.
