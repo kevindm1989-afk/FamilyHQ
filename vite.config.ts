@@ -10,14 +10,30 @@ process.env.TZ ??= 'America/Los_Angeles';
 // off the Vite UserConfig union. The triple-slash reference at the top of
 // this file already pulls vitest's `test:` augmentation into scope.
 import { defineConfig } from 'vitest/config';
+import type { PluginOption } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+// rollup-plugin-visualizer is imported DYNAMICALLY inside the config factory
+// (only when ANALYZE=true). The package is ESM-only and uses `import.meta.dirname`
+// in its template loader; knip's jiti-based config loader runs in a CJS-style VM
+// context that can't evaluate `import.meta`, so a top-level static import would
+// crash the knip gate even though vite itself handles it fine. Loading lazily
+// means jiti never touches visualizer during static analysis (ANALYZE is unset).
+
+// Bundle visualizer — set ANALYZE=true at build time to emit
+// dist/bundle-stats.html, a treemap of every chunk + its module
+// contents. Pairs with scripts/bundle-budget.json: when the budget
+// gate fails and you need to figure out what got pulled in, run
+// `npm run analyze` and open dist/bundle-stats.html. Default OFF
+// because the visualizer is ~700 KB of HTML/JS embedded in dist/
+// and we don't want it in a production deploy.
+const ANALYZE = process.env.ANALYZE === 'true';
 
 // PWA (ADR-0005): Firestore handles data offline; Workbox precaches the app
 // shell + serves an SPA fallback for navigations while offline. SW updates
 // are USER-CONTROLLED via `registerType: 'prompt'` — `src/app/PwaUpdatePrompt.tsx`
 // surfaces the prompt; mid-task users never get a surprise reload.
-export default defineConfig({
+export default defineConfig(async () => ({
   plugins: [
     react(),
     VitePWA({
@@ -96,6 +112,24 @@ export default defineConfig({
         ],
       },
     }),
+    // Cast to PluginOption: rollup-plugin-visualizer types its plugin
+    // against rollup's Plugin shape, which differs from vite 6's stricter
+    // PluginOption under exactOptionalPropertyTypes (resolveId.options
+    // gains `ssr`, filter.id loses its `| undefined`). The plugin runs
+    // identically — only the type surfaces diverge — so a narrow cast
+    // here is preferable to loosening tsconfig.
+    ANALYZE
+      ? ((await import('rollup-plugin-visualizer')).visualizer({
+          filename: 'dist/bundle-stats.html',
+          gzipSize: true,
+          brotliSize: true,
+          template: 'treemap',
+          // Open the report automatically in a browser when the build finishes
+          // (handy during local debugging; never fires in CI which doesn't
+          // set ANALYZE).
+          open: true,
+        }) as PluginOption)
+      : false,
   ],
   test: {
     globals: true,
@@ -112,4 +146,4 @@ export default defineConfig({
     // empty shell. Run with `vitest run --coverage` once `@vitest/coverage-v8`
     // is added.
   },
-});
+}));
