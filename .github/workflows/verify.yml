@@ -70,6 +70,18 @@ jobs:
       - name: Install semgrep
         run: pipx install semgrep
 
+      - name: Install Playwright Chromium (for e2e gate)
+        # The e2e gate in verify.sh shells out to `playwright test`. Without
+        # a browser binary it errors mid-suite ("browserType.launch:
+        # Executable doesn't exist"). --with-deps installs the system libs
+        # (libnss3, libatk-bridge, libdrm, libxkbcommon, libxcomposite,
+        # libxdamage, libxrandr, libgbm, libxss, libasound2) headless
+        # Chromium needs on Ubuntu — without it the binary lands but won't
+        # launch. Only chromium (not firefox / webkit) per the smoke-tier
+        # cross-browser policy in playwright.config.ts.
+        if: ${{ hashFiles('playwright.config.ts') != '' }}
+        run: npx playwright install --with-deps chromium
+
       # --- Run the gate stack ---
 
       - name: Make verify.sh executable
