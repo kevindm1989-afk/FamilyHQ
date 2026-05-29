@@ -19,7 +19,7 @@
     "test:rules": "vitest run --config vitest.rules.config.ts",
     "a11y": "vitest run --config vitest.a11y.config.ts",
     "e2e": "vite build && playwright test e2e/login-public.spec.ts",
-    "e2e:authed": "vite build --mode emulator && firebase emulators:exec --only auth,firestore --project demo-familyhq \"playwright test e2e/authed\""
+    "e2e:authed": "VITE_DISABLE_PWA=true vite build --mode emulator && firebase emulators:exec --only auth,firestore --project demo-familyhq \"playwright test e2e/authed\""
   },
   "_overrides_rationale": "Transitive deps below are flagged by npm audit but reach us only via the dev-only firebase-tools CLI or non-browser code paths of the firebase SDK. Pinned to fixed releases so the high/critical audit gate passes without weakening the gate itself.",
   "overrides": {
