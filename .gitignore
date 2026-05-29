@@ -33,3 +33,7 @@ firebase-export-*/
 # --- OS / editor ---
 .DS_Store
 *.swp
+
+test-results/
+playwright-report/
+

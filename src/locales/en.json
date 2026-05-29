@@ -8,6 +8,7 @@
   "common": {
     "appName": "Family HQ",
     "loading": "Loading…",
+    "skipToMain": "Skip to main content",
     "loadingFamily": "Loading your family…",
     "unavailable": "unavailable",
     "back": "Back",

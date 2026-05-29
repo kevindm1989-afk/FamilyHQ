@@ -66,6 +66,7 @@ function useLangAttributeSync(): void {
 }
 
 function Gate(): ReactElement {
+  const { t } = useTranslation();
   const { authUser, loading } = useAuth();
   useLangAttributeSync();
   if (loading) return <BrandSplash />;
@@ -74,17 +75,32 @@ function Gate(): ReactElement {
   // the sign-in screen (per accessibility-specialist agent + style-guide §11).
   // The authed flow keeps a single <AppShell /> because AppShell owns its own
   // internal <Routes>.
+  //
+  // Skip link (WCAG 2.4.1) — sits ABOVE the Routes so it is the first
+  // focusable on the public surface. Both LoginScreen and the public-mode
+  // AccessibilityStatementScreen expose a <main id="main-content"
+  // tabIndex={-1}> that this link targets. AppShell carries its own copy of
+  // the same link for the authed surface (different chrome — TopBar +
+  // BottomNav — needs the link positioned inside its layout).
   if (!authUser) {
     return (
-      <Suspense fallback={<BrandSplash />}>
-        <Routes>
-          <Route
-            path={ROUTES.accessibility.path}
-            element={<AccessibilityStatementScreen mode="public" />}
-          />
-          <Route path="*" element={<LoginScreen />} />
-        </Routes>
-      </Suspense>
+      <>
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-16 focus:top-12 focus:z-modal focus:rounded-control focus:bg-brand focus:px-16 focus:py-8 focus:text-brand-on focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+        >
+          {t('common.skipToMain')}
+        </a>
+        <Suspense fallback={<BrandSplash />}>
+          <Routes>
+            <Route
+              path={ROUTES.accessibility.path}
+              element={<AccessibilityStatementScreen mode="public" />}
+            />
+            <Route path="*" element={<LoginScreen />} />
+          </Routes>
+        </Suspense>
+      </>
     );
   }
   return (
