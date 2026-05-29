@@ -32,11 +32,32 @@
 const fs = require('fs');
 const path = require('path');
 
-const LOCALES_DIR = path.join(__dirname, '..', 'src', 'locales');
+const LOCALES_DIR = path.resolve(__dirname, '..', 'src', 'locales');
 const SOURCE = 'en';
 
+// BCP 47 short tag — two lowercase letters, optionally a -REGION suffix
+// (en, fr, fr-CA, zh-Hant). Strict shape gate so a stray file in src/locales
+// (or a future feature reading from a different source) can never widen the
+// path.join sink below. Semgrep flags any path.join whose input it can't
+// statically prove safe — the regex below is that proof.
+const LOCALE_NAME_RE = /^[a-z]{2}(-[A-Z][a-zA-Z]{1,3})?$/;
+
 function loadLocale(name) {
-  const p = path.join(LOCALES_DIR, `${name}.json`);
+  if (!LOCALE_NAME_RE.test(name)) {
+    throw new Error(`locale-drift: rejected locale name "${name}" — must match ${LOCALE_NAME_RE}`);
+  }
+  // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal
+  // Justification: `name` is gated by LOCALE_NAME_RE above (two-letter
+  // primary subtag, optional region) and the resolved path is verified to
+  // sit inside LOCALES_DIR below. Semgrep can't trace the regex through to
+  // this call so it flags any non-literal argument by default.
+  const p = path.resolve(LOCALES_DIR, `${name}.json`);
+  // Defence-in-depth: even with the regex above, verify the resolved path
+  // is still under LOCALES_DIR. Catches a future change where the regex is
+  // loosened or LOCALES_DIR moves.
+  if (!p.startsWith(LOCALES_DIR + path.sep)) {
+    throw new Error(`locale-drift: resolved path escapes locales dir: ${p}`);
+  }
   return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
 
