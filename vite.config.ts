@@ -141,9 +141,28 @@ export default defineConfig(async () => ({
     // (verify.sh Tier 4); excluded here so they execute exactly once per
     // verifier invocation, not twice.
     exclude: ['test/rules/**', 'node_modules/**', 'src/__a11y__/**'],
-    // Coverage reporting (provider + reporters) is configured by the test-writer
-    // when real tests land, so we don't pin an unused coverage engine in the
-    // empty shell. Run with `vitest run --coverage` once `@vitest/coverage-v8`
-    // is added.
+    // Coverage is opt-in via `npm run coverage` (or `vitest run --coverage`).
+    // v8 provider is the upstream-recommended default for vitest 3; it pipes
+    // V8's native coverage so we don't pay a Babel-instrumentation cost on
+    // every test run. Reporters: `text` for the terminal summary, `html` for
+    // the drill-down view at coverage/index.html (gitignored), `lcov` so a
+    // future Codecov/Coveralls integration has a file to consume. No
+    // thresholds yet — first run establishes a baseline; a follow-up PR can
+    // pin a floor once we've seen the real numbers.
+    coverage: {
+      provider: 'v8' as const,
+      reporter: ['text', 'html', 'lcov'],
+      // Mirror the test include set so the report covers the runtime code
+      // we actually exercise. Tests, type-only files, generated artifacts,
+      // and config files don't belong in the denominator.
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/**/*.{test,spec}.{ts,tsx}',
+        'src/**/*.d.ts',
+        'src/__a11y__/**',
+        'src/main.tsx', // bootstrap shim, exercised by e2e not unit tests
+        'src/vite-env.d.ts',
+      ],
+    },
   },
 }));
