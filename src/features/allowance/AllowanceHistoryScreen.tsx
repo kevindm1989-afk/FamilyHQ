@@ -25,11 +25,11 @@
  * claims the list sums to the balance.
  */
 import { type ReactElement } from 'react';
+import { useTranslation } from 'react-i18next';
 import { EmptyState, Skeleton } from '../../components';
 import { localDayKey } from '../../lib/dates';
 import type { Role, UserWithId } from '../../lib/types';
 import {
-  ALLOWANCE_EMPTY_MESSAGE,
   MONEY_INVALID_INDICATOR,
   formatMoney,
   isValidMoneyCents,
@@ -65,26 +65,26 @@ export interface AllowanceHistoryScreenProps {
   nowMs?: number;
 }
 
-// A full, friendly calendar date (the VISIBLE day-group heading + per-row date).
-const DATE_FORMAT = new Intl.DateTimeFormat('en-CA', {
-  weekday: 'long',
-  month: 'long',
-  day: 'numeric',
-  year: 'numeric',
-});
-
 // Machine-readable YYYY-MM-DD for the <time dateTime> attribute + the day key
 // comes from the shared `localDayKey` helper (`src/lib/dates.ts`) — same basis
 // as the dashboard's local-day comparison so an evening earning groups under
 // the LOCAL day, not the UTC day (lesson 2026-05-28).
-
-function friendlyDay(ms: number): string {
+//
+// The full, friendly calendar date (the VISIBLE day-group heading + per-row
+// date) is built per call using Intl.DateTimeFormat with the active i18n
+// locale, so a French viewer reads "vendredi 28 mai 2026" instead of
+// "Friday, May 28, 2026". Created at call sites (cheap) rather than hoisted
+// to a module constant so a language switch re-renders immediately.
+function friendlyDay(ms: number, locale: string): string {
   const safe = Number.isFinite(ms) ? ms : Date.now();
-  // Format the viewer's LOCAL calendar day at local noon, so the visible
-  // heading matches the local day key and is stable against TZ edge flips.
   const d = new Date(safe);
   const noon = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12);
-  return DATE_FORMAT.format(noon);
+  return new Intl.DateTimeFormat(locale, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(noon);
 }
 
 interface DayGroup {
@@ -95,7 +95,7 @@ interface DayGroup {
 
 /** Group the (already reverse-chron) ledger by the viewer's LOCAL calendar day,
  * preserving order: newest day first, newest transaction first within each day. */
-function groupByDay(transactions: TransactionWithId[]): DayGroup[] {
+function groupByDay(transactions: TransactionWithId[], locale: string): DayGroup[] {
   const ordered = [...transactions].sort((a, b) => b.createdAt - a.createdAt);
   const groups: DayGroup[] = [];
   const byKey = new Map<string, DayGroup>();
@@ -103,7 +103,7 @@ function groupByDay(transactions: TransactionWithId[]): DayGroup[] {
     const key = localDayKey(txn.createdAt);
     let group = byKey.get(key);
     if (!group) {
-      group = { key, label: friendlyDay(txn.createdAt), transactions: [] };
+      group = { key, label: friendlyDay(txn.createdAt, locale), transactions: [] };
       byKey.set(key, group);
       groups.push(group);
     }
@@ -113,7 +113,9 @@ function groupByDay(transactions: TransactionWithId[]): DayGroup[] {
 }
 
 export function AllowanceHistoryScreen(props: AllowanceHistoryScreenProps): ReactElement {
+  const { t, i18n } = useTranslation();
   const { viewer, selectedMember, members, feed, onSelectMember } = props;
+  const locale = i18n.resolvedLanguage ?? 'en';
 
   const isParent = viewer.role === 'parent';
 
@@ -125,8 +127,8 @@ export function AllowanceHistoryScreen(props: AllowanceHistoryScreenProps): Reac
     ? formatMoney(selectedMember.balanceCents)
     : MONEY_INVALID_INDICATOR;
   const balanceLabel = balanceValid
-    ? `Current balance ${balanceText}`
-    : 'Current balance unavailable';
+    ? t('allowance.currentBalanceLabel', { amount: balanceText })
+    : t('allowance.currentBalanceUnavailable');
 
   // F1: the picker offers CHILDREN only — never a parent toggle (defensive,
   // even if the upstream members list includes a parent).
@@ -137,16 +139,18 @@ export function AllowanceHistoryScreen(props: AllowanceHistoryScreenProps): Reac
   // another child's earnings under the wrong name — it falls back to the
   // empty/loading state for the selected member.
   const ownTransactions = feed.transactions.filter((txn) => txn.uid === selectedMember.uid);
-  const groups = groupByDay(ownTransactions);
+  const groups = groupByDay(ownTransactions, locale);
 
   return (
     <section className="flex flex-col gap-16 px-16 pt-4 pb-24">
-      <h1 className="text-display font-display font-extrabold text-ink">Allowance</h1>
+      <h1 className="text-display font-display font-extrabold text-ink">{t('allowance.title')}</h1>
 
       {/* CURRENT BALANCE — shown SEPARATELY at the top (ADR-0004: the balance
             is an independent fact, NOT a sum of the list). */}
       <div className="flex flex-col gap-8 rounded-card bg-accent-light p-16 shadow-card">
-        <span className="text-meta font-semibold text-accent-dark">Current balance</span>
+        <span className="text-meta font-semibold text-accent-dark">
+          {t('allowance.currentBalance')}
+        </span>
         <span
           className="text-display font-display font-extrabold text-accent-dark"
           aria-label={balanceLabel}
@@ -159,7 +163,11 @@ export function AllowanceHistoryScreen(props: AllowanceHistoryScreenProps): Reac
             member never sees a peer picker. Mirrors the chores filter toggles:
             real, individually focusable <button>s with a >=44px tap target. */}
       {isParent && children.length > 0 && (
-        <div role="group" aria-label="Choose a family member" className="flex flex-wrap gap-8">
+        <div
+          role="group"
+          aria-label={t('allowance.memberPickerLabel')}
+          className="flex flex-wrap gap-8"
+        >
           {children.map((member) => {
             const selected = selectedMember.uid === member.id;
             return (
@@ -194,9 +202,9 @@ export function AllowanceHistoryScreen(props: AllowanceHistoryScreenProps): Reac
       )}
 
       {feed.loading ? (
-        <Skeleton label="Loading allowance history…" />
+        <Skeleton label={t('allowance.loading')} />
       ) : ownTransactions.length === 0 ? (
-        <EmptyState message={ALLOWANCE_EMPTY_MESSAGE} />
+        <EmptyState message={t('allowance.empty')} />
       ) : (
         <div className="flex flex-col gap-16">
           {groups.map((group) => (
@@ -205,7 +213,7 @@ export function AllowanceHistoryScreen(props: AllowanceHistoryScreenProps): Reac
               <ul className="flex flex-col gap-8" aria-label={group.label}>
                 {group.transactions.map((txn) => (
                   <li key={txn.id}>
-                    <TransactionRow txn={txn} />
+                    <TransactionRow txn={txn} locale={locale} />
                   </li>
                 ))}
               </ul>
@@ -217,18 +225,23 @@ export function AllowanceHistoryScreen(props: AllowanceHistoryScreenProps): Reac
   );
 }
 
-function TransactionRow(props: { txn: TransactionWithId }): ReactElement {
-  const { txn } = props;
+function TransactionRow(props: { txn: TransactionWithId; locale: string }): ReactElement {
+  const { t } = useTranslation();
+  const { txn, locale } = props;
   // F5: gate the row amount exactly like the balance — a non-finite / negative /
   // over-max amount renders the invalid indicator, never "$NaN" / "-$x".
   const amount = isValidMoneyCents(txn.amount) ? formatMoney(txn.amount) : MONEY_INVALID_INDICATOR;
   const iso = localDayKey(txn.createdAt);
-  const friendly = friendlyDay(txn.createdAt);
+  const friendly = friendlyDay(txn.createdAt, locale);
   // A2: the row's coherent sentence is exposed as REAL text inside the listitem
   // (an sr-only span), with the decorative/visual spans aria-hidden — rather than
   // an aria-label on a non-semantic <div> (which some assistive tech drop). The
   // sentence degrades for an invalid amount (uses the indicator, never "$NaN").
-  const rowSentence = `Earned ${amount} for ${txn.choreTitle} on ${friendly}`;
+  const rowSentence = t('allowance.rowSentence', {
+    amount,
+    chore: txn.choreTitle,
+    date: friendly,
+  });
   // Split the leading currency symbol off the VISIBLE amount so the matchable
   // contiguous "$X.XX" exists in exactly ONE place — the sr-only sentence (A2) —
   // avoiding a duplicate getByText match against the visible credit. The visible
@@ -252,7 +265,7 @@ function TransactionRow(props: { txn: TransactionWithId }): ReactElement {
         aria-hidden="true"
       >
         <span className="inline-flex items-center gap-4">
-          Earned
+          {t('allowance.earnedOn')}
           <time dateTime={iso}>{friendly}</time>
         </span>
       </div>

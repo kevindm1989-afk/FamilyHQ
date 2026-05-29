@@ -158,6 +158,68 @@
     }
   },
 
+  "allowance": {
+    "title": "Allocation",
+    "loading": "Chargement de l’historique d’allocation…",
+    "currentBalance": "Solde actuel",
+    "currentBalanceUnavailable": "Solde actuel indisponible",
+    "currentBalanceLabel": "Solde actuel {{amount}}",
+    "memberPickerLabel": "Choisir un membre de la famille",
+    "empty": "Aucune allocation pour l’instant — les gains apparaîtront ici.",
+    "loadError": "Impossible de charger l’historique d’allocation. Veuillez réessayer.",
+    "rowSentence": "Gagné {{amount}} pour {{chore}} le {{date}}",
+    "earnedOn": "Gagné"
+  },
+
+  "family": {
+    "title": "Famille",
+    "loading": "Chargement de la famille…",
+    "emptyAll": "Aucun membre de la famille — invitez quelqu’un pour commencer.",
+    "section": {
+      "active": "Membres actifs",
+      "inactive": "Membres inactifs",
+      "emptyGroup": "Personne ici pour l’instant."
+    },
+    "role": {
+      "parent": "Parent",
+      "member": "Membre"
+    },
+    "status": {
+      "active": "Actif",
+      "inactive": "Inactif"
+    },
+    "action": {
+      "rename": "Renommer",
+      "renameLabel": "Renommer {{name}}",
+      "deactivate": "Désactiver",
+      "deactivateLabel": "Désactiver {{name}}",
+      "reactivate": "Réactiver",
+      "reactivateLabel": "Réactiver {{name}}"
+    },
+    "rename": {
+      "sheetTitle": "Renommer {{name}}",
+      "nameLabel": "Nom",
+      "errorEmpty": "Veuillez entrer un nom.",
+      "errorTooLong": "Le nom est trop long — gardez-le sous {{max}} caractères.",
+      "save": "Enregistrer",
+      "cancel": "Annuler"
+    },
+    "confirmDeactivate": {
+      "sheetTitle": "Désactiver {{name}}",
+      "consequence": "{{name}} ne pourra plus se connecter ni gagner d’allocation. Vous pourrez les réactiver plus tard.",
+      "confirm": "Désactiver",
+      "cancel": "Annuler"
+    },
+    "balanceLabel": "Solde de {{name}} {{amount}}",
+    "balanceUnavailable": "Solde de {{name}} indisponible",
+    "toast": {
+      "renamed": "Nom mis à jour.",
+      "deactivated": "Membre désactivé.",
+      "reactivated": "Membre réactivé.",
+      "generic": "Une erreur est survenue. Veuillez réessayer."
+    }
+  },
+
   "accessibility": {
     "title": "Accessibilité chez Family HQ",
     "lastReviewed": "Dernière révision : <1>{{date}}</1>",
