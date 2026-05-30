@@ -20,7 +20,14 @@ beforeEach(() => {
   vi.useFakeTimers();
 });
 afterEach(() => {
-  vi.runOnlyPendingTimers();
+  // Drain the toast's auto-dismiss timer (which calls setMessage(null) on
+  // the ToastProvider) INSIDE an act() boundary. Without the wrap, the
+  // setState that fires when the timer flushes lands outside act and React
+  // logs an "update to ToastProvider inside a test was not wrapped in
+  // act(...)" warning — once per test that scheduled a timer.
+  act(() => {
+    vi.runOnlyPendingTimers();
+  });
   vi.useRealTimers();
 });
 
