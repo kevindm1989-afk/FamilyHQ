@@ -165,12 +165,30 @@ export function LoginScreen(): ReactElement {
             French BEFORE relying on the statement copy. */}
         <div className="mt-32 flex flex-col items-center gap-12">
           <LanguageToggle />
-          <nav aria-label={t('account.resourcesLabel')}>
+          {/* Footer policy links — accessibility (AODA), privacy (PIPEDA),
+              and terms must be reachable from the public surface so a user
+              can read them BEFORE signing up. */}
+          <nav
+            aria-label={t('account.resourcesLabel')}
+            className="flex flex-wrap items-center justify-center gap-x-16 gap-y-4"
+          >
             <Link
               to="/accessibility"
               className="text-meta text-ink-mute focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
             >
               {t('login.footer.accessibility')}
+            </Link>
+            <Link
+              to="/privacy"
+              className="text-meta text-ink-mute focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+            >
+              {t('login.footer.privacy')}
+            </Link>
+            <Link
+              to="/terms"
+              className="text-meta text-ink-mute focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+            >
+              {t('login.footer.terms')}
             </Link>
           </nav>
         </div>

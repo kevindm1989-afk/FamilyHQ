@@ -17,6 +17,8 @@ export type ScreenId =
   | 'allowance'
   | 'family'
   | 'accessibility'
+  | 'privacy'
+  | 'terms'
   | 'add_chore'
   | 'add_event'
   | 'compose'
@@ -54,6 +56,22 @@ export const ROUTES: Record<ScreenId, RouteMeta> = {
   accessibility: {
     id: 'accessibility',
     path: '/accessibility',
+    isModal: false,
+    parentOnly: false,
+  },
+  // Privacy + Terms (launch-gate items). Both reachable WITHOUT auth — a
+  // visitor MUST be able to read the privacy policy before deciding to sign
+  // up. Both ship as drafts authored by the engineering team; the page itself
+  // says so and links to the contact for substantive review.
+  privacy: {
+    id: 'privacy',
+    path: '/privacy',
+    isModal: false,
+    parentOnly: false,
+  },
+  terms: {
+    id: 'terms',
+    path: '/terms',
     isModal: false,
     parentOnly: false,
   },

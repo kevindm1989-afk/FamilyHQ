@@ -52,7 +52,9 @@
       "generic": "Something went wrong. Please try again."
     },
     "footer": {
-      "accessibility": "Accessibility statement"
+      "accessibility": "Accessibility statement",
+      "privacy": "Privacy policy",
+      "terms": "Terms of service"
     }
   },
 
@@ -330,6 +332,82 @@
       "heading": "Report a barrier or request an alternative format",
       "body1": "If you encounter an accessibility barrier in Family HQ, or you need information from this site in an alternative format (large print, plain text, an accessible electronic format, or another arrangement that works for you), please contact us:",
       "body2": "We aim to acknowledge every report within two business days and to provide a substantive response within ten business days. Please include the page or flow where the barrier appeared, the assistive technology you were using, and a description of what went wrong."
+    }
+  },
+
+  "legal": {
+    "back": "← Back to sign in",
+    "draftBadge": "Draft — pending legal review",
+    "lastReviewed": "Last reviewed: <1>{{date}}</1>",
+    "contact": {
+      "heading": "Questions or concerns",
+      "body": "If you have a question about this document, want to exercise your rights, or want to report a concern, please contact us at the address below. We aim to acknowledge every message within five business days."
+    },
+    "related": {
+      "privacy": "Read our Privacy Policy",
+      "terms": "Read our Terms of Service",
+      "accessibility": "Read our Accessibility Statement"
+    },
+    "relatedNav": "Related policies"
+  },
+
+  "privacy": {
+    "title": "Privacy Policy",
+    "sections": {
+      "scope": {
+        "heading": "What this policy covers",
+        "body": "This policy describes what personal information Family HQ collects when you create an account, what we do with it, who we share it with, and how you can exercise your rights over it. It applies to use of the Family HQ web application and any related services we operate under the same brand. We are a Canadian service and we treat the federal Personal Information Protection and Electronic Documents Act (PIPEDA) as our baseline."
+      },
+      "data": {
+        "heading": "What we collect",
+        "body": "When you sign up, we collect the email address you use to sign in and, if you choose, a display name and an avatar. Inside the app you create family-scoped content (chores, calendar events, allowance entries, board posts) — that content is stored against your family and visible only to members of your family. We also collect minimal technical information (device type, browser language, an anonymous session identifier) to keep the service running and to investigate problems. We do NOT collect advertising identifiers, build behavioural profiles for targeted advertising, or sell information about you to anyone."
+      },
+      "sharing": {
+        "heading": "Who we share data with",
+        "body": "We share information only with the service providers we need to operate Family HQ: an authentication and database provider (Google Firebase) that holds your account credentials and your family's content under contractual data-processing terms, and a transactional email provider when we need to send you account-related messages. We do not sell, rent, or trade your personal information. If we are ever required by law to disclose information, we will narrow the scope of any disclosure to what the law actually requires and, where permitted, notify you."
+      },
+      "retention": {
+        "heading": "How long we keep data",
+        "body": "We keep your account information for as long as the account is active. When you delete a family, the family content (chores, events, posts, allowance entries) is removed from the live database within thirty days. Backups age out on a rolling schedule no longer than ninety days. Authentication records may be retained for a longer period to detect fraud and abuse, but are isolated from the live application and not used for any other purpose."
+      },
+      "rights": {
+        "heading": "Your rights",
+        "body": "You can access, correct, export, or delete your personal information at any time. You can request a copy of what we hold about you, ask us to correct anything that is inaccurate, ask us to delete your account, or withdraw your consent to our processing. To exercise any of these rights, contact us at the address below and we will respond within thirty days. If you are not satisfied with our response, you have the right to file a complaint with the Office of the Privacy Commissioner of Canada."
+      },
+      "changes": {
+        "heading": "Changes to this policy",
+        "body": "When we make a material change to this policy, we will update the 'Last reviewed' date above and, for changes that affect how we collect or use your information, post a notice in the application or send a message to the email address on your account. The current version is always available at this address; previous versions are archived on request."
+      }
+    }
+  },
+
+  "terms": {
+    "title": "Terms of Service",
+    "sections": {
+      "scope": {
+        "heading": "What this agreement covers",
+        "body": "These terms are the agreement between you and the operators of Family HQ for your use of the Family HQ web application. By creating an account or using the service you agree to these terms. If you do not agree, please do not use the service. We may update these terms over time; the current version is always available at this address."
+      },
+      "data": {
+        "heading": "Your account",
+        "body": "You are responsible for the email address and credentials you use to sign in. Choose a strong password and do not share your credentials with anyone outside your household. If you suspect your account has been accessed by someone you did not authorise, contact us promptly. The first person to create a family becomes a parent of that family; parents control membership, content visibility, and allowance balances within their family."
+      },
+      "sharing": {
+        "heading": "Acceptable use",
+        "body": "Family HQ is a household tool. Do not use it to harass, threaten, or intimidate anyone, to post content that is unlawful or that infringes someone else's rights, to attempt to access another family's content, or to interfere with the service's normal operation. We may suspend or terminate access for violations of this section, and where appropriate, cooperate with law enforcement."
+      },
+      "retention": {
+        "heading": "Service availability",
+        "body": "We try to keep Family HQ running and to make backups, but we do not guarantee uninterrupted service or that no data will ever be lost. Treat any information you store in the service as something you would not be devastated to lose. We will tell you about planned maintenance windows that we expect to be visible, and we will publish incident updates when something unexpected goes wrong."
+      },
+      "rights": {
+        "heading": "Liability and warranties",
+        "body": "The service is provided 'as is' and 'as available.' To the maximum extent permitted by law, we disclaim warranties of merchantability, fitness for a particular purpose, and non-infringement. Our liability for any claim arising from your use of the service is limited to the amount you paid us for the service in the twelve months before the claim arose; for free use of the service, that amount is zero."
+      },
+      "changes": {
+        "heading": "Governing law and changes",
+        "body": "These terms are governed by the laws of Ontario, Canada, and the federal laws of Canada applicable in Ontario. When we make a material change to these terms, we will update the 'Last reviewed' date above and, for changes that materially affect your rights or obligations, post a notice in the application or send a message to the email address on your account."
+      }
     }
   }
 }
