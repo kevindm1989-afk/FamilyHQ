@@ -141,14 +141,17 @@ export default defineConfig(async () => ({
     // (verify.sh Tier 4); excluded here so they execute exactly once per
     // verifier invocation, not twice.
     exclude: ['test/rules/**', 'node_modules/**', 'src/__a11y__/**'],
-    // Coverage is opt-in via `npm run coverage` (or `vitest run --coverage`).
-    // v8 provider is the upstream-recommended default for vitest 3; it pipes
-    // V8's native coverage so we don't pay a Babel-instrumentation cost on
-    // every test run. Reporters: `text` for the terminal summary, `html` for
-    // the drill-down view at coverage/index.html (gitignored), `lcov` so a
-    // future Codecov/Coveralls integration has a file to consume. No
-    // thresholds yet — first run establishes a baseline; a follow-up PR can
-    // pin a floor once we've seen the real numbers.
+    // Coverage runs via `npm run coverage` AND inside the verifier's
+    // npm-test gate (scripts/verify.sh): vitest fails the run if any of
+    // the thresholds below is breached, so a PR that drops coverage
+    // cannot merge silently.
+    //
+    // v8 provider is the upstream-recommended default for vitest 3; it
+    // pipes V8's native coverage so we don't pay a Babel-instrumentation
+    // cost on every test run. Reporters: `text` for the terminal summary,
+    // `html` for the drill-down view at coverage/index.html (gitignored),
+    // `lcov` so a future Codecov/Coveralls integration has a file to
+    // consume.
     coverage: {
       provider: 'v8' as const,
       reporter: ['text', 'html', 'lcov'],
@@ -163,6 +166,21 @@ export default defineConfig(async () => ({
         'src/main.tsx', // bootstrap shim, exercised by e2e not unit tests
         'src/vite-env.d.ts',
       ],
+      // Thresholds — pinned with ~5% headroom below the baseline observed
+      // in PR #38 (lines 90.79, branches 89.45, functions 86.94, statements
+      // 90.79). The point isn't to ratchet up; it's to catch a meaningful
+      // regression — a PR that disables a test file, deletes assertions, or
+      // adds a sizable un-exercised feature gets flagged before merge.
+      //
+      // Raise these when the suite naturally settles higher. Lower them
+      // ONLY with an explicit reason in the PR description (e.g. a
+      // dependency added a generated wrapper we can't reasonably cover).
+      thresholds: {
+        lines: 85,
+        branches: 80,
+        functions: 80,
+        statements: 85,
+      },
     },
   },
 }));

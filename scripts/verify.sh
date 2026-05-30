@@ -198,7 +198,14 @@ fi
 # --- Tier 3: Tests ---
 section "Tier 3: Tests"
 
-if has_npm_script "test"; then
+if has_npm_script "coverage"; then
+  # Coverage replaces a plain `npm test` here: vitest run --coverage runs
+  # the entire test suite AND enforces the lines/branches/functions
+  # thresholds pinned in vite.config.ts. A regression that drops below
+  # the floor fails the gate. Wall-clock cost over plain `npm test` is
+  # ~negligible in practice (v8 instrumentation is cheap on this codebase).
+  run_gate "npm-test" npm run coverage --silent
+elif has_npm_script "test"; then
   run_gate "npm-test" npm test --silent
 elif [ "$has_node" = true ]; then
   echo "  [skip] tests — no 'test' script in package.json"
