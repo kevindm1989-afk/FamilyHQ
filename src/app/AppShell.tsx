@@ -7,7 +7,6 @@ import type { NavTab } from '../components';
 import { useAuth } from '../hooks/useAuth';
 import { useFamily } from '../hooks/useFamily';
 import { useToast } from '../hooks/useToast';
-import { Placeholder } from './Placeholder';
 import { ROUTES, canAccess, hidesBottomNav, type RouteMeta, type ScreenId } from './routes';
 
 const MAIN_CONTENT_ID = 'main-content';
@@ -145,7 +144,7 @@ export function AppShell(): ReactElement {
             path={ROUTES.add_event.path}
             element={guard('add_event', L(<CalendarRoute />, <CalendarRouteSkeleton />))}
           />
-          <Route path={ROUTES.compose.path} element={<Placeholder title="New Post" />} />
+          <Route path={ROUTES.compose.path} element={L(<BoardRoute />, <BoardRouteSkeleton />)} />
           <Route path={ROUTES.account_switcher.path} element={<AccountScreen />} />
           <Route path="*" element={<Navigate to={ROUTES.dashboard.path} replace />} />
         </Routes>
