@@ -25,7 +25,7 @@
  * builds its own props (order-independent). Money/date matchers are PRECISE so a
  * stray digit cannot false-match (member-view matcher lesson).
  */
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../hooks/useToast';
 import { ChoresParentScreen, type ChoresParentScreenProps } from './ChoresParentScreen';
@@ -516,7 +516,14 @@ describe('ChoresParentScreen — Finding 3: per-row in-flight guard (not global)
     fireEvent.click(approveButtonFor('Row Two'));
     await waitFor(() => expect(onApprove).toHaveBeenCalledWith('row2'));
 
-    d1.resolve(); // cleanup the held promise
+    // Resolve the held promise INSIDE an act() boundary so the downstream
+    // setState that clears the row-1 in-flight flag commits inside act —
+    // without the wrap, that update lands after the test body returns and
+    // React logs an "update to ChoresParentScreen inside a test was not
+    // wrapped in act(...)" warning.
+    await act(async () => {
+      d1.resolve();
+    });
   });
 
   it('only the IN-FLIGHT row reflects aria-busy while ITS action runs (row 2 stays idle)', async () => {
@@ -547,7 +554,11 @@ describe('ChoresParentScreen — Finding 3: per-row in-flight guard (not global)
     // Second click while row 1 is still in flight is a no-op for THAT row.
     fireEvent.click(approveButtonFor('Row One'));
     expect(onApprove).toHaveBeenCalledTimes(1);
-    d1.resolve();
+    // Resolve inside act() — see the comment in the "stuck approve" test
+    // above for why this is required.
+    await act(async () => {
+      d1.resolve();
+    });
   });
 });
 

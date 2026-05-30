@@ -24,7 +24,7 @@
  * the reference "today" is injected so the Today/Tomorrow chips are
  * deterministic. No network/RNG; each test re-creates props.
  */
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../hooks/useToast';
 import { AddChore, type AddChoreProps, type AddChoreValue } from './AddChore';
@@ -324,7 +324,14 @@ describe('AddChore — Finding 6: assignee must be a current active member', () 
         />
       </ToastProvider>,
     );
-    fireEvent.click(getSubmit());
+    // Wrap the submit + its async onAdd promise in act() so the post-submit
+    // re-render (close-form / loading-clear) commits inside an act boundary.
+    // Without the wrap that re-render lands after the assertions return and
+    // React logs an "update to AddChore inside a test was not wrapped in
+    // act(...)" warning.
+    await act(async () => {
+      fireEvent.click(getSubmit());
+    });
     // Either the submit was blocked (no call) OR it re-defaulted to the remaining
     // current member (Maya) — it must NEVER submit the stale uid-ben assignee.
     if (onAdd.mock.calls.length > 0) {

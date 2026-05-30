@@ -23,7 +23,7 @@
  * Isolation: injected props + ToastProvider; no clock/network/RNG; each test
  * builds its own props (order-independent).
  */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../hooks/useToast';
 import { ChoresMemberScreen, type ChoresMemberScreenProps } from './ChoresMemberScreen';
@@ -358,7 +358,13 @@ describe('ChoresMemberScreen — mark-complete in-flight guard (double-click bug
         'in-flight Mark done must be disabled or aria-disabled="true"',
       ).toBe(true);
     });
-    d.resolve();
+    // Resolve inside act() so the downstream re-render (clearing the
+    // in-flight flag) commits inside an act boundary. Without the wrap the
+    // setState lands after the test returns and React logs an "update to
+    // ChoresMemberScreen inside a test was not wrapped in act(...)" warning.
+    await act(async () => {
+      d.resolve();
+    });
   });
 
   it('a SECOND rapid click does NOT invoke onMarkComplete again while the first is in flight', async () => {
@@ -379,7 +385,11 @@ describe('ChoresMemberScreen — mark-complete in-flight guard (double-click bug
     await waitFor(() => expect(onMarkComplete).toHaveBeenCalledTimes(1));
     // Give any erroneous second call a chance to register, then re-assert.
     expect(onMarkComplete).toHaveBeenCalledTimes(1);
-    d.resolve();
+    // Resolve inside act() — see the comment in the previous test for the
+    // rationale (avoids the post-test out-of-act setState warning).
+    await act(async () => {
+      d.resolve();
+    });
   });
 
   it('a double-clicked Mark done shows the success toast and NEVER the scary error toast', async () => {
