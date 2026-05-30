@@ -259,6 +259,25 @@ if has_npm_script "e2e:authed"; then
   fi
 fi
 
+# Lighthouse CI gate: collects + asserts perf, a11y, best-practices, seo
+# against the built dist/. Gated on Chrome availability — local devs and
+# CI runners need a Chrome/Chromium binary at CHROME_PATH OR on PATH for
+# this to be meaningful. The npm script seeds CHROME_PATH from the
+# Playwright Chromium under /opt/pw-browsers when one exists; on a fresh
+# developer install with no Chrome, the gate skips with a clear message
+# rather than crashing the verifier.
+if has_npm_script "lighthouse"; then
+  if [ -n "${CHROME_PATH:-}" ] && [ -x "${CHROME_PATH}" ]; then
+    run_gate_shell "lighthouse" "npm run lighthouse --silent"
+  elif [ -x "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" ]; then
+    run_gate_shell "lighthouse" "CHROME_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npm run lighthouse --silent"
+  elif command -v google-chrome >/dev/null 2>&1 || command -v chromium >/dev/null 2>&1; then
+    run_gate_shell "lighthouse" "npm run lighthouse --silent"
+  else
+    echo "  [skip] lighthouse — no Chrome/Chromium binary available"
+  fi
+fi
+
 # --- Tier 5: Adversarial (warn only) ---
 section "Tier 5: Adversarial (warnings only)"
 

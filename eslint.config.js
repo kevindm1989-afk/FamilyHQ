@@ -47,8 +47,9 @@ export default tseslint.config(
     // Node tooling scripts under scripts/ — CommonJS .cjs files (verifier
     // gates run via `node scripts/<x>.cjs`). They need node globals AND
     // permission to use require() / __dirname (no-undef +
-    // no-require-imports would otherwise flag them).
-    files: ['scripts/**/*.{cjs,js}'],
+    // no-require-imports would otherwise flag them). Also covers the
+    // project-root .cjs config files like lighthouserc.cjs.
+    files: ['scripts/**/*.{cjs,js}', '*.cjs'],
     languageOptions: {
       sourceType: 'commonjs',
       globals: { ...globals.node },

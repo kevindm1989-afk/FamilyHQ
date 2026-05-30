@@ -38,3 +38,6 @@ firebase-export-*/
 playwright-report/
 test-results/
 
+# Lighthouse CI — autorun emits ~10 MB of HTML/JSON reports per run.
+.lighthouseci/
+
