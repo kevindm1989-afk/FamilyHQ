@@ -2,6 +2,7 @@ import { Suspense, lazy, useMemo, useState, type ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AccessibilityStatementScreen } from '../features/accessibility/AccessibilityStatementScreen';
+import { LegalScreen } from '../features/legal/LegalScreen';
 import { AvatarChip, BottomNav, Button, LanguageToggle, Skeleton, TopBar } from '../components';
 import type { NavTab } from '../components';
 import { useAuth } from '../hooks/useAuth';
@@ -133,6 +134,22 @@ export function AppShell(): ReactElement {
             element={
               <Suspense fallback={<RouteFallback />}>
                 <AccessibilityStatementScreen mode="in-app" />
+              </Suspense>
+            }
+          />
+          <Route
+            path={ROUTES.privacy.path}
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <LegalScreen variant="privacy" mode="in-app" />
+              </Suspense>
+            }
+          />
+          <Route
+            path={ROUTES.terms.path}
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <LegalScreen variant="terms" mode="in-app" />
               </Suspense>
             }
           />

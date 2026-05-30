@@ -52,7 +52,9 @@
       "generic": "Une erreur est survenue. Veuillez réessayer."
     },
     "footer": {
-      "accessibility": "Déclaration d’accessibilité"
+      "accessibility": "Déclaration d’accessibilité",
+      "privacy": "Politique de confidentialité",
+      "terms": "Conditions d’utilisation"
     }
   },
 
@@ -330,6 +332,82 @@
       "heading": "Signaler un obstacle ou demander un format alternatif",
       "body1": "Si vous rencontrez un obstacle d’accessibilité dans Family HQ, ou si vous avez besoin d’information de ce site dans un format alternatif (gros caractères, texte brut, format électronique accessible, ou un autre arrangement qui fonctionne pour vous), veuillez nous contacter :",
       "body2": "Nous visons à accuser réception de chaque rapport dans les deux jours ouvrables et à fournir une réponse substantielle dans les dix jours ouvrables. Veuillez inclure la page ou le parcours où l’obstacle est apparu, la technologie d’assistance que vous utilisiez, et une description de ce qui n’a pas fonctionné."
+    }
+  },
+
+  "legal": {
+    "back": "← Retour à la connexion",
+    "draftBadge": "Brouillon — révision juridique en attente",
+    "lastReviewed": "Dernière révision : <1>{{date}}</1>",
+    "contact": {
+      "heading": "Questions ou préoccupations",
+      "body": "Si vous avez une question concernant ce document, si vous souhaitez exercer vos droits ou signaler une préoccupation, veuillez nous contacter à l’adresse ci-dessous. Nous visons à accuser réception de chaque message dans les cinq jours ouvrables."
+    },
+    "related": {
+      "privacy": "Lire notre Politique de confidentialité",
+      "terms": "Lire nos Conditions d’utilisation",
+      "accessibility": "Lire notre Déclaration d’accessibilité"
+    },
+    "relatedNav": "Politiques associées"
+  },
+
+  "privacy": {
+    "title": "Politique de confidentialité",
+    "sections": {
+      "scope": {
+        "heading": "Portée de cette politique",
+        "body": "Cette politique décrit les renseignements personnels que Family HQ recueille lorsque vous créez un compte, ce que nous en faisons, avec qui nous les partageons, et comment vous pouvez exercer vos droits à leur égard. Elle s’applique à l’utilisation de l’application Web Family HQ et de tout service connexe que nous exploitons sous la même marque. Nous sommes un service canadien et nous considérons la Loi fédérale sur la protection des renseignements personnels et les documents électroniques (LPRPDE) comme notre référence de base. Texte temporaire rédigé par les développeurs — révision juridique en attente."
+      },
+      "data": {
+        "heading": "Renseignements recueillis",
+        "body": "Lorsque vous vous inscrivez, nous recueillons l’adresse courriel que vous utilisez pour vous connecter et, si vous le souhaitez, un nom d’affichage et un avatar. À l’intérieur de l’application, vous créez du contenu propre à la famille (tâches, événements de calendrier, allocations, messages du babillard) — ce contenu est stocké au nom de votre famille et n’est visible que par les membres de votre famille. Nous recueillons également un minimum de renseignements techniques (type d’appareil, langue du navigateur, identifiant de session anonyme) pour assurer le fonctionnement du service et enquêter sur les problèmes. Nous NE recueillons PAS d’identifiants publicitaires, NE construisons PAS de profils comportementaux pour la publicité ciblée et NE vendons PAS d’information à votre sujet."
+      },
+      "sharing": {
+        "heading": "Avec qui nous partageons",
+        "body": "Nous partageons des renseignements uniquement avec les fournisseurs de services dont nous avons besoin pour exploiter Family HQ : un fournisseur d’authentification et de base de données (Google Firebase) qui détient vos identifiants de compte et le contenu de votre famille selon des conditions contractuelles de traitement des données, et un fournisseur de courriels transactionnels lorsque nous devons vous envoyer des messages liés au compte. Nous ne vendons, ne louons et n’échangeons pas vos renseignements personnels. Si la loi nous oblige à divulguer des renseignements, nous limiterons toute divulgation à ce que la loi exige réellement et, lorsque cela est permis, nous vous en aviserons."
+      },
+      "retention": {
+        "heading": "Durée de conservation",
+        "body": "Nous conservons les renseignements de votre compte aussi longtemps que le compte est actif. Lorsque vous supprimez une famille, le contenu familial (tâches, événements, messages, entrées d’allocation) est retiré de la base de données active dans un délai de trente jours. Les sauvegardes vieillissent selon un calendrier glissant ne dépassant pas quatre-vingt-dix jours. Les enregistrements d’authentification peuvent être conservés plus longtemps pour détecter la fraude et les abus, mais sont isolés de l’application active et ne servent à aucun autre usage."
+      },
+      "rights": {
+        "heading": "Vos droits",
+        "body": "Vous pouvez accéder à vos renseignements personnels, les corriger, les exporter ou les supprimer à tout moment. Vous pouvez demander une copie de ce que nous détenons à votre sujet, nous demander de corriger toute inexactitude, demander la suppression de votre compte ou retirer votre consentement à notre traitement. Pour exercer l’un de ces droits, contactez-nous à l’adresse ci-dessous et nous répondrons dans les trente jours. Si vous n’êtes pas satisfait de notre réponse, vous avez le droit de déposer une plainte auprès du Commissariat à la protection de la vie privée du Canada."
+      },
+      "changes": {
+        "heading": "Modifications de cette politique",
+        "body": "Lorsque nous apportons une modification importante à cette politique, nous mettrons à jour la date « Dernière révision » ci-dessus et, pour les changements qui affectent la collecte ou l’utilisation de vos renseignements, nous publierons un avis dans l’application ou enverrons un message à l’adresse courriel inscrite à votre compte. La version actuelle est toujours disponible à cette adresse; les versions précédentes sont archivées sur demande."
+      }
+    }
+  },
+
+  "terms": {
+    "title": "Conditions d’utilisation",
+    "sections": {
+      "scope": {
+        "heading": "Portée de cette entente",
+        "body": "Ces conditions constituent l’entente entre vous et les exploitants de Family HQ concernant votre utilisation de l’application Web Family HQ. En créant un compte ou en utilisant le service, vous acceptez ces conditions. Si vous ne les acceptez pas, veuillez ne pas utiliser le service. Nous pouvons mettre à jour ces conditions au fil du temps; la version actuelle est toujours disponible à cette adresse. Texte temporaire rédigé par les développeurs — révision juridique en attente."
+      },
+      "data": {
+        "heading": "Votre compte",
+        "body": "Vous êtes responsable de l’adresse courriel et des identifiants que vous utilisez pour vous connecter. Choisissez un mot de passe robuste et ne partagez vos identifiants avec personne en dehors de votre foyer. Si vous soupçonnez qu’un tiers non autorisé a accédé à votre compte, contactez-nous rapidement. La première personne qui crée une famille devient un parent de cette famille; les parents contrôlent l’adhésion, la visibilité du contenu et les soldes d’allocation au sein de leur famille."
+      },
+      "sharing": {
+        "heading": "Utilisation acceptable",
+        "body": "Family HQ est un outil familial. Ne l’utilisez pas pour harceler, menacer ou intimider quiconque, pour publier du contenu illégal ou qui enfreint les droits d’autrui, pour tenter d’accéder au contenu d’une autre famille, ou pour interférer avec le fonctionnement normal du service. Nous pouvons suspendre ou résilier l’accès en cas de violation de cette section et, le cas échéant, coopérer avec les forces de l’ordre."
+      },
+      "retention": {
+        "heading": "Disponibilité du service",
+        "body": "Nous essayons de maintenir Family HQ en fonctionnement et d’en faire des sauvegardes, mais nous ne garantissons pas un service ininterrompu ni qu’aucune donnée ne sera jamais perdue. Considérez toute information que vous stockez dans le service comme quelque chose dont la perte ne serait pas dévastatrice. Nous vous informerons des fenêtres d’entretien prévues qui devraient être visibles, et nous publierons des mises à jour d’incident lorsque quelque chose d’inattendu se produit."
+      },
+      "rights": {
+        "heading": "Responsabilité et garanties",
+        "body": "Le service est fourni « tel quel » et « selon disponibilité ». Dans la mesure maximale permise par la loi, nous déclinons les garanties de qualité marchande, d’adéquation à un usage particulier et d’absence de contrefaçon. Notre responsabilité pour toute réclamation découlant de votre utilisation du service est limitée au montant que vous nous avez payé pour le service au cours des douze mois précédant la réclamation; pour une utilisation gratuite du service, ce montant est de zéro."
+      },
+      "changes": {
+        "heading": "Loi applicable et modifications",
+        "body": "Ces conditions sont régies par les lois de l’Ontario, Canada, et les lois fédérales du Canada qui s’y appliquent. Lorsque nous apportons une modification importante à ces conditions, nous mettrons à jour la date « Dernière révision » ci-dessus et, pour les changements qui affectent matériellement vos droits ou obligations, nous publierons un avis dans l’application ou enverrons un message à l’adresse courriel inscrite à votre compte."
+      }
     }
   }
 }

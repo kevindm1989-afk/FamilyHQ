@@ -26,12 +26,16 @@ import { ToastViewport } from './ToastViewport';
 // already matches the auth-loading state visually.
 const AuthedApp = lazy(() => import('./AuthedApp'));
 
-// Static info page — no reason to ship in the main bundle when most users
-// never visit it. Reachable from both the login footer and the AccountScreen.
+// Static info pages — no reason to ship in the main bundle when most users
+// never visit them. The legal pages share one component (LegalScreen) that
+// takes a variant prop, so they share a single lazy chunk too.
 const AccessibilityStatementScreen = lazy(() =>
   import('../features/accessibility/AccessibilityStatementScreen').then((m) => ({
     default: m.AccessibilityStatementScreen,
   })),
+);
+const LegalScreen = lazy(() =>
+  import('../features/legal/LegalScreen').then((m) => ({ default: m.LegalScreen })),
 );
 
 function BrandSplash(): ReactElement {
@@ -96,6 +100,14 @@ function Gate(): ReactElement {
             <Route
               path={ROUTES.accessibility.path}
               element={<AccessibilityStatementScreen mode="public" />}
+            />
+            <Route
+              path={ROUTES.privacy.path}
+              element={<LegalScreen variant="privacy" mode="public" />}
+            />
+            <Route
+              path={ROUTES.terms.path}
+              element={<LegalScreen variant="terms" mode="public" />}
             />
             <Route path="*" element={<LoginScreen />} />
           </Routes>
