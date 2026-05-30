@@ -22,6 +22,7 @@
     "e2e": "vite build && playwright test e2e/login-public.spec.ts",
     "e2e:authed": "VITE_DISABLE_PWA=true vite build --mode emulator && firebase emulators:exec --only auth,firestore --project demo-familyhq \"playwright test e2e/authed\"",
     "analyze": "ANALYZE=true vite build && echo \"\nOpen dist/bundle-stats.html to inspect the bundle.\"",
+    "lighthouse": "vite build && lhci autorun --config=lighthouserc.cjs",
     "prepare": "husky"
   },
   "_overrides_rationale": "Transitive deps below are flagged by npm audit but reach us only via the dev-only firebase-tools CLI or non-browser code paths of the firebase SDK. Pinned to fixed releases so the high/critical audit gate passes without weakening the gate itself.",
@@ -43,6 +44,7 @@
   "devDependencies": {
     "@eslint/js": "9.5.0",
     "@firebase/rules-unit-testing": "3.0.3",
+    "@lhci/cli": "^0.15.1",
     "@playwright/test": "1.56",
     "@testing-library/jest-dom": "6.4.6",
     "@testing-library/react": "16.0.0",
