@@ -21,7 +21,8 @@
     "a11y": "vitest run --config vitest.a11y.config.ts",
     "e2e": "vite build && playwright test e2e/login-public.spec.ts",
     "e2e:authed": "VITE_DISABLE_PWA=true vite build --mode emulator && firebase emulators:exec --only auth,firestore --project demo-familyhq \"playwright test e2e/authed\"",
-    "analyze": "ANALYZE=true vite build && echo \"\nOpen dist/bundle-stats.html to inspect the bundle.\""
+    "analyze": "ANALYZE=true vite build && echo \"\nOpen dist/bundle-stats.html to inspect the bundle.\"",
+    "prepare": "husky"
   },
   "_overrides_rationale": "Transitive deps below are flagged by npm audit but reach us only via the dev-only firebase-tools CLI or non-browser code paths of the firebase SDK. Pinned to fixed releases so the high/critical audit gate passes without weakening the gate itself.",
   "overrides": {
@@ -56,8 +57,10 @@
     "eslint-plugin-react-refresh": "0.4.7",
     "firebase-tools": "13.35.1",
     "globals": "15.6.0",
+    "husky": "^9.1.7",
     "jsdom": "24.1.0",
     "knip": "5.21.0",
+    "lint-staged": "^17.0.5",
     "postcss": "^8.5.15",
     "prettier": "3.3.2",
     "rollup-plugin-visualizer": "^7.0.1",
@@ -68,5 +71,14 @@
     "vite-plugin-pwa": "^0.21.2",
     "vitest": "^3.2.4",
     "vitest-axe": "0.1.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "prettier --write",
+      "eslint --fix --max-warnings=0"
+    ],
+    "*.{json,md,css,html,yml,yaml}": [
+      "prettier --write"
+    ]
   }
 }
