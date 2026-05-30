@@ -12,7 +12,7 @@
  * the largest authed chunk, so isolating it from the other routes is the
  * biggest per-route bundle win.
  */
-import type { ReactElement } from 'react';
+import { useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Placeholder } from '../../app/Placeholder';
 import { ROUTES } from '../../app/routes';
@@ -23,13 +23,30 @@ import { useMyChores } from '../chores/useMyChores';
 import { useFamilyEvents } from '../calendar/useFamilyEvents';
 import { useFamilyPosts } from '../board/useFamilyPosts';
 import { DashboardScreen } from './DashboardScreen';
+import { OnboardingTour } from '../onboarding/OnboardingTour';
+import { hasSeenTour, markTourSeen } from '../onboarding/tourStorage';
 
 export default function DashboardRoute(): ReactElement {
   const { currentUser, role } = useFamily();
-  return role === 'parent' ? (
-    <ParentDashboardRoute />
-  ) : (
-    <MemberDashboardRoute key={currentUser?.id ?? 'anon'} />
+  // First-run onboarding tour: shown on the FIRST dashboard mount per device
+  // (the storage key gates re-show). The role is known here so we can hand
+  // the role-scoped step list to the tour without a flicker. If role is
+  // momentarily null while useFamily is settling, the tour stays closed —
+  // it'll mount on the next render when role lands.
+  const [showTour, setShowTour] = useState(() => !hasSeenTour());
+  const closeTour = (): void => {
+    markTourSeen();
+    setShowTour(false);
+  };
+  return (
+    <>
+      {role === 'parent' ? (
+        <ParentDashboardRoute />
+      ) : (
+        <MemberDashboardRoute key={currentUser?.id ?? 'anon'} />
+      )}
+      {showTour && role !== null && <OnboardingTour role={role} onClose={closeTour} />}
+    </>
   );
 }
 

@@ -343,6 +343,41 @@
     "contactPrefix": "Still stuck? Tell us what happened: "
   },
 
+  "onboarding": {
+    "stepCounter": "Step {{current}} of {{total}}",
+    "back": "Back",
+    "next": "Next",
+    "skip": "Skip tour",
+    "done": "Get started",
+    "replay": "Replay the welcome tour",
+    "steps": {
+      "welcome": {
+        "title": "Welcome to Family HQ",
+        "body": "This is your family's shared home base. A quick tour shows you what's where — you can skip it any time and re-open it from your Account."
+      },
+      "calendar": {
+        "title": "Calendar",
+        "body": "Plan family events together. Tap a day to see what's on. Parents can add events; everyone in the family can see them."
+      },
+      "board": {
+        "title": "Board",
+        "body": "A bulletin board for the family — quick notes, reminders, photos of the school field trip. The newest post sits at the top."
+      },
+      "chores": {
+        "title": "Chores",
+        "body": "Track who's doing what. Members mark their chores complete; parents approve and the allowance ledger updates automatically."
+      },
+      "allowance": {
+        "title": "Allowance",
+        "body": "A read-only ledger of every approved chore and the running balance. Members see their own; parents pick whose to view."
+      },
+      "family": {
+        "title": "Family management",
+        "body": "Parent-only tools: invite members, manage roles, and remove members who leave the household. Members don't see this section."
+      }
+    }
+  },
+
   "legal": {
     "back": "← Back to sign in",
     "draftBadge": "Draft — pending legal review",

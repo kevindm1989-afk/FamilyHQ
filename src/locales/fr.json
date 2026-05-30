@@ -343,6 +343,41 @@
     "contactPrefix": "Toujours bloqué ? Dites-nous ce qui s’est passé : "
   },
 
+  "onboarding": {
+    "stepCounter": "Étape {{current}} sur {{total}}",
+    "back": "Retour",
+    "next": "Suivant",
+    "skip": "Passer le tour",
+    "done": "Commencer",
+    "replay": "Revoir le tour de bienvenue",
+    "steps": {
+      "welcome": {
+        "title": "Bienvenue dans Family HQ",
+        "body": "Voici la plateforme partagée de votre famille. Un tour rapide vous montre où se trouve quoi — vous pouvez le passer à tout moment et le rouvrir depuis votre Compte."
+      },
+      "calendar": {
+        "title": "Calendrier",
+        "body": "Planifiez les événements familiaux ensemble. Touchez une journée pour voir ce qui s’y passe. Les parents ajoutent des événements ; tous les membres de la famille les voient."
+      },
+      "board": {
+        "title": "Babillard",
+        "body": "Un babillard pour la famille — notes rapides, rappels, photos de la sortie scolaire. Le plus récent message est en haut."
+      },
+      "chores": {
+        "title": "Tâches",
+        "body": "Suivez qui fait quoi. Les membres marquent leurs tâches comme terminées ; les parents approuvent et le registre des allocations se met à jour automatiquement."
+      },
+      "allowance": {
+        "title": "Allocation",
+        "body": "Un registre en lecture seule de chaque tâche approuvée et du solde courant. Les membres voient le leur ; les parents choisissent celui qu’ils consultent."
+      },
+      "family": {
+        "title": "Gestion de la famille",
+        "body": "Outils réservés aux parents : inviter des membres, gérer les rôles et retirer les membres qui quittent le foyer. Les membres ne voient pas cette section."
+      }
+    }
+  },
+
   "legal": {
     "back": "← Retour à la connexion",
     "draftBadge": "Brouillon — révision juridique en attente",
