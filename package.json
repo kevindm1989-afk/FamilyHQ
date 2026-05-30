@@ -22,7 +22,7 @@
     "e2e": "vite build && playwright test e2e/login-public.spec.ts",
     "e2e:authed": "VITE_DISABLE_PWA=true vite build --mode emulator && firebase emulators:exec --only auth,firestore --project demo-familyhq \"playwright test e2e/authed\"",
     "analyze": "ANALYZE=true vite build && echo \"\nOpen dist/bundle-stats.html to inspect the bundle.\"",
-    "lighthouse": "vite build && CHROME_PATH=${CHROME_PATH:-/opt/pw-browsers/chromium-1194/chrome-linux/chrome} lhci autorun --config=lighthouserc.cjs",
+    "lighthouse": "vite build && lhci autorun --config=lighthouserc.cjs",
     "prepare": "husky"
   },
   "_overrides_rationale": "Transitive deps below are flagged by npm audit but reach us only via the dev-only firebase-tools CLI or non-browser code paths of the firebase SDK. Pinned to fixed releases so the high/critical audit gate passes without weakening the gate itself.",

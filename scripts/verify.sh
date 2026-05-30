@@ -261,18 +261,32 @@ fi
 
 # Lighthouse CI gate: collects + asserts perf, a11y, best-practices, seo
 # against the built dist/. Gated on Chrome availability — local devs and
-# CI runners need a Chrome/Chromium binary at CHROME_PATH OR on PATH for
-# this to be meaningful. The npm script seeds CHROME_PATH from the
-# Playwright Chromium under /opt/pw-browsers when one exists; on a fresh
-# developer install with no Chrome, the gate skips with a clear message
-# rather than crashing the verifier.
+# CI runners need a Chrome/Chromium binary somewhere reachable. We look,
+# in priority order:
+#   1. $CHROME_PATH already exported and executable (advanced override)
+#   2. Local sandbox's Playwright bundle at /opt/pw-browsers/
+#   3. CI's Playwright cache at ~/.cache/ms-playwright/
+#   4. system google-chrome / chromium on PATH
+# Skip cleanly with a clear message when none of those match — a fresh
+# developer install without Chrome should not crash the verifier.
 if has_npm_script "lighthouse"; then
+  LH_CHROME=""
   if [ -n "${CHROME_PATH:-}" ] && [ -x "${CHROME_PATH}" ]; then
-    run_gate_shell "lighthouse" "npm run lighthouse --silent"
-  elif [ -x "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" ]; then
-    run_gate_shell "lighthouse" "CHROME_PATH=/opt/pw-browsers/chromium-1194/chrome-linux/chrome npm run lighthouse --silent"
-  elif command -v google-chrome >/dev/null 2>&1 || command -v chromium >/dev/null 2>&1; then
-    run_gate_shell "lighthouse" "npm run lighthouse --silent"
+    LH_CHROME="${CHROME_PATH}"
+  elif [ -d "/opt/pw-browsers" ]; then
+    LH_CHROME=$(find /opt/pw-browsers -maxdepth 4 -path '*chrome-linux*/chrome' -type f 2>/dev/null | head -1)
+  fi
+  if [ -z "${LH_CHROME}" ] && [ -d "${HOME}/.cache/ms-playwright" ]; then
+    LH_CHROME=$(find "${HOME}/.cache/ms-playwright" -maxdepth 4 -path '*chrome-linux*/chrome' -type f 2>/dev/null | head -1)
+  fi
+  if [ -z "${LH_CHROME}" ] && command -v google-chrome >/dev/null 2>&1; then
+    LH_CHROME=$(command -v google-chrome)
+  fi
+  if [ -z "${LH_CHROME}" ] && command -v chromium >/dev/null 2>&1; then
+    LH_CHROME=$(command -v chromium)
+  fi
+  if [ -n "${LH_CHROME}" ]; then
+    run_gate_shell "lighthouse" "CHROME_PATH='${LH_CHROME}' npm run lighthouse --silent"
   else
     echo "  [skip] lighthouse — no Chrome/Chromium binary available"
   fi
