@@ -287,6 +287,28 @@ describe('BoardScreen — compose entry point', () => {
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText(/new post/i)).toBeInTheDocument();
   });
+
+  // Deep-link entry: AppShell routes /board/new to the same BoardRoute and
+  // passes initialComposeOpen=true. The composer must already be open on
+  // first render — no FAB tap required — so a shared link lands on the form.
+  it('starts with the compose sheet OPEN when initialComposeOpen=true (deep-link entry)', () => {
+    renderBoard({ initialComposeOpen: true });
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/new post/i)).toBeInTheDocument();
+  });
+
+  // The route owns URL cleanup: when the sheet closes from a deep-link, the
+  // route navigates back to /board. The screen just fires onComposeClose;
+  // the route's wired callback handles the navigate.
+  it('fires onComposeClose when the sheet is dismissed (so the route can clean the URL)', () => {
+    const onComposeClose = vi.fn();
+    renderBoard({ initialComposeOpen: true, onComposeClose });
+    const dialog = screen.getByRole('dialog');
+    // ComposePost exposes a Cancel or Close affordance; both names are valid.
+    const close = within(dialog).getByRole('button', { name: /cancel|close|discard/i });
+    fireEvent.click(close);
+    expect(onComposeClose).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('BoardScreen — timestamp is a machine-readable <time> (Finding G, a11y moderate)', () => {

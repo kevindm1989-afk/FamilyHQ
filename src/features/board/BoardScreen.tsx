@@ -45,6 +45,18 @@ export interface BoardScreenProps {
   onDeletePost: (postId: string) => Promise<void>;
   /** Injected create action (wired to boardService.createPost + toast). */
   onCreatePost?: (content: string) => Promise<void>;
+  /**
+   * If true, the ComposePost sheet starts open. Drives the deep-link entry
+   * at /board/new — the route detects the path and passes true so a fresh
+   * landing on the URL is the composer, not the post list.
+   */
+  initialComposeOpen?: boolean;
+  /**
+   * Called when the composer closes (sheet dismiss OR successful post).
+   * The deep-link route wires this to navigate back to /board so the URL
+   * doesn't keep "new" in the address bar after the modal is gone.
+   */
+  onComposeClose?: () => void;
 }
 
 const ABSOLUTE_DATE_FORMAT = new Intl.DateTimeFormat('en-CA', {
@@ -54,10 +66,16 @@ const ABSOLUTE_DATE_FORMAT = new Intl.DateTimeFormat('en-CA', {
 
 export function BoardScreen(props: BoardScreenProps): ReactElement {
   const { t } = useTranslation();
-  const { viewer, members, feed, onDeletePost, onCreatePost } = props;
+  const { viewer, members, feed, onDeletePost, onCreatePost, initialComposeOpen, onComposeClose } =
+    props;
   const { showToast } = useToast();
-  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(initialComposeOpen ?? false);
   const labelBase = useId();
+
+  const closeCompose = (): void => {
+    setComposeOpen(false);
+    onComposeClose?.();
+  };
 
   const handleDelete = (postId: string): void => {
     void onDeletePost(postId)
@@ -153,7 +171,7 @@ export function BoardScreen(props: BoardScreenProps): ReactElement {
       <div>
         <ComposePost
           open={composeOpen}
-          onClose={() => setComposeOpen(false)}
+          onClose={closeCompose}
           author={viewer}
           onCreate={handleCreate}
         />
