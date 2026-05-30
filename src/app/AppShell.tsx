@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AccessibilityStatementScreen } from '../features/accessibility/AccessibilityStatementScreen';
 import { LegalScreen } from '../features/legal/LegalScreen';
+import { resetTour } from '../features/onboarding/tourStorage';
 import { AvatarChip, BottomNav, Button, LanguageToggle, Skeleton, TopBar } from '../components';
 import type { NavTab } from '../components';
 import { useAuth } from '../hooks/useAuth';
@@ -203,6 +204,7 @@ function AccountScreen(): ReactElement {
   const { t } = useTranslation();
   const { signOut } = useAuth();
   const { showToast } = useToast();
+  const navigate = useNavigate();
   const [signingOut, setSigningOut] = useState(false);
 
   const handleSignOut = (): void => {
@@ -226,13 +228,38 @@ function AccountScreen(): ReactElement {
           language toggle sits in the same Account surface so a signed-in
           user can switch language without having to sign out. */}
       <LanguageToggle />
-      <nav aria-label={t('account.resourcesLabel')} className="mt-8">
+      <nav aria-label={t('account.resourcesLabel')} className="mt-8 flex flex-col gap-8">
         <Link
           to={ROUTES.accessibility.path}
           className="text-body text-brand focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
         >
           {t('account.accessibilityLink')}
         </Link>
+        <Link
+          to={ROUTES.privacy.path}
+          className="text-body text-brand focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+        >
+          {t('login.footer.privacy')}
+        </Link>
+        <Link
+          to={ROUTES.terms.path}
+          className="text-body text-brand focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+        >
+          {t('login.footer.terms')}
+        </Link>
+        {/* Replay welcome tour — clears the storage flag and bounces to the
+            dashboard where the tour re-mounts on first render. Honours the
+            user's intent (they asked for it) without a flag dance. */}
+        <button
+          type="button"
+          onClick={() => {
+            resetTour();
+            navigate(ROUTES.dashboard.path);
+          }}
+          className="self-start text-body text-brand focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+        >
+          {t('onboarding.replay')}
+        </button>
       </nav>
     </section>
   );

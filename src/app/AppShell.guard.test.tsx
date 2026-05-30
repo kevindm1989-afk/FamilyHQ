@@ -23,7 +23,7 @@
  */
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Role, UserWithId } from '../lib/types';
 
 const memberUser: UserWithId = {
@@ -89,8 +89,18 @@ async function renderAt(path: string) {
   return r;
 }
 
+// Pre-mark the onboarding tour as seen so it doesn't render its "Welcome to
+// Family HQ" heading on top of the dashboard's "Welcome <name>" heading
+// when these tests hit the dashboard via the guard redirect. Tour logic
+// is exercised by its own unit tests; here we just want it out of the way.
+import { markTourSeen } from '../features/onboarding/tourStorage';
+beforeEach(() => {
+  markTourSeen();
+});
+
 afterEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
 });
 
 describe('AppShell — add_event route guard (Finding D, defense-in-depth)', () => {
