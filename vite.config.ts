@@ -131,6 +131,25 @@ export default defineConfig(async () => ({
         }) as PluginOption)
       : false,
   ],
+  build: {
+    // Emit source maps as SEPARATE .map files but DO NOT reference them
+    // from the JS bundles via a `//# sourceMappingURL=` comment. The
+    // result:
+    //   - The maps exist in dist/ for an error-tracking SDK (Sentry,
+    //     Bugsnag, etc.) to upload during the release step. When that
+    //     wires in, the SDK reads dist/assets/*.js.map and pairs them
+    //     with the captured stack traces server-side.
+    //   - Casual users inspecting the bundles in devtools do NOT see a
+    //     link to the maps, so a curious visitor can't trivially
+    //     reconstruct the source.
+    //   - firebase.json's hosting.ignore strips `**/*.map` from the
+    //     deploy upload entirely, so the maps never leave the build
+    //     machine in production. (The hidden setting is the BELT;
+    //     ignore is the SUSPENDERS.)
+    // ErrorBoundary's reportError seam (src/app/ErrorBoundary.tsx) is
+    // where the SDK's captureException will attach.
+    sourcemap: 'hidden' as const,
+  },
   test: {
     globals: true,
     environment: 'jsdom',
