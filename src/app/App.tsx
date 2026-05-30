@@ -12,6 +12,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { LoginScreen } from '../features/auth/LoginScreen';
 import { AuthProvider, useAuth } from '../hooks/useAuth';
 import { ToastProvider } from '../hooks/useToast';
+import { ErrorBoundary } from './ErrorBoundary';
 import { PwaUpdatePrompt } from './PwaUpdatePrompt';
 import { ROUTES } from './routes';
 import { ToastViewport } from './ToastViewport';
@@ -136,16 +137,27 @@ const ROUTER_FUTURE = { v7_startTransition: true, v7_relativeSplatPath: true } a
 export default function App(): ReactElement {
   return (
     <BrowserRouter future={ROUTER_FUTURE}>
-      <ToastProvider>
-        <AuthProvider>
-          <Gate />
-          <ToastViewport />
-          {/* Mounted at the app root (not inside Gate) so a SW update prompt
-              surfaces on the login screen too — the new code is what serves
-              that screen on the next reload. */}
-          <PwaUpdatePrompt />
-        </AuthProvider>
-      </ToastProvider>
+      {/* App-level ErrorBoundary: catches any render error in Gate, the auth
+          flow, or the lazy AuthedApp chunk so the user gets a friendly
+          fallback instead of a white screen. Sentry's captureException
+          would wire to the reportError prop here when error tracking
+          lands; today the default reporter logs to console.error. The
+          boundary sits INSIDE BrowserRouter so the fallback can still use
+          react-router hooks if needed, and INSIDE ToastProvider/AuthProvider
+          would be wrong because an error in those providers themselves
+          must still be caught. So: Router > Boundary > Providers > Gate. */}
+      <ErrorBoundary>
+        <ToastProvider>
+          <AuthProvider>
+            <Gate />
+            <ToastViewport />
+            {/* Mounted at the app root (not inside Gate) so a SW update prompt
+                surfaces on the login screen too — the new code is what serves
+                that screen on the next reload. */}
+            <PwaUpdatePrompt />
+          </AuthProvider>
+        </ToastProvider>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

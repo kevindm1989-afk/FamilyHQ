@@ -335,6 +335,14 @@
     }
   },
 
+  "errorBoundary": {
+    "title": "Something went wrong.",
+    "body": "We hit an unexpected error. Your data is safe — nothing was lost. Try again, or reload the page.",
+    "tryAgain": "Try again",
+    "reload": "Reload",
+    "contactPrefix": "Still stuck? Tell us what happened: "
+  },
+
   "legal": {
     "back": "← Back to sign in",
     "draftBadge": "Draft — pending legal review",

@@ -335,6 +335,14 @@
     }
   },
 
+  "errorBoundary": {
+    "title": "Une erreur est survenue.",
+    "body": "Nous avons rencontré une erreur inattendue. Vos données sont en sécurité — rien n’a été perdu. Réessayez ou rechargez la page.",
+    "tryAgain": "Réessayer",
+    "reload": "Recharger",
+    "contactPrefix": "Toujours bloqué ? Dites-nous ce qui s’est passé : "
+  },
+
   "legal": {
     "back": "← Retour à la connexion",
     "draftBadge": "Brouillon — révision juridique en attente",
