@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+# Auto-format and lint ONLY the files staged for commit. Runs in ~hundreds
+# of milliseconds for typical PRs, so it doesn't block developer flow the
+# way a full `npm test` pre-commit would. Heavier gates (tsc, npm-test,
+# build, e2e, etc.) run in CI via the verifier — this hook is the cheap
+# upstream catch for prettier/eslint, NOT a replacement for verify.sh.
+#
+# Bypass with `git commit --no-verify` ONLY if you know what you're doing
+# (a broken hook environment, an emergency revert, etc.). The same checks
+# run in CI, so a bypass still gets blocked at PR time.
+npx lint-staged
