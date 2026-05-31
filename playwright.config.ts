@@ -33,7 +33,13 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
-  timeout: 30_000,
+  // 60s per-test timeout. The authed negative-paths suite chains
+  // multiple slow flows in one test (signup → sign-out → second signup,
+  // each waiting on the Firestore-emulator snapshot to land), and the
+  // happy-path founding-parent test does its own retry-after-reload
+  // dance. On a shared-tenant CI runner these can sum past 30s. 60s
+  // gives a comfortable budget without masking a real hang.
+  timeout: 60_000,
   expect: { timeout: 5_000 },
 
   use: {
