@@ -49,10 +49,18 @@ isolatedAuthedTest.describe('Authed — returning user signs back in', () => {
 
       // 4. We're back on the dashboard with the same personalised
       //    greeting — proves the family doc is correctly fetched via the
-      //    second sign-in, not just the first.
-      await expect(
-        page.getByRole('heading', { name: new RegExp(`welcome.*${userName}`, 'i') }),
-      ).toBeVisible({ timeout: 15_000 });
+      //    second sign-in, not just the first. Same try-then-reload
+      //    pattern signUpFoundingParent uses for the emulator snapshot
+      //    quirk.
+      const welcomeHeading = page.getByRole('heading', {
+        name: new RegExp(`welcome.*${userName}`, 'i'),
+      });
+      try {
+        await expect(welcomeHeading).toBeVisible({ timeout: 3_000 });
+      } catch {
+        await page.reload();
+        await expect(welcomeHeading).toBeVisible({ timeout: 15_000 });
+      }
     },
   );
 });

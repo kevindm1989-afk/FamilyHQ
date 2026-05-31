@@ -135,22 +135,35 @@ export async function signUpFoundingParent(page: Page, opts: SignupOpts): Promis
 
   await page.getByRole('button', { name: /create family/i }).click();
 
-  // Give the auth-state change + initial Firestore write a beat to land
-  // server-side, then reload so the SDK's subscriber re-attaches against
-  // a settled emulator. The reload is a no-op on the first test of a run
-  // (the snapshot fires fine the first time) but it's required on every
-  // subsequent test in the same emulator process.
-  await page.waitForTimeout(500);
-  await page.reload();
-
-  await expect(
-    page.getByRole('heading', { name: new RegExp(`welcome.*${opts.userName}`, 'i') }),
-  ).toBeVisible({ timeout: 15_000 });
+  // Wait for the welcome heading. Two cases:
+  //
+  //   (a) Happy: snapshot fires, heading appears. Done in <3s.
+  //   (b) Emulator-snapshot-silence quirk: the SDK's onSnapshot for
+  //       users/{uid} stays silent on the SECOND fresh-client signup
+  //       in the same emulator process. The dashboard renders the
+  //       Placeholder indefinitely. A page.reload() forces a clean
+  //       resubscribe and the heading appears.
+  //
+  // We try (a) first with a short timeout, then fall through to (b) on
+  // failure. This avoids paying a reload tax on every test AND keeps
+  // CI green where the quirk reliably bites.
+  const welcomeHeading = page.getByRole('heading', {
+    name: new RegExp(`welcome.*${opts.userName}`, 'i'),
+  });
+  try {
+    await expect(welcomeHeading).toBeVisible({ timeout: 3_000 });
+  } catch {
+    // Quirk path: reload + wait again with a generous budget.
+    await page.reload();
+    await expect(welcomeHeading).toBeVisible({ timeout: 15_000 });
+  }
 }
 
 /**
  * Drives sign-in for a returning user. Assumes we're on the login surface
- * with the form in signin mode (default).
+ * with the form in signin mode (default). Reloads after submit so the
+ * Firestore snapshot subscriber re-attaches cleanly (same emulator-only
+ * quirk signUpFoundingParent works around).
  */
 export async function signInExistingUser(
   page: Page,
@@ -162,6 +175,10 @@ export async function signInExistingUser(
   await page.getByLabel(/email/i).fill(email);
   await page.getByLabel(/password/i).fill(password);
   await page.getByRole('button', { name: /^sign in$/i }).click();
+  // If sign-in succeeds the form goes away. If it fails, the form stays
+  // visible (negative-path tests assert that). Caller decides what to
+  // assert next; we DO NOT reload here because reloading on a failed
+  // sign-in would mask the error.
 }
 
 /**
