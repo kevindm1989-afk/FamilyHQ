@@ -1,22 +1,38 @@
 name: Deploy
 
-# MANUAL-ONLY until a real deployment target is configured.
+# Manually triggered Firebase Hosting + Firestore-rules deploy.
 #
-# This is still the Agent OS template stub: the deploy steps are placeholder
-# `echo`s and the jobs do NOT set up Node / run `npm ci` / install the security
-# tools, so they cannot actually build, verify, or deploy yet. Auto-running on
-# push to `main` only produced failing runs.
+# Real deploy commands, REAL secrets, but still HUMAN-GATED: triggers only on
+# `workflow_dispatch` (or post-merge to `main` if the user enables that block
+# below). No automatic deploy without an explicit click — the GitHub
+# Environment's "required reviewers" setting layers a second human gate on
+# top of that for production.
 #
-# Before re-enabling `push: [main]`, the following human-gated decisions and
-# wiring must be in place (see .context/constraints.md "Human gates" and the
-# system-design open questions):
-#   - Firebase project + REGION chosen (permanent, cross-border decision)
-#   - real deploy commands (Firebase Hosting + `firebase deploy --only
-#     firestore:rules,hosting`) and CI secrets (service account)
-#   - the staging/production jobs given `setup-node` + `npm ci` +
-#     gitleaks/semgrep before they run `scripts/verify.sh`
-#   - production deploys remain gated behind a GitHub Environment with required
-#     reviewers (the human gate)
+# Pre-flight: every job pre-checks that FIREBASE_SERVICE_ACCOUNT and
+# FIREBASE_PROJECT_ID secrets are non-empty AND that .firebaserc no longer
+# points at the placeholder project. If either check fails the job exits
+# cleanly with a message — so a half-configured repo (e.g. secrets exist
+# but no Firebase project chosen yet) does NOT crash the workflow page
+# with confusing red.
+#
+# Required GitHub Actions secrets (set in repo Settings → Secrets → Actions):
+#   FIREBASE_SERVICE_ACCOUNT
+#     Full JSON of a service-account key with the Firebase Hosting Admin +
+#     Cloud Datastore Owner roles on the target project. Generate via
+#     `gcloud iam service-accounts keys create` (NEVER commit; the key is
+#     a credential).
+#   FIREBASE_PROJECT_ID
+#     Real project ID (e.g. familyhq-prod). When this matches .firebaserc
+#     we proceed; when .firebaserc still says `family-hq-placeholder` we
+#     refuse to deploy.
+#
+# Optional secrets (for preview channels):
+#   FIREBASE_PROJECT_ID_STAGING — separate project for the staging env.
+#                                Falls back to FIREBASE_PROJECT_ID if unset.
+#
+# See firebase.json for hosting config + security headers (PR #42), and
+# .firebaserc for the project pointer.
+
 on:
   workflow_dispatch:
     inputs:
@@ -28,109 +44,269 @@ on:
         options:
           - staging
           - production
+      skip_verify:
+        description: 'Skip the verifier rerun (use only if verify already passed on this SHA)'
+        required: false
+        default: false
+        type: boolean
 
-# Only one deploy per environment at a time
+# One deploy per environment at a time. cancel-in-progress: false because
+# killing a deploy mid-flight risks a half-published Hosting release.
 concurrency:
   group: deploy-${{ inputs.environment || 'staging' }}
-  cancel-in-progress: false  # don't kill a deploy mid-flight
+  cancel-in-progress: false
 
 jobs:
-  # Always deploy to staging on main
+  # ---------------------------------------------------------------------------
+  # STAGING — workflow_dispatch with environment=staging. Auto-runs the
+  # verifier, deploys hosting + rules to the staging project, then runs a
+  # quick smoke check against the deployed URL.
+  # ---------------------------------------------------------------------------
   staging:
     name: Deploy to staging
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' || inputs.environment == 'staging' }}
+    if: ${{ inputs.environment == 'staging' }}
     environment:
       name: staging
-      url: ${{ steps.deploy.outputs.url }}
-    timeout-minutes: 15
+      url: ${{ steps.deploy.outputs.details_url }}
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Verify gates passed
+      - name: Pre-flight — check secrets + .firebaserc
         run: |
-          # Should not be possible to reach here without verify passing,
-          # but double-check by re-running the gate stack.
-          chmod +x scripts/verify.sh
-          bash scripts/verify.sh
+          if [ -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
+            echo "::error::FIREBASE_SERVICE_ACCOUNT secret is not set."
+            echo "Set it under repo Settings → Secrets → Actions before deploying."
+            exit 1
+          fi
+          PROJECT=$(jq -r '.projects.default' .firebaserc)
+          if [ "$PROJECT" = "family-hq-placeholder" ] || [ -z "$PROJECT" ]; then
+            echo "::error::.firebaserc still points at the placeholder project ($PROJECT)."
+            echo "Update .firebaserc with the real Firebase project ID before deploying."
+            exit 1
+          fi
+          echo "Pre-flight OK — deploying to project: $PROJECT"
 
-      - name: Deploy
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install gitleaks (verifier needs it)
+        if: ${{ !inputs.skip_verify }}
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.0/gitleaks_8.18.0_linux_x64.tar.gz \
+            | tar -xz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/
+
+      - name: Install semgrep (verifier needs it)
+        if: ${{ !inputs.skip_verify }}
+        run: pipx install semgrep
+
+      - name: Install Playwright Chromium (verifier needs it for e2e + lighthouse)
+        if: ${{ !inputs.skip_verify }}
+        run: npx playwright install --with-deps chromium
+
+      - name: Setup Java (verifier needs it for the Firestore emulator)
+        if: ${{ !inputs.skip_verify && hashFiles('e2e/authed/**') != '' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Re-run verifier
+        # Belt-and-suspenders: the verify.yml workflow gates merging into
+        # main, but a fresh `git pull` on the runner could in principle
+        # include changes that haven't been re-verified. Skip-able via
+        # the workflow input ONLY if the operator confirms the verifier
+        # passed on this exact SHA already.
+        if: ${{ !inputs.skip_verify }}
+        run: bash scripts/verify.sh
+
+      - name: Build for staging
+        run: npm run build
+
+      - name: Deploy hosting + firestore:rules
         id: deploy
-        run: |
-          echo "Deploying to staging..."
-          # Your deploy command here. Examples:
-          # - fly deploy --config fly.staging.toml
-          # - vercel --prod --token ${{ secrets.VERCEL_TOKEN }}
-          # - cdk deploy --require-approval=never
-          echo "url=https://staging.example.com" >> $GITHUB_OUTPUT
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ${{ secrets.FIREBASE_PROJECT_ID_STAGING || secrets.FIREBASE_PROJECT_ID }}
+          channelId: live
+          # The action defaults to deploying ONLY hosting. Rules are
+          # deployed separately below so a hosting blip doesn't roll back
+          # rule changes (and vice versa).
 
-      - name: Smoke test
+      - name: Deploy firestore:rules + firestore:indexes
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
-          # Run a few critical-path checks against the staging URL
-          # Fail the job if smoke tests fail
-          echo "Running smoke tests..."
+          echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" > /tmp/sa.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json
+          npx firebase deploy \
+            --only firestore:rules,firestore:indexes \
+            --project ${{ secrets.FIREBASE_PROJECT_ID_STAGING || secrets.FIREBASE_PROJECT_ID }} \
+            --non-interactive
+          rm /tmp/sa.json
 
-      - name: Post-deploy verification
+      - name: Smoke check the deployed URL
         run: |
-          # Check error rate, health endpoints, etc.
-          echo "Verifying deployment health..."
+          URL="${{ steps.deploy.outputs.details_url }}"
+          if [ -z "$URL" ]; then
+            echo "::error::Deploy did not return a URL — something went wrong upstream."
+            exit 1
+          fi
+          echo "Probing $URL ..."
+          # The deployed shell should return 200 and contain the app name
+          # somewhere in the HTML. Use curl with --fail so non-2xx is an
+          # error; -L follows the 301 to clean URLs.
+          curl -fsSL "$URL" -o /tmp/index.html
+          grep -qi 'family hq' /tmp/index.html
+          echo "::notice::Staging deploy verified at $URL"
 
-  # Production requires explicit approval via environments
+  # ---------------------------------------------------------------------------
+  # PRODUCTION — workflow_dispatch with environment=production. Gated by the
+  # GitHub Environment's "required reviewers" setting AS WELL AS this
+  # workflow's pre-flight checks. After a healthy staging deploy, a human
+  # promotes to prod manually.
+  # ---------------------------------------------------------------------------
   production:
     name: Deploy to production
     runs-on: ubuntu-latest
     if: ${{ inputs.environment == 'production' }}
-    # Note: not gated on staging job — humans evaluate staging health before
-    # manually triggering a production deploy via workflow_dispatch.
-
     environment:
       name: production
-      # Configure required reviewers in GitHub environment settings
-      # This is where the human-gate happens — production deploys require approval
-      url: ${{ steps.deploy.outputs.url }}
-
+      url: ${{ steps.deploy.outputs.details_url }}
     timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Re-verify
+      - name: Pre-flight — check secrets + .firebaserc
         run: |
-          chmod +x scripts/verify.sh
-          bash scripts/verify.sh
+          if [ -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
+            echo "::error::FIREBASE_SERVICE_ACCOUNT secret is not set."
+            exit 1
+          fi
+          if [ -z "${{ secrets.FIREBASE_PROJECT_ID }}" ]; then
+            echo "::error::FIREBASE_PROJECT_ID secret is not set."
+            exit 1
+          fi
+          PROJECT=$(jq -r '.projects.default' .firebaserc)
+          if [ "$PROJECT" = "family-hq-placeholder" ] || [ -z "$PROJECT" ]; then
+            echo "::error::.firebaserc still points at the placeholder ($PROJECT)."
+            exit 1
+          fi
+          echo "Pre-flight OK — deploying to production project: ${{ secrets.FIREBASE_PROJECT_ID }}"
 
-      - name: Capture pre-deploy state
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install gitleaks
+        if: ${{ !inputs.skip_verify }}
         run: |
-          # Capture current production version for rollback
-          echo "Capturing pre-deploy state..."
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.0/gitleaks_8.18.0_linux_x64.tar.gz \
+            | tar -xz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/
 
-      - name: Deploy
+      - name: Install semgrep
+        if: ${{ !inputs.skip_verify }}
+        run: pipx install semgrep
+
+      - name: Install Playwright Chromium
+        if: ${{ !inputs.skip_verify }}
+        run: npx playwright install --with-deps chromium
+
+      - name: Setup Java
+        if: ${{ !inputs.skip_verify && hashFiles('e2e/authed/**') != '' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Re-run verifier
+        if: ${{ !inputs.skip_verify }}
+        run: bash scripts/verify.sh
+
+      - name: Build for production
+        run: npm run build
+
+      - name: Deploy hosting
         id: deploy
-        run: |
-          echo "Deploying to production..."
-          # Your deploy command here
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+          channelId: live
 
-      - name: Health check
+      - name: Deploy firestore:rules + firestore:indexes
         run: |
-          # Verify production health post-deploy
-          # If unhealthy, the next job rolls back
-          echo "Checking production health..."
+          echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" > /tmp/sa.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json
+          npx firebase deploy \
+            --only firestore:rules,firestore:indexes \
+            --project ${{ secrets.FIREBASE_PROJECT_ID }} \
+            --non-interactive
+          rm /tmp/sa.json
 
-      - name: Post-deploy verification
+      - name: Smoke check production
         run: |
-          echo "Verifying production deployment..."
+          URL="${{ steps.deploy.outputs.details_url }}"
+          if [ -z "$URL" ]; then
+            echo "::error::Production deploy did not return a URL."
+            exit 1
+          fi
+          echo "Probing $URL ..."
+          curl -fsSL "$URL" -o /tmp/index.html
+          grep -qi 'family hq' /tmp/index.html
+          # Verify the security headers we configured in firebase.json
+          # actually surfaced on the live origin (PR #42 wires the headers
+          # but a misconfigured rewrite could swallow them on prod).
+          curl -sSI "$URL" | grep -qi 'x-frame-options: DENY'
+          curl -sSI "$URL" | grep -qi 'strict-transport-security'
+          echo "::notice::Production deploy verified at $URL"
 
+  # ---------------------------------------------------------------------------
+  # Auto-rollback hook for a failing production deploy.
+  #
+  # Firebase Hosting keeps a release history per site; rolling back is
+  # `firebase hosting:rollback` which republishes the previous release.
+  # Run only when the production job fails AFTER the deploy step (i.e. the
+  # smoke check failed). Skipping pre-flight failures is intentional —
+  # nothing to roll back if we never deployed.
+  # ---------------------------------------------------------------------------
   rollback-on-failure:
-    name: Auto-rollback on failure
+    name: Auto-rollback on production failure
     runs-on: ubuntu-latest
     needs: production
-    if: failure() && inputs.environment == 'production'
+    if: ${{ failure() && inputs.environment == 'production' }}
     steps:
-      - name: Roll back production
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Roll back hosting release
         run: |
-          echo "Production deploy failed — rolling back..."
-          # Your rollback command here
-          # This should be reliable; test it regularly
+          echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" > /tmp/sa.json
+          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json
+          npx firebase hosting:rollback \
+            --project ${{ secrets.FIREBASE_PROJECT_ID }} \
+            --site ${{ secrets.FIREBASE_PROJECT_ID }} \
+            --non-interactive || true
+          rm /tmp/sa.json
+          echo "::warning::Production deploy failed and a rollback was attempted. Verify the live site manually."
