@@ -44,6 +44,9 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
 
 export const EMULATOR_PROJECT_ID = 'demo-familyhq';
+// HTTP intentionally — Firebase emulator binds to plain HTTP on loopback
+// and doesn't support HTTPS. Excluded from semgrep scanning via the
+// `e2e/` entry in .semgrepignore (with the full rationale there).
 export const AUTH_HOST = 'http://127.0.0.1:9099';
 export const FIRESTORE_HOST = 'http://127.0.0.1:8080';
 

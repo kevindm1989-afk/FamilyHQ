@@ -4,6 +4,16 @@
 # import, or own it, so it must not gate CI. Our app code under src/ IS scanned.
 design/handoff/
 
+# E2E test drivers — these files orchestrate a real browser against the
+# preview build (and, for the authed suite, the Firebase emulator). They
+# legitimately need patterns semgrep's default ruleset flags as suspicious:
+# http:// loopback URLs (emulator only speaks HTTP), localStorage.clear()
+# (test isolation), indexedDB.deleteDatabase (test isolation), etc. These
+# files NEVER ship to a browser — they only run inside Playwright's
+# headless chromium during `npm run e2e*`. The app code they exercise
+# (under src/) is still scanned.
+e2e/
+
 # --- Standard excludes ---
 # A project .semgrepignore REPLACES semgrep's built-in defaults, so the usual
 # noise/build dirs are re-listed here.
