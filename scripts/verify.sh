@@ -18,7 +18,14 @@ gates_passed=0
 gates_failed=0
 
 # Default per-gate timeout (seconds). Override with GATE_TIMEOUT env var.
-GATE_TIMEOUT="${GATE_TIMEOUT:-300}"
+#
+# 600s (10 min) is generous on purpose. The slow gates are npm-test (vitest
+# with v8 coverage instrumentation: 72 test files), e2e-authed (vite build
+# + firebase emulator startup + 4 tests with reload-after-signup), and
+# lighthouse (build + 2 LH runs). On shared-tenant CI runners with CPU
+# contention these can balloon 3-5x vs a clean local laptop. 300s was the
+# old default and clipped npm-test in CI on PR #51.
+GATE_TIMEOUT="${GATE_TIMEOUT:-600}"
 
 # --- helpers ---
 
@@ -42,8 +49,13 @@ run_gate() {
     local code=$?
     if [ "$code" -eq 124 ]; then
       echo "  [FAIL] $name (timed out after ${GATE_TIMEOUT}s)"
+      # GitHub annotation so the failure is visible in the workflow run
+      # summary page (next to the playwright notice annotations), not
+      # buried in the verifier's log.
+      [ "${CI:-}" = "true" ] && echo "::error title=Verifier gate failed::$name timed out after ${GATE_TIMEOUT}s"
     else
       echo "  [FAIL] $name (exit $code)"
+      [ "${CI:-}" = "true" ] && echo "::error title=Verifier gate failed::$name exit $code"
     fi
     gates_failed=$((gates_failed+1))
     overall_status=1
@@ -65,8 +77,13 @@ run_gate_shell() {
     local code=$?
     if [ "$code" -eq 124 ]; then
       echo "  [FAIL] $name (timed out after ${GATE_TIMEOUT}s)"
+      # GitHub annotation so the failure is visible in the workflow run
+      # summary page (next to the playwright notice annotations), not
+      # buried in the verifier's log.
+      [ "${CI:-}" = "true" ] && echo "::error title=Verifier gate failed::$name timed out after ${GATE_TIMEOUT}s"
     else
       echo "  [FAIL] $name (exit $code)"
+      [ "${CI:-}" = "true" ] && echo "::error title=Verifier gate failed::$name exit $code"
     fi
     gates_failed=$((gates_failed+1))
     overall_status=1
