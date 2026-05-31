@@ -14,7 +14,12 @@
  * without explicit cleanup, test N inherits test N-1's session).
  */
 import { expect, test } from '@playwright/test';
-import { isolatedAuthedTest, signUpFoundingParent, uniqueEmail } from './helpers';
+import {
+  ephemeralCredential,
+  isolatedAuthedTest,
+  signUpFoundingParent,
+  uniqueEmail,
+} from './helpers';
 
 test.describe('Authed happy path — founding parent signup', () => {
   isolatedAuthedTest(
@@ -25,7 +30,7 @@ test.describe('Authed happy path — founding parent signup', () => {
         familyName: 'The Test Family',
         userName,
         email: uniqueEmail(),
-        password: 'test-password-1234',
+        password: ephemeralCredential(),
       });
 
       // signUpFoundingParent already asserts the welcome heading appears.

@@ -14,6 +14,7 @@
  */
 import { expect } from '@playwright/test';
 import {
+  ephemeralCredential,
   isolatedAuthedTest,
   signInExistingUser,
   signOutViaUI,
@@ -27,7 +28,7 @@ isolatedAuthedTest.describe('Authed — returning user signs back in', () => {
     async ({ page }) => {
       const userName = 'Returning Parent';
       const email = uniqueEmail('returning');
-      const password = 'returning-pass-1234';
+      const password = ephemeralCredential();
 
       // 1. Sign up — creates the account + family doc + lands on dashboard.
       await signUpFoundingParent(page, {

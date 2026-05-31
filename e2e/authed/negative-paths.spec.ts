@@ -18,6 +18,7 @@
  */
 import { expect } from '@playwright/test';
 import {
+  ephemeralCredential,
   isolatedAuthedTest,
   signInExistingUser,
   signOutViaUI,
@@ -30,7 +31,7 @@ isolatedAuthedTest.describe('Authed negative paths', () => {
     'signing up with an EXISTING email surfaces a toast and stays on signup',
     async ({ page }) => {
       const email = uniqueEmail('taken');
-      const password = 'first-pass-1234';
+      const password = ephemeralCredential();
 
       // First signup succeeds.
       await signUpFoundingParent(page, {
@@ -49,7 +50,7 @@ isolatedAuthedTest.describe('Authed negative paths', () => {
       await page.getByLabel(/family name/i).fill('Second Family');
       await page.getByLabel(/your name/i).fill('Second Parent');
       await page.getByLabel(/email/i).fill(email);
-      await page.getByLabel(/password/i).fill('second-pass-1234');
+      await page.getByLabel(/password/i).fill(ephemeralCredential());
       await page.getByRole('button', { name: /create family/i }).click();
 
       // We did NOT advance to the dashboard.
@@ -68,7 +69,7 @@ isolatedAuthedTest.describe('Authed negative paths', () => {
     'signing in with the WRONG password surfaces a toast and stays on signin',
     async ({ page }) => {
       const email = uniqueEmail('wrongpw');
-      const correctPassword = 'correct-pass-1234';
+      const correctPassword = ephemeralCredential();
 
       // Seed: sign up so the account exists in the emulator.
       await signUpFoundingParent(page, {
@@ -80,8 +81,9 @@ isolatedAuthedTest.describe('Authed negative paths', () => {
       // Sign out so we can try a fresh sign-in.
       await signOutViaUI(page);
 
-      // Wrong password — auth must reject.
-      await signInExistingUser(page, email, 'totally-wrong-1234');
+      // Wrong password — auth must reject. Use a fresh credential
+      // (won't match the stored one with overwhelming probability).
+      await signInExistingUser(page, email, ephemeralCredential());
 
       // We stay on signin (no dashboard).
       await expect(page.getByRole('heading', { name: /welcome/i })).not.toBeVisible({
