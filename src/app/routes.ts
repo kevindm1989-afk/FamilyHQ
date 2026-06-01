@@ -19,6 +19,7 @@ export type ScreenId =
   | 'accessibility'
   | 'privacy'
   | 'terms'
+  | 'join'
   | 'add_chore'
   | 'add_event'
   | 'compose'
@@ -72,6 +73,17 @@ export const ROUTES: Record<ScreenId, RouteMeta> = {
   terms: {
     id: 'terms',
     path: '/terms',
+    isModal: false,
+    parentOnly: false,
+  },
+  // Public invite-redeem page. Path includes a :inviteId param — when a
+  // parent shares the link `<origin>/join/<id>`, the JoinScreen at this
+  // route loads the invite, shows the family details, and walks the
+  // invitee through signup (which writes their users doc with familyId
+  // from the invite). Never accessed while signed in.
+  join: {
+    id: 'join',
+    path: '/join/:inviteId',
     isModal: false,
     parentOnly: false,
   },

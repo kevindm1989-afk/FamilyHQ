@@ -335,6 +335,45 @@
     }
   },
 
+  "join": {
+    "title": "Join the family",
+    "loading": "Looking up the invitation…",
+    "invitedAs": "You're invited as a {{role}}. Joining as",
+    "email": "Email",
+    "name": "Your name",
+    "password": "Choose a password",
+    "submit": "Join family",
+    "cancel": "Cancel",
+    "genericError": "Something went wrong. Please try again.",
+    "role": {
+      "parent": "parent",
+      "member": "member"
+    },
+    "invalid": {
+      "title": "This invite is no longer valid",
+      "body": "The link may have been used, revoked, or mistyped. Ask the person who invited you to send a fresh link.",
+      "back": "← Back to sign in"
+    }
+  },
+
+  "familyInvite": {
+    "invite": "Invite someone",
+    "modalTitle": "Send an invitation",
+    "emailLabel": "Email address",
+    "nameLabel": "Their name (optional)",
+    "roleLabel": "Role",
+    "rolePicker": {
+      "parent": "Parent (full access)",
+      "member": "Member"
+    },
+    "send": "Create invitation",
+    "cancel": "Cancel",
+    "linkReady": "Invitation ready",
+    "linkInstructions": "Copy this link and send it to {{email}}. The link is single-use and bound to that email address.",
+    "copyLink": "Copy link",
+    "linkCopied": "Link copied to clipboard."
+  },
+
   "errorBoundary": {
     "title": "Something went wrong.",
     "body": "We hit an unexpected error. Your data is safe — nothing was lost. Try again, or reload the page.",

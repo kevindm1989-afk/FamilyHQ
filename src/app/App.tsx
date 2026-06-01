@@ -38,6 +38,11 @@ const AccessibilityStatementScreen = lazy(() =>
 const LegalScreen = lazy(() =>
   import('../features/legal/LegalScreen').then((m) => ({ default: m.LegalScreen })),
 );
+// Public invite-redeem page — only reachable while signed out (the unauthed
+// Gate routes it). Walks an invitee through signup against an existing family.
+const JoinScreen = lazy(() =>
+  import('../features/family/JoinScreen').then((m) => ({ default: m.JoinScreen })),
+);
 
 function BrandSplash(): ReactElement {
   const { t } = useTranslation();
@@ -110,6 +115,7 @@ function Gate(): ReactElement {
               path={ROUTES.terms.path}
               element={<LegalScreen variant="terms" mode="public" />}
             />
+            <Route path={ROUTES.join.path} element={<JoinScreen />} />
             <Route path="*" element={<LoginScreen />} />
           </Routes>
         </Suspense>

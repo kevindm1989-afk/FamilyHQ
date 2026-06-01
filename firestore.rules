@@ -140,6 +140,40 @@ service cloud.firestore {
           && getAfter(/databases/$(database)/documents/families/$(request.resource.data.familyId)).data.createdBy == request.auth.uid;
       }
 
+      // Invite-redemption bootstrap: a previously-uninvited person joins an
+      // EXISTING family via a parent's invite. Conjunctive properties:
+      //  (1) self-keyed: userId == auth.uid
+      //  (2) no pre-existing users doc for the caller (single-join)
+      //  (3) the user doc carries `inviteId` pointing at a real invite whose
+      //      email matches the caller's auth-token email (binds the invite to
+      //      the intended addressee — a leaked link can't be redeemed by an
+      //      arbitrary stranger), whose familyId/role match what the user doc
+      //      claims (no smuggled family/role swap), and whose status is still
+      //      'pending' (single-use). The invite is marked `accepted` in the
+      //      SAME atomic batch via `isInviteAcceptance` on the invites/{id}
+      //      update rule.
+      //  (4) fixed shape + safe defaults: isActive==true, allowanceBalance==0,
+      //      and exactly the known fields (no smuggled authority fields).
+      function inviteData() {
+        return get(/databases/$(database)/documents/invites/$(request.resource.data.inviteId)).data;
+      }
+      function isInviteBootstrap() {
+        return isSignedIn()
+          && request.auth.uid == userId
+          && !callerExists()
+          && 'inviteId' in request.resource.data
+          && request.resource.data.keys().hasOnly(
+               ['name', 'role', 'familyId', 'isActive',
+                'allowanceBalance', 'theme', 'inviteId'])
+          && request.resource.data.isActive == true
+          && request.resource.data.allowanceBalance == 0
+          && exists(/databases/$(database)/documents/invites/$(request.resource.data.inviteId))
+          && inviteData().email == request.auth.token.email
+          && inviteData().familyId == request.resource.data.familyId
+          && inviteData().role == request.resource.data.role
+          && inviteData().status == 'pending';
+      }
+
       // Subject may change ONLY name + theme; every authority field immutable
       // (M3, F2). A mixed write touching any authority field is denied.
       function selfUpdateAllowed() {
@@ -149,7 +183,12 @@ service cloud.firestore {
           && immutable('familyId')
           && absent('email')
           && immutable('isActive')
-          && immutable('allowanceBalance');
+          && immutable('allowanceBalance')
+          // inviteId is set ONCE at user create (founding-parent flow omits it;
+          // invite-bootstrap flow records the redeemed invite id) and is then
+          // an audit-only field — the subject must not mutate it.
+          && (absent('inviteId') ? !('inviteId' in resource.data)
+                                 : ('inviteId' in resource.data && immutable('inviteId')));
       }
 
       // A same-family active parent doing a BARE update of a member doc may
@@ -210,7 +249,7 @@ service cloud.firestore {
 
       allow get: if isActive() && sameFamily(resource);
       allow list: if listScopedToOwnFamily();
-      allow create: if isFoundingBootstrap();
+      allow create: if isFoundingBootstrap() || isInviteBootstrap();
       allow update: if selfUpdateAllowed() || parentUpdateAllowed() || parentAllowanceCredit();
       allow delete: if false;
     }
@@ -534,13 +573,52 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // --- invites (parent-only, family-scoped, adult email PI — M25/P9) ------
+    // --- invites (parent-managed; redeemable by the invitee) ----------------
+    // CREATE / LIST / DELETE remain parent-only and family-scoped (M25/P9).
+    // GET is widened to include a PUBLIC read of pending invites by ID — so
+    // the unauthenticated /join/<inviteId> redeem page can show the invitee
+    // who invited them before they finish signup. The leak surface is bounded:
+    //   - Only single-doc gets (no list) — strangers cannot enumerate.
+    //   - Only `status == 'pending'` — once accepted/revoked, public read closes.
+    //   - The inviteId is high-entropy (Firestore auto-id) — guessing one is
+    //     equivalent to guessing the recipient.
+    // The invitee email IS in the doc (we need it for the acceptance rule's
+    // email-bind check). A leaked invite link therefore exposes the invitee's
+    // email; that is the same exposure level as the link itself, which by
+    // construction is sent TO that email. Accepted via threat-model §P9.
+    //
+    // UPDATE accepts two paths:
+    //   - parent-managed: existing rule (immutable familyId).
+    //   - invite acceptance: the invitee (auth-token email matches the
+    //     invite's email) flips status pending → accepted, with every other
+    //     field immutable. Atomic with the matching users/{uid} create that
+    //     uses isInviteBootstrap.
     match /invites/{inviteId} {
-      allow get: if isParent() && sameFamily(resource);
+      function isInviteAcceptance() {
+        return isSignedIn()
+          && resource.data.email == request.auth.token.email
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'accepted'
+          && immutable('email')
+          && immutable('role')
+          && immutable('familyId')
+          && immutable('invitedBy')
+          && immutable('createdAt');
+      }
+      // The "public" read for the redeem page is restricted to UNAUTHENTICATED
+      // contexts. An anonymous visitor with a valid inviteId can read a
+      // pending invite (the redeem-page rendering path); ANY signed-in user
+      // — member of own family, cross-tenant parent, deactivated user — must
+      // fail this branch and fall through to the existing parent-only get.
+      // Without the !isSignedIn() guard, signed-in members would gain a P9
+      // leak path to the invitee email (a parent-only PI by threat-model).
+      allow get: if (isParent() && sameFamily(resource))
+        || (!isSignedIn() && resource.data.status == 'pending');
       allow list: if isParent() && listScopedToOwnFamily();
       allow create: if isParent() && incomingSameFamily();
-      allow update: if isParent() && sameFamily(resource)
-        && incomingSameFamily() && immutable('familyId');
+      allow update: if (isParent() && sameFamily(resource)
+                       && incomingSameFamily() && immutable('familyId'))
+        || isInviteAcceptance();
       allow delete: if isParent() && sameFamily(resource);
     }
 

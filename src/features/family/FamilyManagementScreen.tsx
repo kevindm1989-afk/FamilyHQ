@@ -26,7 +26,7 @@ import { useTranslation } from 'react-i18next';
 import { Avatar, Badge, BottomSheet, EmptyState, Skeleton } from '../../components';
 import { ToastViewport } from '../../app/ToastViewport';
 import { useToast } from '../../hooks/useToast';
-import type { UserWithId } from '../../lib/types';
+import type { Role, UserWithId } from '../../lib/types';
 import { NAME_MAX_LENGTH } from './familyManagementService';
 import {
   MONEY_INVALID_INDICATOR,
@@ -44,6 +44,11 @@ export interface FamilyManagementScreenProps {
   onRename: (uid: string, name: string) => Promise<void>;
   onSetActive: (uid: string, isActive: boolean) => Promise<void>;
   onRefresh: () => void;
+  /**
+   * Parent-only: create a new invite. Returns the doc id, which the screen
+   * wraps in a shareable `<origin>/join/<id>` URL for the parent to send.
+   */
+  onCreateInvite?: (input: { email: string; role: Role }) => Promise<string>;
 }
 
 interface RenameTarget {
@@ -71,11 +76,22 @@ function sortByNameThenUid(list: UserWithId[]): UserWithId[] {
 
 export function FamilyManagementScreen(props: FamilyManagementScreenProps): ReactElement {
   const { t } = useTranslation();
-  const { viewer, members, loading, error, onRename, onSetActive } = props;
+  const { viewer, members, loading, error, onRename, onSetActive, onCreateInvite } = props;
   const { showToast } = useToast();
 
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget | null>(null);
+  // Invite-creation modal state. `inviteForm` is the editable draft (open ===
+  // form visible). `inviteLink` is the post-success state showing the shareable
+  // URL to copy. They're mutually exclusive — once inviteLink is set, the
+  // form view is replaced by the "Invitation ready" view. Both clear on close.
+  const [inviteForm, setInviteForm] = useState<{
+    open: boolean;
+    email: string;
+    role: Role;
+    busy: boolean;
+  }>({ open: false, email: '', role: 'member', busy: false });
+  const [inviteLink, setInviteLink] = useState<{ url: string; email: string } | null>(null);
 
   // F3 — per-uid (or per-action) in-flight set. A double-tap of any action
   // must call the underlying callback ONCE while the first promise is in
@@ -192,6 +208,132 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
           ('section')` scope query. */}
       <div className="flex flex-col gap-16 px-16 pt-4 pb-24">
         <h1 className="text-display font-display font-extrabold text-ink">{t('family.title')}</h1>
+
+        {/* Invite affordance — parent-only (the route is parent-gated already,
+            so this just shows the button). Opens an inline form, then on
+            success swaps to a shareable-link panel. */}
+        {onCreateInvite && (
+          <button
+            type="button"
+            onClick={() => setInviteForm({ open: true, email: '', role: 'member', busy: false })}
+            className="self-start inline-flex min-h-tap items-center justify-center rounded-control bg-brand px-16 text-body font-semibold text-brand-on focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+          >
+            {t('familyInvite.invite')}
+          </button>
+        )}
+
+        {inviteForm.open && onCreateInvite && (
+          <form
+            className="flex flex-col gap-12 rounded-card border border-surface-line bg-surface-card p-16"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (inviteForm.busy) return;
+              const email = inviteForm.email.trim();
+              if (email.length === 0) return;
+              setInviteForm((s) => ({ ...s, busy: true }));
+              void onCreateInvite({ email, role: inviteForm.role })
+                .then((inviteId) => {
+                  const url = `${window.location.origin}/join/${inviteId}`;
+                  setInviteLink({ url, email });
+                  setInviteForm({ open: false, email: '', role: 'member', busy: false });
+                })
+                .catch((err) => {
+                  showToast(err instanceof Error ? err.message : t('familyInvite.send'));
+                  setInviteForm((s) => ({ ...s, busy: false }));
+                });
+            }}
+          >
+            <h2 className="text-title font-semibold text-ink">{t('familyInvite.modalTitle')}</h2>
+            <label className="flex flex-col gap-4 text-label font-semibold text-ink-2">
+              {t('familyInvite.emailLabel')}
+              <input
+                type="email"
+                required
+                value={inviteForm.email}
+                onChange={(e) => setInviteForm((s) => ({ ...s, email: e.target.value }))}
+                className="rounded-control border border-surface-line bg-surface-card px-12 py-8 text-body text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+              />
+            </label>
+            <fieldset className="flex flex-col gap-4">
+              <legend className="text-label font-semibold text-ink-2">
+                {t('familyInvite.roleLabel')}
+              </legend>
+              <div className="flex flex-wrap gap-8">
+                {(['member', 'parent'] as const).map((r) => (
+                  <label
+                    key={r}
+                    className={`inline-flex min-h-tap cursor-pointer items-center gap-6 rounded-control border px-12 text-body ${
+                      inviteForm.role === r
+                        ? 'border-brand bg-brand-light text-brand'
+                        : 'border-surface-line bg-surface-card text-ink-2'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="invite-role"
+                      checked={inviteForm.role === r}
+                      onChange={() => setInviteForm((s) => ({ ...s, role: r }))}
+                      className="sr-only"
+                    />
+                    {t(`familyInvite.rolePicker.${r}`)}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <div className="flex flex-wrap gap-8">
+              <button
+                type="submit"
+                disabled={inviteForm.busy}
+                className="inline-flex min-h-tap items-center justify-center rounded-control bg-brand px-16 text-body font-semibold text-brand-on disabled:opacity-50 focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+              >
+                {t('familyInvite.send')}
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setInviteForm({ open: false, email: '', role: 'member', busy: false })
+                }
+                className="inline-flex min-h-tap items-center justify-center rounded-control border border-surface-line bg-surface-card px-16 text-body font-semibold text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+              >
+                {t('familyInvite.cancel')}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {inviteLink && (
+          <div className="flex flex-col gap-8 rounded-card border border-status-success-line bg-status-success-bg p-16">
+            <h2 className="text-title font-semibold text-status-success-text">
+              {t('familyInvite.linkReady')}
+            </h2>
+            <p className="text-body text-ink">
+              {t('familyInvite.linkInstructions', { email: inviteLink.email })}
+            </p>
+            <code className="break-all rounded-control bg-surface-card px-12 py-8 text-meta text-ink">
+              {inviteLink.url}
+            </code>
+            <div className="flex flex-wrap gap-8">
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(inviteLink.url).then(() => {
+                    showToast(t('familyInvite.linkCopied'));
+                  });
+                }}
+                className="inline-flex min-h-tap items-center justify-center rounded-control bg-brand px-16 text-body font-semibold text-brand-on focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+              >
+                {t('familyInvite.copyLink')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setInviteLink(null)}
+                className="inline-flex min-h-tap items-center justify-center rounded-control border border-surface-line bg-surface-card px-16 text-body font-semibold text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+              >
+                {t('familyInvite.cancel')}
+              </button>
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <Skeleton label={t('family.loading')} />

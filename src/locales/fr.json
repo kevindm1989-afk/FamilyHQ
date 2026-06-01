@@ -335,6 +335,45 @@
     }
   },
 
+  "join": {
+    "title": "Rejoindre la famille",
+    "loading": "Recherche de l’invitation…",
+    "invitedAs": "Vous êtes invité en tant que {{role}}. Inscription avec",
+    "email": "Courriel",
+    "name": "Votre nom",
+    "password": "Choisissez un mot de passe",
+    "submit": "Rejoindre la famille",
+    "cancel": "Annuler",
+    "genericError": "Une erreur est survenue. Veuillez réessayer.",
+    "role": {
+      "parent": "parent",
+      "member": "membre"
+    },
+    "invalid": {
+      "title": "Cette invitation n’est plus valide",
+      "body": "Le lien a peut-être déjà été utilisé, révoqué ou mal saisi. Demandez à la personne qui vous a invité d’envoyer un nouveau lien.",
+      "back": "← Retour à la connexion"
+    }
+  },
+
+  "familyInvite": {
+    "invite": "Inviter quelqu’un",
+    "modalTitle": "Envoyer une invitation",
+    "emailLabel": "Adresse courriel",
+    "nameLabel": "Son nom (facultatif)",
+    "roleLabel": "Rôle",
+    "rolePicker": {
+      "parent": "Parent (accès complet)",
+      "member": "Membre"
+    },
+    "send": "Créer l’invitation",
+    "cancel": "Annuler",
+    "linkReady": "Invitation prête",
+    "linkInstructions": "Copiez ce lien et envoyez-le à {{email}}. Le lien est à usage unique et lié à cette adresse.",
+    "copyLink": "Copier le lien",
+    "linkCopied": "Lien copié dans le presse-papiers."
+  },
+
   "errorBoundary": {
     "title": "Une erreur est survenue.",
     "body": "Nous avons rencontré une erreur inattendue. Vos données sont en sécurité — rien n’a été perdu. Réessayez ou rechargez la page.",
