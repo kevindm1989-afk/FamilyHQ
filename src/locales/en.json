@@ -62,6 +62,7 @@
     "title": "Account",
     "signOut": "Sign out",
     "signOutError": "We could not fully sign you out. Please try again.",
+    "manageFamily": "Manage family",
     "resourcesLabel": "Site resources",
     "accessibilityLink": "Accessibility statement & feedback"
   },

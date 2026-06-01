@@ -204,8 +204,10 @@ function AccountScreen(): ReactElement {
   const { t } = useTranslation();
   const { signOut } = useAuth();
   const { showToast } = useToast();
+  const { role } = useFamily();
   const navigate = useNavigate();
   const [signingOut, setSigningOut] = useState(false);
+  const isParent = role === 'parent';
 
   const handleSignOut = (): void => {
     setSigningOut(true);
@@ -220,6 +222,16 @@ function AccountScreen(): ReactElement {
   return (
     <section className="flex flex-col gap-16 px-16 pt-4">
       <h1 className="text-display font-display font-extrabold text-ink">{t('account.title')}</h1>
+      {/* Parent-only navigation to /family. Without this, the family-management
+          surface (incl. the new Invite flow) is reachable only by typing the
+          URL — a real-deploy UX gap the founding-parent reported the moment
+          they tried to invite their first member. Member role hides this
+          entirely (the route guard would bounce a member anyway). */}
+      {isParent && (
+        <Button variant="soft" onClick={() => navigate(ROUTES.family.path)}>
+          {t('account.manageFamily')}
+        </Button>
+      )}
       <Button variant="danger" loading={signingOut} onClick={handleSignOut}>
         {t('account.signOut')}
       </Button>
