@@ -29,6 +29,7 @@ import { createUserWithEmailAndPassword, type Auth, type UserCredential } from '
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   serverTimestamp,
@@ -189,6 +190,20 @@ export async function acceptInvite(
       status: 'accepted',
     });
     await batch.commit();
+  } catch {
+    throw new InviteActionError();
+  }
+}
+
+/**
+ * Parent-only: delete a pending invite. Rules enforce parent + same family.
+ * Used by the FamilyManagementScreen's "Revoke" action when a parent typo'd
+ * an email or simply changed their mind. After revoke, the invite is gone
+ * from Firestore — the redeem link returns 404 to the invitee.
+ */
+export async function revokeInvite(deps: { db: Firestore }, inviteId: string): Promise<void> {
+  try {
+    await deleteDoc(doc(deps.db, INVITES_COLLECTION, inviteId));
   } catch {
     throw new InviteActionError();
   }

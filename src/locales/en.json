@@ -373,7 +373,10 @@
     "linkReady": "Invitation ready",
     "linkInstructions": "Copy this link and send it to {{email}}. The link is single-use and bound to that email address.",
     "copyLink": "Copy link",
-    "linkCopied": "Link copied to clipboard."
+    "linkCopied": "Link copied to clipboard.",
+    "pendingHeading": "Pending invitations",
+    "revoke": "Revoke",
+    "revoked": "Invitation revoked."
   },
 
   "errorBoundary": {

@@ -49,6 +49,18 @@ export interface FamilyManagementScreenProps {
    * wraps in a shareable `<origin>/join/<id>` URL for the parent to send.
    */
   onCreateInvite?: (input: { email: string; role: Role }) => Promise<string>;
+  /** Live list of PENDING invites (parent-only). Empty when no outstanding invites. */
+  pendingInvites?: ReadonlyArray<{
+    id: string;
+    email: string;
+    role: Role;
+    createdAt: number;
+  }>;
+  /**
+   * Parent-only: revoke (delete) a pending invite. Used by the "Revoke"
+   * button per row.
+   */
+  onRevokeInvite?: (inviteId: string) => Promise<void>;
 }
 
 interface RenameTarget {
@@ -76,7 +88,17 @@ function sortByNameThenUid(list: UserWithId[]): UserWithId[] {
 
 export function FamilyManagementScreen(props: FamilyManagementScreenProps): ReactElement {
   const { t } = useTranslation();
-  const { viewer, members, loading, error, onRename, onSetActive, onCreateInvite } = props;
+  const {
+    viewer,
+    members,
+    loading,
+    error,
+    onRename,
+    onSetActive,
+    onCreateInvite,
+    pendingInvites,
+    onRevokeInvite,
+  } = props;
   const { showToast } = useToast();
 
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null);
@@ -333,6 +355,71 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
               </button>
             </div>
           </div>
+        )}
+
+        {/* Pending invitations — parent-only audit of outstanding invites.
+            Visible only when there's at least one pending invite so the
+            screen stays uncluttered for the common (no-pending) state.
+            Each row exposes:
+              - the invitee email (visible to the parent only; never to
+                members per P9 + the rules' isParent + sameFamily get)
+              - the role granted on accept (badge)
+              - "Copy link" to re-share the same URL
+              - "Revoke" to delete the invite (the link 404s afterwards)
+        */}
+        {onRevokeInvite && pendingInvites && pendingInvites.length > 0 && (
+          <section
+            aria-labelledby="pending-invites-heading"
+            className="flex flex-col gap-8 rounded-card border border-surface-line bg-surface-card p-16"
+          >
+            <h2 id="pending-invites-heading" className="text-title font-semibold text-ink">
+              {t('familyInvite.pendingHeading')}
+            </h2>
+            <ul className="flex flex-col gap-12">
+              {pendingInvites.map((inv) => (
+                <li
+                  key={inv.id}
+                  className="flex flex-col gap-4 border-b border-surface-line pb-12 last:border-b-0 last:pb-0"
+                >
+                  <div className="flex flex-wrap items-center gap-8">
+                    <span className="flex-1 break-all text-body text-ink">{inv.email}</span>
+                    <Badge tone={inv.role === 'parent' ? 'family' : 'school'}>
+                      {t(`family.role.${inv.role}`)}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-8">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = `${window.location.origin}/join/${inv.id}`;
+                        void navigator.clipboard.writeText(url).then(() => {
+                          showToast(t('familyInvite.linkCopied'));
+                        });
+                      }}
+                      className="inline-flex min-h-tap items-center justify-center rounded-control border border-surface-line bg-surface-card px-12 text-meta font-semibold text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+                    >
+                      {t('familyInvite.copyLink')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const key = `revoke:${inv.id}`;
+                        if (!beginPending(key)) return;
+                        void onRevokeInvite(inv.id)
+                          .then(() => showToast(t('familyInvite.revoked')))
+                          .catch(() => showToast(t('family.toast.generic')))
+                          .finally(() => endPending(key));
+                      }}
+                      disabled={pending.has(`revoke:${inv.id}`)}
+                      className="inline-flex min-h-tap items-center justify-center rounded-control border border-status-danger-line bg-surface-card px-12 text-meta font-semibold text-status-danger-text disabled:opacity-50 focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+                    >
+                      {t('familyInvite.revoke')}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         {loading ? (
