@@ -2,7 +2,16 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Browser tab icon — SVG so the icon stays crisp at any zoom. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- PNG fallback for browsers that don't paint inline SVG favicons (older
+         Safari, some Android browsers). Same source as the PWA 192px icon. -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <!-- iOS Add-to-Home-Screen icon. iOS doesn't read the web-app manifest's
+         icon list for the home-screen tile — it looks for this link element
+         specifically, at 180x180. Without it iOS uses a blurry screenshot
+         of the page. -->
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <!-- theme-color mirrors design-tokens color.light.brand.indigo (#3730A3). -->
     <meta name="theme-color" content="#3730A3" />
