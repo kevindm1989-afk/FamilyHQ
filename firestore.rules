@@ -605,8 +605,15 @@ service cloud.firestore {
           && immutable('invitedBy')
           && immutable('createdAt');
       }
+      // The "public" read for the redeem page is restricted to UNAUTHENTICATED
+      // contexts. An anonymous visitor with a valid inviteId can read a
+      // pending invite (the redeem-page rendering path); ANY signed-in user
+      // — member of own family, cross-tenant parent, deactivated user — must
+      // fail this branch and fall through to the existing parent-only get.
+      // Without the !isSignedIn() guard, signed-in members would gain a P9
+      // leak path to the invitee email (a parent-only PI by threat-model).
       allow get: if (isParent() && sameFamily(resource))
-        || resource.data.status == 'pending';
+        || (!isSignedIn() && resource.data.status == 'pending');
       allow list: if isParent() && listScopedToOwnFamily();
       allow create: if isParent() && incomingSameFamily();
       allow update: if (isParent() && sameFamily(resource)
