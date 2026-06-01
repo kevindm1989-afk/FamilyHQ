@@ -50,6 +50,14 @@ export interface CalendarScreenProps {
     date: string;
     tag: EventTag;
   }) => Promise<void>;
+  /**
+   * Parent-only update path. Receives the eventId + the edited fields. Date is
+   * preserved from the original (Edit sheet doesn't re-pick the date).
+   */
+  onUpdateEvent?: (
+    eventId: string,
+    input: { title: string; description: string; date: string; tag: EventTag },
+  ) => Promise<void>;
 }
 
 /**
@@ -97,7 +105,7 @@ function formatTime(iso: string): string {
 
 export function CalendarScreen(props: CalendarScreenProps): ReactElement {
   const { t, i18n } = useTranslation();
-  const { viewer, feed, today, onDeleteEvent, onCreateEvent } = props;
+  const { viewer, feed, today, onDeleteEvent, onCreateEvent, onUpdateEvent } = props;
   const { showToast } = useToast();
   const canManage = canManageEvents(viewer);
   const locale = i18n.resolvedLanguage ?? 'en';
@@ -122,6 +130,11 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
     day: today.day,
   });
   const [addOpen, setAddOpen] = useState(false);
+  // When non-null, the AddEvent sheet renders in EDIT mode with this event's
+  // current values prefilled. Cleared when the sheet closes (success or
+  // dismiss). Mutually exclusive with the create flow: opening edit also
+  // closes the create sheet, and vice versa.
+  const [editingEvent, setEditingEvent] = useState<EventWithId | null>(null);
 
   const monthLabel = `${MONTH_NAMES[view.month]} ${view.year}`;
 
@@ -152,6 +165,14 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
 
   const handleCreate = async (value: AddEventValue): Promise<void> => {
     if (onCreateEvent) await onCreateEvent(value);
+  };
+  // Edit submit: forwards to the route's onUpdateEvent with the editing
+  // event's id. Date is preserved from the original event (AddEvent's edit
+  // mode hides the day picker; date editing is a follow-up).
+  const handleUpdate = async (value: AddEventValue): Promise<void> => {
+    if (editingEvent && onUpdateEvent) {
+      await onUpdateEvent(editingEvent.id, value);
+    }
   };
 
   return (
@@ -253,6 +274,14 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
               events={selectedEvents}
               canManage={canManage}
               onDelete={handleDelete}
+              onEdit={(event) => {
+                // Opening edit closes the create sheet (mutual exclusion) and
+                // seeds the form. AddEvent's own useEffect re-seeds on
+                // initialValue change, so opening edit on a different row
+                // swaps form state cleanly.
+                setAddOpen(false);
+                setEditingEvent(event);
+              }}
               tagLabel={TAG_LABEL}
             />
           </>
@@ -268,10 +297,28 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
       {canManage && (
         <div>
           <AddEvent
-            open={addOpen}
-            onClose={() => setAddOpen(false)}
+            open={addOpen || editingEvent !== null}
+            onClose={() => {
+              setAddOpen(false);
+              setEditingEvent(null);
+            }}
             author={viewer}
             onCreate={handleCreate}
+            onUpdate={handleUpdate}
+            // Conditional spread keeps `initialValue` ABSENT (not `undefined`)
+            // in create mode — required because tsconfig has
+            // exactOptionalPropertyTypes:true, which differentiates between
+            // missing optional props and explicit-undefined ones.
+            {...(editingEvent
+              ? {
+                  initialValue: {
+                    title: editingEvent.title,
+                    description: editingEvent.description ?? '',
+                    date: editingEvent.date,
+                    tag: editingEvent.tag,
+                  },
+                }
+              : {})}
             today={today}
           />
         </div>
@@ -343,13 +390,15 @@ interface AgendaProps {
   events: EventWithId[];
   canManage: boolean;
   onDelete: (eventId: string) => void;
+  /** Opens the edit sheet for this event. Parent owns the modal state. */
+  onEdit: (event: EventWithId) => void;
   /** Tag → human-readable label map resolved from i18n by the parent. */
   tagLabel: Record<EventTag, string>;
 }
 
 function Agenda(props: AgendaProps): ReactElement {
   const { t } = useTranslation();
-  const { events, canManage, onDelete, tagLabel } = props;
+  const { events, canManage, onDelete, onEdit, tagLabel } = props;
   return (
     <div data-testid="agenda" className="flex flex-col gap-12">
       {events.length === 0 ? (
@@ -376,6 +425,7 @@ function Agenda(props: AgendaProps): ReactElement {
                     <button
                       type="button"
                       aria-label={t('calendar.editEvent', { title: event.title })}
+                      onClick={() => onEdit(event)}
                       className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute hover:text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
                     >
                       <EditIcon />

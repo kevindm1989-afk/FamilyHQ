@@ -29,6 +29,7 @@ import {
   EVENT_CREATE_SUCCESS,
   EVENT_GENERIC_ERROR,
   EVENT_TAG_LABEL,
+  EVENT_UPDATE_SUCCESS,
   eventTagDotClass,
 } from './calendarService';
 
@@ -52,6 +53,19 @@ export interface AddEventProps {
   onCreate: (value: AddEventValue) => Promise<void>;
   /** The reference "today" so the Today/Tomorrow chips are deterministic. */
   today: { year: number; month: number; day: number };
+  /**
+   * When set, the sheet enters EDIT mode: title/description/tag prefill from
+   * this value, the sheet title becomes "Edit Event", the submit button
+   * becomes "Save", and submitting calls `onUpdate` instead of `onCreate`.
+   * The day picker is hidden in edit mode — the event's existing date is
+   * preserved (date editing is a follow-up).
+   */
+  initialValue?: AddEventValue;
+  /**
+   * Required when `initialValue` is set. Receives the edited value (with the
+   * original date preserved from `initialValue`).
+   */
+  onUpdate?: (value: AddEventValue) => Promise<void>;
 }
 
 type DayChoice = 'today' | 'tomorrow';
@@ -110,11 +124,12 @@ function resolveDay(
 }
 
 export function AddEvent(props: AddEventProps): ReactElement {
-  const { open, onClose, onCreate, today } = props;
+  const { open, onClose, onCreate, today, initialValue, onUpdate } = props;
+  const editMode = initialValue !== undefined;
   const { showToast } = useToast();
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [tag, setTag] = useState<EventTag>('family');
+  const [title, setTitle] = useState(initialValue?.title ?? '');
+  const [description, setDescription] = useState(initialValue?.description ?? '');
+  const [tag, setTag] = useState<EventTag>(initialValue?.tag ?? 'family');
   const [dayChoice, setDayChoice] = useState<DayChoice>('today');
   const [submitting, setSubmitting] = useState(false);
   // Becomes true after a submit attempt with an empty title (or a create error),
@@ -145,6 +160,18 @@ export function AddEvent(props: AddEventProps): ReactElement {
     if (open) titleRef.current?.focus();
   }, [open]);
 
+  // When the sheet re-opens with a different initialValue (the user clicked
+  // Edit on a different event), re-seed the form state from the new value.
+  // No-op for the create flow because initialValue stays undefined.
+  useEffect(() => {
+    if (open && initialValue) {
+      setTitle(initialValue.title);
+      setDescription(initialValue.description);
+      setTag(initialValue.tag);
+      setTitleInvalid(false);
+    }
+  }, [open, initialValue]);
+
   const trimmed = title.trim();
   const canSubmit = trimmed.length > 0 && !submitting;
 
@@ -157,18 +184,26 @@ export function AddEvent(props: AddEventProps): ReactElement {
       return;
     }
     setSubmitting(true);
+    // In edit mode the date is preserved from the original event (date editing
+    // is a follow-up). In create mode the date comes from the today/tomorrow
+    // chip selection.
     const value: AddEventValue = {
       title: trimmed,
       description,
-      date: resolveDay(dayChoice, today),
+      date: editMode ? initialValue.date : resolveDay(dayChoice, today),
       tag,
     };
-    void onCreate(value)
+    const action = editMode && onUpdate ? onUpdate(value) : onCreate(value);
+    void action
       .then(() => {
         if (!mountedRef.current || !openRef.current) return;
-        showToast(EVENT_CREATE_SUCCESS);
-        setTitle('');
-        setDescription('');
+        showToast(editMode ? EVENT_UPDATE_SUCCESS : EVENT_CREATE_SUCCESS);
+        // Only reset the form on create — for edit, the sheet is closing anyway
+        // and a future open might re-seed from a different initialValue.
+        if (!editMode) {
+          setTitle('');
+          setDescription('');
+        }
         setTitleInvalid(false);
         setSubmitting(false);
         onClose();
@@ -176,7 +211,7 @@ export function AddEvent(props: AddEventProps): ReactElement {
       .catch(() => {
         if (!mountedRef.current || !openRef.current) return;
         // Never surface a raw Firebase code / PII — generic copy only. Also flag
-        // the field so AT users see the create did not succeed.
+        // the field so AT users see the action did not succeed.
         showToast(EVENT_GENERIC_ERROR);
         setTitleInvalid(true);
         setSubmitting(false);
@@ -184,7 +219,7 @@ export function AddEvent(props: AddEventProps): ReactElement {
   };
 
   return (
-    <BottomSheet open={open} title="Add Event" onClose={onClose}>
+    <BottomSheet open={open} title={editMode ? 'Edit Event' : 'Add Event'} onClose={onClose}>
       <div className="flex flex-col gap-16">
         <div className="flex flex-col gap-6">
           <label htmlFor={titleId} className="text-label font-semibold text-ink-2">
@@ -236,53 +271,72 @@ export function AddEvent(props: AddEventProps): ReactElement {
           <legend id={dateLegendId} className="text-label font-semibold text-ink-2">
             Date
           </legend>
-          <div className="flex flex-wrap items-center gap-8">
-            {/* Today/Tomorrow are mutually-exclusive radios in a radiogroup named
+          {editMode ? (
+            // In edit mode the original date is preserved. Show it as static
+            // text so the user knows what day they're editing. Date editing
+            // (a real picker) is a follow-up — kept out of scope here so the
+            // edit-event flow ships behind the existing edit button on day 1.
+            <p className="text-body text-ink-mute">
+              {new Intl.DateTimeFormat(undefined, {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              }).format(new Date(initialValue.date))}
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-8">
+              {/* Today/Tomorrow are mutually-exclusive radios in a radiogroup named
                 by the Date legend; arrow keys move the selection (roving
                 tabindex), Tab reaches the group (Finding E). Pick date is OUTSIDE
                 the group. */}
-            <div role="radiogroup" aria-labelledby={dateLegendId} className="flex flex-wrap gap-8">
-              {(
-                [
-                  { choice: 'today', label: 'Today' },
-                  { choice: 'tomorrow', label: 'Tomorrow' },
-                ] as ReadonlyArray<{ choice: DayChoice; label: string }>
-              ).map(({ choice, label }) => {
-                const selected = dayChoice === choice;
-                return (
-                  <button
-                    key={choice}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    tabIndex={selected ? 0 : -1}
-                    onClick={() => setDayChoice(choice)}
-                    onKeyDown={(e) => handleRadioKeys(e, DAY_CHOICES, dayChoice, setDayChoice)}
-                    className={`inline-flex min-h-tap items-center justify-center rounded-control border px-16 text-body font-semibold transition-colors duration-cardPress ease-out focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none ${
-                      selected
-                        ? 'border-brand bg-brand-light text-brand'
-                        : 'border-surface-line bg-surface-card text-ink-2 hover:bg-surface-line2'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-            {/* Pick date is a placeholder affordance for a future native date
+              <div
+                role="radiogroup"
+                aria-labelledby={dateLegendId}
+                className="flex flex-wrap gap-8"
+              >
+                {(
+                  [
+                    { choice: 'today', label: 'Today' },
+                    { choice: 'tomorrow', label: 'Tomorrow' },
+                  ] as ReadonlyArray<{ choice: DayChoice; label: string }>
+                ).map(({ choice, label }) => {
+                  const selected = dayChoice === choice;
+                  return (
+                    <button
+                      key={choice}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      tabIndex={selected ? 0 : -1}
+                      onClick={() => setDayChoice(choice)}
+                      onKeyDown={(e) => handleRadioKeys(e, DAY_CHOICES, dayChoice, setDayChoice)}
+                      className={`inline-flex min-h-tap items-center justify-center rounded-control border px-16 text-body font-semibold transition-colors duration-cardPress ease-out focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none ${
+                        selected
+                          ? 'border-brand bg-brand-light text-brand'
+                          : 'border-surface-line bg-surface-card text-ink-2 hover:bg-surface-line2'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Pick date is a placeholder affordance for a future native date
                 picker — OUTSIDE the radiogroup, aria-disabled, and a no-op so it
                 does NOT silently change the selected day (Finding E). */}
-            <button
-              type="button"
-              aria-disabled="true"
-              onClick={() => {
-                /* no-op: no real picker yet; must not mutate the selected day */
-              }}
-              className="inline-flex min-h-tap cursor-not-allowed items-center justify-center rounded-control border border-surface-line bg-surface-card px-16 text-body font-semibold text-ink-mute opacity-50 focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none"
-            >
-              Pick date
-            </button>
-          </div>
+              <button
+                type="button"
+                aria-disabled="true"
+                onClick={() => {
+                  /* no-op: no real picker yet; must not mutate the selected day */
+                }}
+                className="inline-flex min-h-tap cursor-not-allowed items-center justify-center rounded-control border border-surface-line bg-surface-card px-16 text-body font-semibold text-ink-mute opacity-50 focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none"
+              >
+                Pick date
+              </button>
+            </div>
+          )}
         </fieldset>
 
         <fieldset className="flex flex-col gap-6">
@@ -333,13 +387,13 @@ export function AddEvent(props: AddEventProps): ReactElement {
           onClick={handleSubmit}
           className={`inline-flex min-h-tap items-center justify-center rounded-control bg-brand px-20 text-body font-semibold text-brand-on transition-colors duration-cardPress ease-out hover:bg-brand-dark focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus active:bg-brand-dark motion-reduce:transition-none ${!canSubmit ? 'cursor-not-allowed opacity-50' : ''}`}
         >
-          Add Event
+          {editMode ? 'Save changes' : 'Add Event'}
         </button>
 
         {/* Announce the in-flight state to assistive tech; the button label
-            stays "Add Event" so its accessible name is stable. */}
+            stays stable in each mode so its accessible name doesn't shift. */}
         <p aria-live="polite" className="sr-only">
-          {submitting ? 'Adding event…' : ''}
+          {submitting ? (editMode ? 'Saving changes…' : 'Adding event…') : ''}
         </p>
       </div>
 

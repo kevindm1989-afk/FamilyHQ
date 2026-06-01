@@ -13,7 +13,13 @@ import type { EventTag } from '../../lib/types';
 import { useFamily } from '../../hooks/useFamily';
 import { CalendarScreen } from './CalendarScreen';
 import { useFamilyEvents } from './useFamilyEvents';
-import { createEvent, deleteEvent, type CreateEventInput } from './calendarService';
+import {
+  createEvent,
+  deleteEvent,
+  updateEvent,
+  type CreateEventInput,
+  type UpdateEventInput,
+} from './calendarService';
 
 export default function CalendarRoute(): ReactElement {
   const { familyId, currentUser, members } = useFamily();
@@ -54,6 +60,14 @@ export default function CalendarRoute(): ReactElement {
     };
     await createEvent({ db }, input);
   };
+  const handleUpdate = async (
+    eventId: string,
+    value: { title: string; description: string; date: string; tag: EventTag },
+  ): Promise<void> => {
+    const { db } = await import('../../firebase/config');
+    const input: UpdateEventInput = { ...value };
+    await updateEvent({ db }, eventId, input);
+  };
 
   return (
     <CalendarScreen
@@ -64,6 +78,7 @@ export default function CalendarRoute(): ReactElement {
       today={today}
       onDeleteEvent={handleDelete}
       onCreateEvent={handleCreate}
+      onUpdateEvent={handleUpdate}
     />
   );
 }
