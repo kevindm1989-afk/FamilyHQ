@@ -1,6 +1,6 @@
 import { useState, type ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button, LanguageToggle, TextField } from '../../components';
 import { useToast } from '../../hooks/useToast';
 
@@ -24,6 +24,7 @@ type Mode = 'signin' | 'signup' | 'forgot';
 export function LoginScreen(): ReactElement {
   const { t } = useTranslation();
   const { showToast } = useToast();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>('signin');
   const [familyName, setFamilyName] = useState('');
   const [name, setName] = useState('');
@@ -64,11 +65,22 @@ export function LoginScreen(): ReactElement {
       if (mode === 'signin') {
         await withApi((api, { auth }) => api.signIn({ auth }, email, password));
         showToast(t('login.toast.signedIn'));
+        // Force a return to the dashboard. The Gate flips to AuthedApp on
+        // the auth-state change but doesn't touch the URL, so a user who
+        // landed on the login surface from a modal route (e.g. signed out
+        // from /switch-account) would otherwise re-enter the app on that
+        // SAME modal URL — Account screen with no bottom nav, dead-end.
+        navigate('/', { replace: true });
       } else if (mode === 'signup') {
         await withApi((api, { auth, db }) =>
           api.signUpFoundingParent({ auth, db }, { familyName, name, email, password }),
         );
         showToast(t('login.toast.created'));
+        // Same reason as signin. Belt-and-suspenders: signup almost always
+        // starts at '/' so this is usually a no-op, but if a future flow
+        // ever lands on signup from a non-root URL, this keeps the
+        // post-signup landing predictable.
+        navigate('/', { replace: true });
       } else {
         await withApi((api, { auth }) => api.sendPasswordReset({ auth }, email));
         showToast(t('login.toast.resetSent'));
