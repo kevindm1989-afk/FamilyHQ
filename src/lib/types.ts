@@ -50,6 +50,15 @@ export interface User {
   allowanceBalance: number;
   isActive: boolean; // parent-written only
   theme: Theme; // self-writable
+  /**
+   * Audit-only: when the user joined via an invite (not the founding-parent
+   * bootstrap), this carries the invite doc id that authorised their join.
+   * Required by firestore.rules' `isInviteBootstrap` so the rules can verify
+   * the invite is valid for this email/familyId/role. Permanent + read-only
+   * after create (both selfUpdate and parentUpdate enforce `immutable('inviteId')`).
+   * Absent for founding parents.
+   */
+  inviteId?: string;
 }
 
 /**

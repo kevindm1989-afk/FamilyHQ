@@ -16,6 +16,8 @@ import { useFamily } from '../../hooks/useFamily';
 import { FamilyManagementScreen } from './FamilyManagementScreen';
 import { useAllFamilyMembers } from './useAllFamilyMembers';
 import { FamilyManagementError, renameMember, setMemberActive } from './familyManagementService';
+import { createInvite, InviteActionError } from './inviteService';
+import type { Role } from '../../lib/types';
 
 export default function FamilyManagementRoute(): ReactElement {
   const { familyId, currentUser } = useFamily();
@@ -58,6 +60,22 @@ export default function FamilyManagementRoute(): ReactElement {
     await setMemberActive({ db }, uid, isActive);
   };
 
+  const handleCreateInvite = async (input: { email: string; role: Role }): Promise<string> => {
+    const db = await resolveDb();
+    if (db === null) {
+      throw new InviteActionError();
+    }
+    return createInvite(
+      { db },
+      {
+        email: input.email,
+        role: input.role,
+        familyId,
+        invitedBy: currentUser.id,
+      },
+    );
+  };
+
   return (
     <FamilyManagementScreen
       viewer={currentUser}
@@ -67,6 +85,7 @@ export default function FamilyManagementRoute(): ReactElement {
       onRename={handleRename}
       onSetActive={handleSetActive}
       onRefresh={() => void feed.refresh()}
+      onCreateInvite={handleCreateInvite}
     />
   );
 }
