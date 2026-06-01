@@ -14,6 +14,16 @@ design/handoff/
 # (under src/) is still scanned.
 e2e/
 
+# Firebase web-app config — committed in .env.production / .env.emulator /
+# .env.example. The apiKey + appId are PUBLIC IDENTIFIERS per Google's docs,
+# not secrets. The real access control lives in firestore.rules. Semgrep's
+# default ruleset doesn't know that and matches the AIzaSy... prefix as a
+# generic hardcoded-key finding. See .gitleaks.toml for the matching
+# allowlist on the secrets-scan side.
+.env.production
+.env.emulator
+.env.example
+
 # --- Standard excludes ---
 # A project .semgrepignore REPLACES semgrep's built-in defaults, so the usual
 # noise/build dirs are re-listed here.

@@ -1,0 +1,26 @@
+# Gitleaks config — extends the default ruleset with a narrow allowlist for
+# the committed Firebase web-app config files.
+#
+# Firebase "web app" config (apiKey, appId, etc.) values are PUBLIC IDENTIFIERS
+# per Google's own documentation — they are shipped to every browser in the
+# client bundle and are NOT secrets. The app's actual security model is:
+#   - firestore.rules (authoritative access control)
+#   - Firebase Auth (token + claims)
+#   - Hosting security headers in firebase.json
+# See: https://firebase.google.com/docs/projects/api-keys#general-info-api-keys
+#
+# Without this allowlist, gitleaks's default "Google API Key" rule matches the
+# AIzaSy... prefix and fails the secrets-scan gate. The allowlist is path-
+# scoped: anywhere else (a leaked apiKey in source code, a real Google Cloud
+# service-account key, etc.) is still flagged with the full default rules.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Firebase web app config — public identifiers, not secrets"
+paths = [
+  '''(^|/)\.env\.production$''',
+  '''(^|/)\.env\.emulator$''',
+  '''(^|/)\.env\.example$''',
+]
