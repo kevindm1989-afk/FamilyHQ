@@ -146,16 +146,23 @@ jobs:
           # rule changes (and vice versa).
 
       - name: Deploy firestore:rules + firestore:indexes
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        # Authenticate via GOOGLE_APPLICATION_CREDENTIALS pointing at the
+        # service-account JSON written to a temp file. The deprecated
+        # FIREBASE_TOKEN env var is NOT set here on purpose — setting it
+        # to the service-account JSON (which is not a valid CI token)
+        # confuses firebase-tools and the CLI exits 2 with "An unexpected
+        # error has occurred". GOOGLE_APPLICATION_CREDENTIALS is the
+        # forward-compatible auth path firebase-tools recommends.
         run: |
-          echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" > /tmp/sa.json
-          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json
-          npx firebase deploy \
-            --only firestore:rules,firestore:indexes \
-            --project ${{ secrets.FIREBASE_PROJECT_ID_STAGING || secrets.FIREBASE_PROJECT_ID }} \
-            --non-interactive
-          rm /tmp/sa.json
+          SA_PATH="$(mktemp /tmp/sa-XXXXXX.json)"
+          printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$SA_PATH"
+          chmod 600 "$SA_PATH"
+          GOOGLE_APPLICATION_CREDENTIALS="$SA_PATH" \
+            npx firebase deploy \
+              --only firestore:rules,firestore:indexes \
+              --project ${{ secrets.FIREBASE_PROJECT_ID_STAGING || secrets.FIREBASE_PROJECT_ID }} \
+              --non-interactive
+          rm -f "$SA_PATH"
 
       - name: Smoke check the deployed URL
         run: |
@@ -256,14 +263,18 @@ jobs:
           channelId: live
 
       - name: Deploy firestore:rules + firestore:indexes
+        # Authenticate via GOOGLE_APPLICATION_CREDENTIALS (see the staging
+        # job above for the rationale on why FIREBASE_TOKEN is NOT set).
         run: |
-          echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" > /tmp/sa.json
-          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json
-          npx firebase deploy \
-            --only firestore:rules,firestore:indexes \
-            --project ${{ secrets.FIREBASE_PROJECT_ID }} \
-            --non-interactive
-          rm /tmp/sa.json
+          SA_PATH="$(mktemp /tmp/sa-XXXXXX.json)"
+          printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$SA_PATH"
+          chmod 600 "$SA_PATH"
+          GOOGLE_APPLICATION_CREDENTIALS="$SA_PATH" \
+            npx firebase deploy \
+              --only firestore:rules,firestore:indexes \
+              --project ${{ secrets.FIREBASE_PROJECT_ID }} \
+              --non-interactive
+          rm -f "$SA_PATH"
 
       - name: Smoke check production
         run: |
@@ -301,12 +312,17 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Roll back hosting release
+        # Same GOOGLE_APPLICATION_CREDENTIALS auth pattern as the deploy
+        # steps. Best-effort (|| true so a failed rollback doesn't double-
+        # fail the workflow).
         run: |
-          echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" > /tmp/sa.json
-          export GOOGLE_APPLICATION_CREDENTIALS=/tmp/sa.json
-          npx firebase hosting:rollback \
-            --project ${{ secrets.FIREBASE_PROJECT_ID }} \
-            --site ${{ secrets.FIREBASE_PROJECT_ID }} \
-            --non-interactive || true
-          rm /tmp/sa.json
+          SA_PATH="$(mktemp /tmp/sa-XXXXXX.json)"
+          printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$SA_PATH"
+          chmod 600 "$SA_PATH"
+          GOOGLE_APPLICATION_CREDENTIALS="$SA_PATH" \
+            npx firebase hosting:rollback \
+              --project ${{ secrets.FIREBASE_PROJECT_ID }} \
+              --site ${{ secrets.FIREBASE_PROJECT_ID }} \
+              --non-interactive || true
+          rm -f "$SA_PATH"
           echo "::warning::Production deploy failed and a rollback was attempted. Verify the live site manually."
