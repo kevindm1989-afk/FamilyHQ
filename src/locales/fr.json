@@ -60,6 +60,7 @@
 
   "account": {
     "title": "Compte",
+    "done": "← Terminé",
     "signOut": "Se déconnecter",
     "signOutError": "Nous n’avons pas pu vous déconnecter complètement. Veuillez réessayer.",
     "manageFamily": "Gérer la famille",
