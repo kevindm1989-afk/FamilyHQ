@@ -68,10 +68,14 @@ jobs:
     if: ${{ inputs.environment == 'staging' }}
     environment:
       name: staging
-      # Deterministic URL — Firebase Hosting always serves channel=live at
-      # https://<project-id>.web.app (the FirebaseExtended action's
-      # details_url output is only populated for preview channels).
-      url: https://${{ secrets.FIREBASE_PROJECT_ID_STAGING || secrets.FIREBASE_PROJECT_ID }}.web.app
+      # Hosting URL hardcoded because GitHub Actions does NOT allow
+      # `secrets.*` references in the `environment.url` field — only env,
+      # vars, inputs, github, runner contexts are permitted. The project
+      # is also pinned in .firebaserc, so a single source of truth lives
+      # in this repo (not a forkable abstraction). If the project ID
+      # ever changes, update .firebaserc + .env.production + the two
+      # `environment.url` strings in this workflow together.
+      url: https://familyhq-68638.web.app
     timeout-minutes: 20
 
     steps:
@@ -197,8 +201,8 @@ jobs:
     if: ${{ inputs.environment == 'production' }}
     environment:
       name: production
-      # Same deterministic URL as staging.
-      url: https://${{ secrets.FIREBASE_PROJECT_ID }}.web.app
+      # Hardcoded — see the staging job above for the rationale.
+      url: https://familyhq-68638.web.app
     timeout-minutes: 30
 
     steps:
