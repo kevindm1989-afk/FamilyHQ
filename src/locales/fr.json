@@ -358,6 +358,15 @@
     }
   },
 
+  "joinAuthed": {
+    "title": "Vous êtes déjà connecté",
+    "body": "Pour accepter cette invitation, déconnectez-vous et rouvrez le lien.",
+    "bodyNamed": "Vous êtes connecté en tant que {{name}}. Pour accepter cette invitation, déconnectez-vous et rouvrez le lien.",
+    "signOut": "Se déconnecter",
+    "stay": "Rester connecté",
+    "error": "Impossible de se déconnecter. Veuillez réessayer."
+  },
+
   "familyInvite": {
     "invite": "Inviter quelqu’un",
     "modalTitle": "Envoyer une invitation",

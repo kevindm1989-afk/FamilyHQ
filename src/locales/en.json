@@ -358,6 +358,15 @@
     }
   },
 
+  "joinAuthed": {
+    "title": "You're already signed in",
+    "body": "To accept this invitation, sign out and reopen the link.",
+    "bodyNamed": "You're signed in as {{name}}. To accept this invitation, sign out and reopen the link.",
+    "signOut": "Sign out",
+    "stay": "Stay signed in",
+    "error": "Could not sign out. Please try again."
+  },
+
   "familyInvite": {
     "invite": "Invite someone",
     "modalTitle": "Send an invitation",

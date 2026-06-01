@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AccessibilityStatementScreen } from '../features/accessibility/AccessibilityStatementScreen';
 import { LegalScreen } from '../features/legal/LegalScreen';
+import { JoinAuthedHandoff } from '../features/family/JoinAuthedHandoff';
 import { resetTour } from '../features/onboarding/tourStorage';
 import { AvatarChip, BottomNav, Button, LanguageToggle, Skeleton, TopBar } from '../components';
 import type { NavTab } from '../components';
@@ -164,6 +165,11 @@ export function AppShell(): ReactElement {
           />
           <Route path={ROUTES.compose.path} element={L(<BoardRoute />, <BoardRouteSkeleton />)} />
           <Route path={ROUTES.account_switcher.path} element={<AccountScreen />} />
+          {/* /join/:inviteId — the public JoinScreen handles the unauth case
+              (App.tsx). When an already-signed-in visitor opens the link, we
+              land them on a small handoff that explains the conflict and
+              offers a sign-out so they can redeem from the same URL. */}
+          <Route path={ROUTES.join.path} element={<JoinAuthedHandoff />} />
           <Route path="*" element={<Navigate to={ROUTES.dashboard.path} replace />} />
         </Routes>
       </main>
