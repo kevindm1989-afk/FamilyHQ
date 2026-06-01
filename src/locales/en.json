@@ -60,6 +60,7 @@
 
   "account": {
     "title": "Account",
+    "done": "← Done",
     "signOut": "Sign out",
     "signOutError": "We could not fully sign you out. Please try again.",
     "resourcesLabel": "Site resources",

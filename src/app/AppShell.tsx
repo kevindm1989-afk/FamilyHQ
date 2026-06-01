@@ -219,6 +219,14 @@ function AccountScreen(): ReactElement {
 
   return (
     <section className="flex flex-col gap-16 px-16 pt-4">
+      {/* Done / Home button — Account is a modal route that deliberately hides
+          the BottomNav, which means the user has no in-app affordance to
+          return to the dashboard otherwise (real-deploy UX report). A clearly
+          labelled top-of-screen button is the modal-pattern norm. Uses
+          'ghost' variant so it doesn't compete visually with Sign out below. */}
+      <Button variant="ghost" onClick={() => navigate(ROUTES.dashboard.path)}>
+        {t('account.done')}
+      </Button>
       <h1 className="text-display font-display font-extrabold text-ink">{t('account.title')}</h1>
       <Button variant="danger" loading={signingOut} onClick={handleSignOut}>
         {t('account.signOut')}
