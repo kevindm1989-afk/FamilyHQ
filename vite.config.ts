@@ -53,8 +53,15 @@ export default defineConfig(async () => ({
       // updateServiceWorker(true) call — the prompt component owns that
       // decision so a mid-task user is never reloaded silently.
       registerType: 'prompt',
-      // Icons are placeholders; real icon set is a Phase 4 / design deliverable.
-      includeAssets: ['favicon.svg'],
+      // Static assets that need to be in the precache but aren't otherwise
+      // emitted by Vite's bundler (those come in via globPatterns below).
+      // favicon.svg is the SVG browser-tab icon; the apple-touch-icon is
+      // what iOS reads from <link rel="apple-touch-icon"> in index.html
+      // (it does NOT read the web-app manifest's icon list for the home-
+      // screen tile, so the file must be precached separately to work
+      // offline). The 192/512 manifest icons are picked up by the
+      // globPatterns *.png rule below.
+      includeAssets: ['favicon.svg', 'icons/apple-touch-icon.png'],
       workbox: {
         // The app shell — every static artifact Vite emits. The SW precaches
         // these at install time so a cold offline launch boots the SPA and
