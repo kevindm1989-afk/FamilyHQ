@@ -62,6 +62,7 @@
     "title": "Compte",
     "signOut": "Se déconnecter",
     "signOutError": "Nous n’avons pas pu vous déconnecter complètement. Veuillez réessayer.",
+    "manageFamily": "Gérer la famille",
     "resourcesLabel": "Ressources du site",
     "accessibilityLink": "Déclaration d’accessibilité et commentaires"
   },
