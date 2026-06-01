@@ -105,6 +105,14 @@ vi.mock('../features/calendar/useFamilyEvents', () => ({
 vi.mock('../features/board/useFamilyPosts', () => ({
   useFamilyPosts: () => ({ posts: [], loading: false, error: null, refresh: vi.fn() }),
 }));
+vi.mock('../features/family/usePendingFamilyInvites', () => ({
+  usePendingFamilyInvites: () => ({
+    invites: [],
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+  }),
+}));
 vi.mock('../features/allowance/useAllowanceHistory', () => ({
   useAllowanceHistory: () => ({
     transactions: [],

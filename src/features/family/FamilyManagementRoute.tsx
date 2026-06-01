@@ -16,12 +16,14 @@ import { useFamily } from '../../hooks/useFamily';
 import { FamilyManagementScreen } from './FamilyManagementScreen';
 import { useAllFamilyMembers } from './useAllFamilyMembers';
 import { FamilyManagementError, renameMember, setMemberActive } from './familyManagementService';
-import { createInvite, InviteActionError } from './inviteService';
+import { createInvite, InviteActionError, revokeInvite } from './inviteService';
+import { usePendingFamilyInvites } from './usePendingFamilyInvites';
 import type { Role } from '../../lib/types';
 
 export default function FamilyManagementRoute(): ReactElement {
   const { familyId, currentUser } = useFamily();
   const feed = useAllFamilyMembers(familyId);
+  const invitesFeed = usePendingFamilyInvites(familyId);
 
   if (!currentUser || !familyId) {
     return <Placeholder title="Family" />;
@@ -76,6 +78,14 @@ export default function FamilyManagementRoute(): ReactElement {
     );
   };
 
+  const handleRevokeInvite = async (inviteId: string): Promise<void> => {
+    const db = await resolveDb();
+    if (db === null) {
+      throw new InviteActionError();
+    }
+    await revokeInvite({ db }, inviteId);
+  };
+
   return (
     <FamilyManagementScreen
       viewer={currentUser}
@@ -86,6 +96,8 @@ export default function FamilyManagementRoute(): ReactElement {
       onSetActive={handleSetActive}
       onRefresh={() => void feed.refresh()}
       onCreateInvite={handleCreateInvite}
+      pendingInvites={invitesFeed.invites}
+      onRevokeInvite={handleRevokeInvite}
     />
   );
 }

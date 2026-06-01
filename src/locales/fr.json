@@ -373,7 +373,10 @@
     "linkReady": "Invitation prête",
     "linkInstructions": "Copiez ce lien et envoyez-le à {{email}}. Le lien est à usage unique et lié à cette adresse.",
     "copyLink": "Copier le lien",
-    "linkCopied": "Lien copié dans le presse-papiers."
+    "linkCopied": "Lien copié dans le presse-papiers.",
+    "pendingHeading": "Invitations en attente",
+    "revoke": "Révoquer",
+    "revoked": "Invitation révoquée."
   },
 
   "errorBoundary": {

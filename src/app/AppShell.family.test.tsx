@@ -120,6 +120,17 @@ vi.mock('../features/calendar/useFamilyEvents', () => ({
 vi.mock('../features/board/useFamilyPosts', () => ({
   useFamilyPosts: () => ({ posts: [], loading: false, error: null, refresh: vi.fn() }),
 }));
+// Pending-invites feed — mock to an empty settled list so the hook never
+// touches real Firestore inside this test bed. The screen renders nothing
+// for the empty case, so existing assertions are unaffected.
+vi.mock('../features/family/usePendingFamilyInvites', () => ({
+  usePendingFamilyInvites: () => ({
+    invites: [],
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+  }),
+}));
 vi.mock('../features/allowance/useAllowanceHistory', () => ({
   useAllowanceHistory: () => ({
     transactions: [],
