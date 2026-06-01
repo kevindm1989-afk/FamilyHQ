@@ -68,7 +68,10 @@ jobs:
     if: ${{ inputs.environment == 'staging' }}
     environment:
       name: staging
-      url: ${{ steps.deploy.outputs.details_url }}
+      # Deterministic URL — Firebase Hosting always serves channel=live at
+      # https://<project-id>.web.app (the FirebaseExtended action's
+      # details_url output is only populated for preview channels).
+      url: https://${{ secrets.FIREBASE_PROJECT_ID_STAGING || secrets.FIREBASE_PROJECT_ID }}.web.app
     timeout-minutes: 20
 
     steps:
@@ -165,12 +168,15 @@ jobs:
           rm -f "$SA_PATH"
 
       - name: Smoke check the deployed URL
+        # FirebaseExtended/action-hosting-deploy@v0 only emits
+        # `details_url` for PREVIEW channels (with auto-expiring URLs);
+        # for channel=live it doesn't set the output. So we derive the
+        # live URL deterministically from the project ID. The pattern is
+        # always https://<project-id>.web.app (Firebase also serves it at
+        # <project-id>.firebaseapp.com but .web.app is the canonical one).
         run: |
-          URL="${{ steps.deploy.outputs.details_url }}"
-          if [ -z "$URL" ]; then
-            echo "::error::Deploy did not return a URL — something went wrong upstream."
-            exit 1
-          fi
+          PROJECT="${{ secrets.FIREBASE_PROJECT_ID_STAGING || secrets.FIREBASE_PROJECT_ID }}"
+          URL="https://${PROJECT}.web.app"
           echo "Probing $URL ..."
           # The deployed shell should return 200 and contain the app name
           # somewhere in the HTML. Use curl with --fail so non-2xx is an
@@ -191,7 +197,8 @@ jobs:
     if: ${{ inputs.environment == 'production' }}
     environment:
       name: production
-      url: ${{ steps.deploy.outputs.details_url }}
+      # Same deterministic URL as staging.
+      url: https://${{ secrets.FIREBASE_PROJECT_ID }}.web.app
     timeout-minutes: 30
 
     steps:
@@ -277,12 +284,12 @@ jobs:
           rm -f "$SA_PATH"
 
       - name: Smoke check production
+        # Same deterministic URL derivation as the staging job — the
+        # FirebaseExtended action's details_url output is unset for
+        # channel=live.
         run: |
-          URL="${{ steps.deploy.outputs.details_url }}"
-          if [ -z "$URL" ]; then
-            echo "::error::Production deploy did not return a URL."
-            exit 1
-          fi
+          PROJECT="${{ secrets.FIREBASE_PROJECT_ID }}"
+          URL="https://${PROJECT}.web.app"
           echo "Probing $URL ..."
           curl -fsSL "$URL" -o /tmp/index.html
           grep -qi 'family hq' /tmp/index.html
