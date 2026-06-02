@@ -15,9 +15,11 @@
  *   every device.
  *
  * Storage versioning:
- *   The key is `familyhq.onboarding.v1`. If the tour content materially
- *   changes (extra step, reordered, removed step), bump the version so
- *   the new tour fires once per returning user.
+ *   The key is `familyhq.onboarding.v2` (was v1 — bumped when the parent-
+ *   only `family` step was rewritten to focus on inviting). If the tour
+ *   content materially changes (extra step, reordered, removed step, or
+ *   substantive copy on an existing step), bump the version so the new
+ *   tour fires once per returning user.
  *
  * A11y:
  *   - role="dialog" aria-modal aria-labelledby pinned to the step heading

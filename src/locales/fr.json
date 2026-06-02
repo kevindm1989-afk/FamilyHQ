@@ -432,8 +432,8 @@
         "body": "Un registre en lecture seule de chaque tâche approuvée et du solde courant. Les membres voient le leur ; les parents choisissent celui qu’ils consultent."
       },
       "family": {
-        "title": "Gestion de la famille",
-        "body": "Outils réservés aux parents : inviter des membres, gérer les rôles et retirer les membres qui quittent le foyer. Les membres ne voient pas cette section."
+        "title": "Inviter la famille",
+        "body": "Depuis le menu Compte, touchez « Gérer la famille » pour envoyer à chaque membre un lien d’invitation en un tap. Les invitations en attente expirent après 14 jours, et vous pouvez renommer, désactiver ou révoquer une invitation à tout moment. Les membres ne voient pas cette section."
       }
     }
   },
