@@ -24,6 +24,7 @@ const getDocMock = vi.fn();
 const deleteDocMock = vi.fn();
 const collectionMock = vi.fn();
 const docMock = vi.fn();
+const createUserMock = vi.fn();
 
 vi.mock('firebase/firestore', () => ({
   addDoc: (...a: unknown[]) => addDocMock(...a),
@@ -35,7 +36,7 @@ vi.mock('firebase/firestore', () => ({
   serverTimestamp: vi.fn(),
 }));
 vi.mock('firebase/auth', () => ({
-  createUserWithEmailAndPassword: vi.fn(),
+  createUserWithEmailAndPassword: (...a: unknown[]) => createUserMock(...a),
 }));
 
 import {
@@ -44,6 +45,7 @@ import {
   revokeInvite,
   acceptInvite,
   InviteActionError,
+  INVITE_EMAIL_IN_USE_ERROR,
 } from './inviteService';
 
 const db = { __db: true } as never;
@@ -55,6 +57,7 @@ beforeEach(() => {
   deleteDocMock.mockReset();
   collectionMock.mockReset();
   docMock.mockReset();
+  createUserMock.mockReset();
   // `.withConverter` is chained in the service — the mock collection and
   // doc refs must support it without throwing, otherwise the try/catch
   // swallows a TypeError and surfaces as a generic InviteActionError that
@@ -198,5 +201,65 @@ describe('acceptInvite — validation gates', () => {
         { inviteId: 'inv-1', email: 'WRONG@example.test', password: 'pw', name: 'Alice' },
       ),
     ).rejects.toBeInstanceOf(InviteActionError);
+  });
+
+  it('maps `auth/email-already-in-use` to the specific INVITE_EMAIL_IN_USE_ERROR message (so the UI can offer "Sign in instead")', async () => {
+    getDocMock.mockResolvedValue({
+      id: 'inv-1',
+      exists: () => true,
+      data: () => ({
+        status: 'pending',
+        email: 'invitee@example.test',
+        role: 'member',
+        familyId: 'fam-A',
+        invitedBy: 'p1',
+        createdAt: 1,
+      }),
+    });
+    // Firebase auth errors carry a `code` string. acceptInvite must
+    // distinguish this one code from the generic "something went wrong".
+    const firebaseErr = Object.assign(new Error('Firebase: email already in use'), {
+      code: 'auth/email-already-in-use',
+    });
+    createUserMock.mockRejectedValue(firebaseErr);
+    await expect(
+      acceptInvite(
+        { auth, db },
+        { inviteId: 'inv-1', email: 'invitee@example.test', password: 'pw', name: 'Alice' },
+      ),
+    ).rejects.toMatchObject({
+      name: 'InviteActionError',
+      message: INVITE_EMAIL_IN_USE_ERROR,
+    });
+  });
+
+  it('still collapses other Firebase auth errors (e.g. weak-password) to the generic message', async () => {
+    getDocMock.mockResolvedValue({
+      id: 'inv-1',
+      exists: () => true,
+      data: () => ({
+        status: 'pending',
+        email: 'invitee@example.test',
+        role: 'member',
+        familyId: 'fam-A',
+        invitedBy: 'p1',
+        createdAt: 1,
+      }),
+    });
+    const firebaseErr = Object.assign(new Error('Firebase: weak password'), {
+      code: 'auth/weak-password',
+    });
+    createUserMock.mockRejectedValue(firebaseErr);
+    await expect(
+      acceptInvite(
+        { auth, db },
+        { inviteId: 'inv-1', email: 'invitee@example.test', password: 'pw', name: 'Alice' },
+      ),
+    ).rejects.toMatchObject({
+      name: 'InviteActionError',
+      // The generic message — NOT the email-in-use one — so the UI shows
+      // a plain retry toast without the "Sign in instead" affordance.
+      message: expect.not.stringContaining(INVITE_EMAIL_IN_USE_ERROR),
+    });
   });
 });

@@ -48,6 +48,12 @@ export const INVITE_ACCEPT_SUCCESS = 'Welcome to the family!';
 export const INVITE_GENERIC_ERROR = 'Something went wrong. Please try again.';
 export const INVITE_INVALID_ERROR =
   "This invitation couldn't be redeemed. The link may have been used or revoked.";
+// Distinct from the generic error so the UI can offer a "Sign in instead"
+// affordance instead of letting the visitor retry signup forever. Safe to
+// be specific here — the invitee already knows the email is theirs (they
+// got the link via it), so naming the condition doesn't leak account info.
+export const INVITE_EMAIL_IN_USE_ERROR =
+  'You already have an account with this email. Sign in instead.';
 
 export class InviteActionError extends Error {
   constructor(message: string = INVITE_GENERIC_ERROR) {
@@ -168,9 +174,16 @@ export async function acceptInvite(
   let credential: UserCredential;
   try {
     credential = await createUserWithEmailAndPassword(deps.auth, email, input.password);
-  } catch {
-    // Map all Firebase auth errors (weak password, email-already-in-use,
-    // invalid-email, etc.) to one generic message. The user retries.
+  } catch (err) {
+    // `auth/email-already-in-use` is the one Firebase code worth distin-
+    // guishing here: the invitee can't sign UP with this email, but they
+    // can sign IN — the UI surfaces a "Sign in instead" link off the
+    // specific error message. Everything else (weak password, invalid
+    // email, network, etc.) collapses to the generic retry message.
+    const code = (err as { code?: unknown } | null)?.code;
+    if (code === 'auth/email-already-in-use') {
+      throw new InviteActionError(INVITE_EMAIL_IN_USE_ERROR);
+    }
     throw new InviteActionError();
   }
   const uid = credential.user.uid;

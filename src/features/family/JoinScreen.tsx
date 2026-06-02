@@ -24,7 +24,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Button, TextField } from '../../components';
 import { useToast } from '../../hooks/useToast';
-import type { InviteWithId } from './inviteService';
+import { INVITE_EMAIL_IN_USE_ERROR, type InviteWithId } from './inviteService';
 
 type Status = 'loading' | 'invalid' | 'pending';
 
@@ -39,6 +39,10 @@ export function JoinScreen(): ReactElement {
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  // Persists past the toast's 1.8s auto-dismiss so the visitor has time
+  // to read it and tap the "Sign in instead" link. Cleared on the next
+  // submit attempt (so a typo'd password retry doesn't show stale copy).
+  const [emailInUse, setEmailInUse] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +78,7 @@ export function JoinScreen(): ReactElement {
     e.preventDefault();
     if (busy || !invite || !inviteId) return;
     setBusy(true);
+    setEmailInUse(false);
     try {
       const [{ auth, db }, { acceptInvite, INVITE_ACCEPT_SUCCESS }] = await Promise.all([
         import('../../firebase/config'),
@@ -85,6 +90,9 @@ export function JoinScreen(): ReactElement {
     } catch (err) {
       const message = err instanceof Error ? err.message : t('join.genericError');
       showToast(message);
+      if (err instanceof Error && err.message === INVITE_EMAIL_IN_USE_ERROR) {
+        setEmailInUse(true);
+      }
     } finally {
       setBusy(false);
     }
@@ -159,6 +167,17 @@ export function JoinScreen(): ReactElement {
           {t('join.submit')}
         </Button>
       </form>
+      {emailInUse && (
+        <p role="alert" className="rounded-control bg-surface-alt px-16 py-12 text-body text-ink">
+          {t('join.emailInUse.body')}{' '}
+          <Link
+            to="/"
+            className="text-brand underline focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+          >
+            {t('join.emailInUse.signIn')}
+          </Link>
+        </p>
+      )}
       <p className="text-meta text-ink-mute">
         <Link
           to="/"
