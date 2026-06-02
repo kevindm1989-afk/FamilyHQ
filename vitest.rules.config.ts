@@ -19,10 +19,12 @@ export default defineConfig({
     // cross-tenant failures + getAfter service errors). Force single-file
     // execution so each suite has exclusive emulator state. This is harness
     // isolation, not a rule relaxation.
-    fileParallelism: false,
+    //
+    // Vitest 4 note: the old `poolOptions: { forks: { singleFork: true } }`
+    // is gone — `fileParallelism: false` already pins maxWorkers to 1, so a
+    // single fork runs every file sequentially. Same behaviour, simpler
+    // surface.
     pool: 'forks',
-    poolOptions: {
-      forks: { singleFork: true },
-    },
+    fileParallelism: false,
   },
 });
