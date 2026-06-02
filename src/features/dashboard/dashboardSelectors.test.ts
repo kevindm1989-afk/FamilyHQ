@@ -18,6 +18,7 @@ import type { PostWithId } from '../board/boardService';
 import type { ChoreWithId } from '../chores/choresMemberService';
 import {
   bucketUpcomingEvents,
+  dashboardWeeklyDigest,
   selectRecent,
   selectSoonestChores,
   selectUpcomingEvents,
@@ -489,5 +490,191 @@ describe('bucketUpcomingEvents — Today / Tomorrow / This Week / Later buckets'
     const before = events.map((e) => e.id);
     bucketUpcomingEvents(events, NOW_MS);
     expect(events.map((e) => e.id)).toEqual(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dashboardWeeklyDigest — Feature 3 (Weekly Family Digest)
+//
+// Aggregates the parent dashboard widget from the chore + event feeds the
+// screen already has in hand. Pure: no clock read, no side effects. Sums
+// are in INTEGER CENTS; the screen formats for display via gatedMoney().
+// "This week" is the 7-day window ending at nowMs; approximated against
+// chore.createdAt (no approvedAt field on chores yet).
+// ---------------------------------------------------------------------------
+
+describe('dashboardWeeklyDigest — Feature 3 parent dashboard digest', () => {
+  const NOW_MS = new Date('2026-06-15T19:00:00.000Z').getTime();
+  const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  const SARAH = mkActiveMember('uid-parent-a', 'parent');
+  const MAYA = mkActiveMember('uid-member-a', 'member');
+  const BEN = mkActiveMember('uid-member-b', 'member');
+
+  function mkActiveMember(
+    id: string,
+    role: 'parent' | 'member' = 'member',
+  ): import('../../lib/types').UserWithId {
+    return {
+      id,
+      name: id === 'uid-member-a' ? 'Maya' : id === 'uid-member-b' ? 'Ben' : 'Sarah',
+      role,
+      familyId: 'fam-A',
+      isActive: true,
+      allowanceBalance: 0,
+      theme: 'light',
+    };
+  }
+
+  it('counts approved chores created this week and sums their dollarValue in cents', () => {
+    const chores = [
+      mkChore({
+        id: 'c1',
+        dueDate: '2026-06-14',
+        createdAt: NOW_MS - 1000,
+        status: 'approved',
+        dollarValue: 300,
+      }),
+      mkChore({
+        id: 'c2',
+        dueDate: '2026-06-15',
+        createdAt: NOW_MS - 2 * 24 * 60 * 60 * 1000,
+        status: 'approved',
+        dollarValue: 150,
+      }),
+    ];
+    const result = dashboardWeeklyDigest(chores, [], [SARAH, MAYA, BEN], NOW_MS);
+    expect(result.choresApprovedThisWeek).toBe(2);
+    expect(result.allowanceEarnedCentsThisWeek).toBe(450);
+  });
+
+  it('EXCLUDES approved chores created before the 7-day window (long-tail)', () => {
+    const chores = [
+      mkChore({
+        id: 'old',
+        dueDate: '2026-05-01',
+        createdAt: NOW_MS - WEEK_MS - 24 * 60 * 60 * 1000,
+        status: 'approved',
+        dollarValue: 500,
+      }),
+    ];
+    const result = dashboardWeeklyDigest(chores, [], [SARAH, MAYA, BEN], NOW_MS);
+    expect(result.choresApprovedThisWeek).toBe(0);
+    expect(result.allowanceEarnedCentsThisWeek).toBe(0);
+  });
+
+  it('counts pending approvals (status `complete`) regardless of week — they are the queue', () => {
+    const chores = [
+      mkChore({
+        id: 'p1',
+        dueDate: '2026-06-14',
+        createdAt: NOW_MS - 30 * 24 * 60 * 60 * 1000,
+        status: 'complete',
+      }),
+      mkChore({
+        id: 'p2',
+        dueDate: '2026-06-15',
+        createdAt: NOW_MS - 1000,
+        status: 'complete',
+      }),
+      mkChore({
+        id: 'p3',
+        dueDate: '2026-06-15',
+        createdAt: NOW_MS - 1000,
+        status: 'pending',
+      }),
+    ];
+    const result = dashboardWeeklyDigest(chores, [], [SARAH, MAYA, BEN], NOW_MS);
+    expect(result.pendingApprovals).toBe(2);
+  });
+
+  it('counts upcoming events within the next 7 LOCAL days only', () => {
+    const events = [
+      mkEvent({ id: 'today', date: '2026-06-15' }),
+      mkEvent({ id: 'd3', date: '2026-06-18' }),
+      mkEvent({ id: 'd7', date: '2026-06-22' }),
+      mkEvent({ id: 'd14', date: '2026-06-29' }),
+      mkEvent({ id: 'past', date: '2026-06-10' }),
+    ];
+    const result = dashboardWeeklyDigest([], events, [SARAH, MAYA, BEN], NOW_MS);
+    expect(result.upcomingEvents7Days).toBe(3);
+  });
+
+  it('picks the top performer by APPROVED-THIS-WEEK chore count and resolves the name from members[]', () => {
+    const chores = [
+      mkChore({
+        id: 'm1',
+        dueDate: '2026-06-14',
+        createdAt: NOW_MS - 1000,
+        status: 'approved',
+        assignedTo: 'uid-member-a',
+      }),
+      mkChore({
+        id: 'm2',
+        dueDate: '2026-06-14',
+        createdAt: NOW_MS - 1000,
+        status: 'approved',
+        assignedTo: 'uid-member-a',
+      }),
+      mkChore({
+        id: 'b1',
+        dueDate: '2026-06-14',
+        createdAt: NOW_MS - 1000,
+        status: 'approved',
+        assignedTo: 'uid-member-b',
+      }),
+    ];
+    const result = dashboardWeeklyDigest(chores, [], [SARAH, MAYA, BEN], NOW_MS);
+    expect(result.topChorePerformerName).toBe('Maya');
+  });
+
+  it('returns null `topChorePerformerName` when no chores were approved this week', () => {
+    expect(dashboardWeeklyDigest([], [], [SARAH, MAYA, BEN], NOW_MS).topChorePerformerName).toBeNull();
+  });
+
+  it('falls back to null when the top assignee is no longer in the active member list (mid-week deactivation)', () => {
+    const chores = [
+      mkChore({
+        id: 'orphan',
+        dueDate: '2026-06-14',
+        createdAt: NOW_MS - 1000,
+        status: 'approved',
+        assignedTo: 'uid-deactivated',
+      }),
+    ];
+    expect(dashboardWeeklyDigest(chores, [], [SARAH, MAYA, BEN], NOW_MS).topChorePerformerName).toBeNull();
+  });
+
+  it('clamps a non-finite dollarValue out of the cents sum (defensive against corrupt cache)', () => {
+    const chores = [
+      mkChore({
+        id: 'good',
+        dueDate: '2026-06-14',
+        createdAt: NOW_MS - 1000,
+        status: 'approved',
+        dollarValue: 250,
+      }),
+      mkChore({
+        id: 'corrupt',
+        dueDate: '2026-06-14',
+        createdAt: NOW_MS - 1000,
+        status: 'approved',
+        dollarValue: Number.NaN,
+      }),
+    ];
+    const result = dashboardWeeklyDigest(chores, [], [SARAH, MAYA, BEN], NOW_MS);
+    // The corrupt entry still counts toward the chore count (it WAS
+    // approved — the only thing we can't trust is the money). 1 + 1 = 2.
+    expect(result.choresApprovedThisWeek).toBe(2);
+    expect(result.allowanceEarnedCentsThisWeek).toBe(250);
+  });
+
+  it('returns all-zero digest with null top performer for empty inputs', () => {
+    expect(dashboardWeeklyDigest([], [], [], NOW_MS)).toEqual({
+      choresApprovedThisWeek: 0,
+      pendingApprovals: 0,
+      allowanceEarnedCentsThisWeek: 0,
+      upcomingEvents7Days: 0,
+      topChorePerformerName: null,
+    });
   });
 });

@@ -118,6 +118,16 @@
       "complete": "En attente",
       "approved": "Approuvé",
       "rejected": "À refaire"
+    },
+    "weeklyDigest": {
+      "heading": "Résumé familial hebdomadaire",
+      "loading": "Chargement du résumé de la semaine…",
+      "choresApproved": "Tâches approuvées",
+      "pendingApprovals": "Approbations en attente",
+      "allowanceEarned": "Allocation gagnée",
+      "upcomingEvents": "Événements à venir",
+      "topPerformer": "Meilleur exécutant",
+      "noPerformer": "—"
     }
   },
 
