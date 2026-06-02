@@ -157,6 +157,16 @@ service cloud.firestore {
       function inviteData() {
         return get(/databases/$(database)/documents/invites/$(request.resource.data.inviteId)).data;
       }
+      // Defense-in-depth (PR #67 follow-up): an invite is only redeemable
+      // while its `expiresAt` is in the future. The client (inviteService /
+      // getInviteById) also enforces this — the rule is the real authority.
+      // A missing `expiresAt` (only possible on pre-PR-#67 invites) reads
+      // as undefined here, so the comparison is false and access is denied
+      // — fail-closed for legacy docs. Real-world: all production invites
+      // were created post-PR-#67 so this is the strict-but-clean choice.
+      function isInviteFresh(inv) {
+        return inv.expiresAt > request.time.toMillis();
+      }
       function isInviteBootstrap() {
         return isSignedIn()
           && request.auth.uid == userId
@@ -171,7 +181,8 @@ service cloud.firestore {
           && inviteData().email == request.auth.token.email
           && inviteData().familyId == request.resource.data.familyId
           && inviteData().role == request.resource.data.role
-          && inviteData().status == 'pending';
+          && inviteData().status == 'pending'
+          && isInviteFresh(inviteData());
       }
 
       // Subject may change ONLY name + theme; every authority field immutable
@@ -594,10 +605,18 @@ service cloud.firestore {
     //     field immutable. Atomic with the matching users/{uid} create that
     //     uses isInviteBootstrap.
     match /invites/{inviteId} {
+      // Local copy of the freshness check (the cross-collection variant
+      // lives under match /users/{userId}). An invite is redeemable only
+      // while `expiresAt` is in the future. A missing field reads as
+      // undefined and the comparison is false — fail-closed.
+      function isInviteFreshLocal() {
+        return resource.data.expiresAt > request.time.toMillis();
+      }
       function isInviteAcceptance() {
         return isSignedIn()
           && resource.data.email == request.auth.token.email
           && resource.data.status == 'pending'
+          && isInviteFreshLocal()
           && request.resource.data.status == 'accepted'
           && immutable('email')
           && immutable('role')
@@ -612,10 +631,25 @@ service cloud.firestore {
       // fail this branch and fall through to the existing parent-only get.
       // Without the !isSignedIn() guard, signed-in members would gain a P9
       // leak path to the invitee email (a parent-only PI by threat-model).
+      //
+      // Public reads also require the invite to be FRESH (within TTL).
+      // Expired invites read as "not exists" to the redeem page, matching
+      // the client's getInviteById fallback. Same null surface as missing
+      // / accepted / revoked — no leakage about which dead-state occurred.
+      // Parents still see expired invites through the same-family branch
+      // so they can revoke / inspect / clean up.
       allow get: if (isParent() && sameFamily(resource))
-        || (!isSignedIn() && resource.data.status == 'pending');
+        || (!isSignedIn() && resource.data.status == 'pending' && isInviteFreshLocal());
       allow list: if isParent() && listScopedToOwnFamily();
-      allow create: if isParent() && incomingSameFamily();
+      // Create requires a fresh `expiresAt` so every invite ships with its
+      // TTL declared at the rule level — the redeem path can then rely on
+      // the field being present (no legacy-fallback heuristic needed at
+      // read time). `is number` excludes nulls / wrong types; `> request.
+      // time.toMillis()` blocks back-dated invites (e.g. a misbehaving
+      // client writing an already-expired doc).
+      allow create: if isParent() && incomingSameFamily()
+        && request.resource.data.expiresAt is number
+        && request.resource.data.expiresAt > request.time.toMillis();
       allow update: if (isParent() && sameFamily(resource)
                        && incomingSameFamily() && immutable('familyId'))
         || isInviteAcceptance();

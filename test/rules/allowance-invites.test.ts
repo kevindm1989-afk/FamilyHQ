@@ -253,6 +253,12 @@ describe('M25/P9: invites are parent-only and family-scoped', () => {
         familyId: FAMILY_A,
         invitedBy: UID.parentA,
         createdAt: Date.now(),
+        // 14-day TTL — matches INVITE_TTL_MS. Rule (post-#67 follow-up)
+        // requires expiresAt to be `is number` AND in the future at create
+        // time. Tests that expect FAILURE on a different axis (member can't
+        // invite; cross-family create) still set this so they fail for the
+        // right reason — not because the field is missing.
+        expiresAt: Date.now() + 14 * 24 * 60 * 60 * 1000,
         status: 'pending',
       }),
     );
@@ -286,6 +292,12 @@ describe('M25/P9: invites are parent-only and family-scoped', () => {
         familyId: FAMILY_A,
         invitedBy: UID.memberA,
         createdAt: Date.now(),
+        // 14-day TTL — matches INVITE_TTL_MS. Rule (post-#67 follow-up)
+        // requires expiresAt to be `is number` AND in the future at create
+        // time. Tests that expect FAILURE on a different axis (member can't
+        // invite; cross-family create) still set this so they fail for the
+        // right reason — not because the field is missing.
+        expiresAt: Date.now() + 14 * 24 * 60 * 60 * 1000,
         status: 'pending',
       }),
     );
@@ -307,6 +319,103 @@ describe('M25/P9: invites are parent-only and family-scoped', () => {
         familyId: FAMILY_B,
         invitedBy: UID.parentA,
         createdAt: Date.now(),
+        // 14-day TTL — matches INVITE_TTL_MS. Rule (post-#67 follow-up)
+        // requires expiresAt to be `is number` AND in the future at create
+        // time. Tests that expect FAILURE on a different axis (member can't
+        // invite; cross-family create) still set this so they fail for the
+        // right reason — not because the field is missing.
+        expiresAt: Date.now() + 14 * 24 * 60 * 60 * 1000,
+        status: 'pending',
+      }),
+    );
+  });
+});
+
+// TTL enforcement — PR #67 added a 14-day expiresAt to invites and a
+// client-side check. This describe block pins the RULE-level mirror so
+// the cutoff isn't just UX: an expired invite is unreadable to the public
+// redeem path and unacceptable to the bootstrap rule.
+describe('TTL enforcement: expired invites are rule-blocked', () => {
+  it('public redeem: an UNAUTH visitor can GET a fresh pending invite', async () => {
+    // The default seed sets expiresAt = now + 14d (see helpers.ts). An
+    // anonymous visitor (the redeem page) must be able to read it.
+    const db = env.unauthenticatedContext().firestore();
+    const { doc, getDoc } = await import('firebase/firestore');
+    await assertSucceeds(getDoc(doc(db, 'invites', `invite-${FAMILY_A}`)));
+  });
+
+  it('public redeem: an UNAUTH visitor CANNOT GET an EXPIRED pending invite (read denied)', async () => {
+    // Seed a fresh fixture with an explicitly-past expiresAt — the rule's
+    // `isInviteFreshLocal()` short-circuits the public-read branch so the
+    // unauthenticated read fails. Same failure surface as missing /
+    // accepted / revoked — no leak about which dead-state occurred.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const adminDb = ctx.firestore();
+      const { doc, setDoc } = await import('firebase/firestore');
+      await setDoc(doc(adminDb, 'invites', 'expired-invite'), {
+        email: 'invitee@example.test',
+        role: 'member',
+        familyId: FAMILY_A,
+        invitedBy: UID.parentA,
+        createdAt: Date.now() - 30 * 24 * 60 * 60 * 1000, // 30 days ago
+        expiresAt: Date.now() - 24 * 60 * 60 * 1000, // 1 day ago — expired
+        status: 'pending',
+      });
+    });
+    const db = env.unauthenticatedContext().firestore();
+    const { doc, getDoc } = await import('firebase/firestore');
+    await assertFails(getDoc(doc(db, 'invites', 'expired-invite')));
+  });
+
+  it('parent: an EXPIRED invite is still visible to the inviting parent (so the UI can show the Expired badge + revoke)', async () => {
+    // Parents need to see expired invites to clean them up. Only the
+    // PUBLIC branch is restricted by freshness; the parent + same-family
+    // branch isn't.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const adminDb = ctx.firestore();
+      const { doc, setDoc } = await import('firebase/firestore');
+      await setDoc(doc(adminDb, 'invites', 'expired-for-parent'), {
+        email: 'invitee@example.test',
+        role: 'member',
+        familyId: FAMILY_A,
+        invitedBy: UID.parentA,
+        createdAt: Date.now() - 30 * 24 * 60 * 60 * 1000,
+        expiresAt: Date.now() - 24 * 60 * 60 * 1000,
+        status: 'pending',
+      });
+    });
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, getDoc } = await import('firebase/firestore');
+    await assertSucceeds(getDoc(doc(db, 'invites', 'expired-for-parent')));
+  });
+
+  it('create: rule REJECTS an invite created without an `expiresAt` field', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(doc(db, 'invites', 'no-expires'), {
+        email: 'x@example.test',
+        role: 'member',
+        familyId: FAMILY_A,
+        invitedBy: UID.parentA,
+        createdAt: Date.now(),
+        // expiresAt deliberately omitted — rule's `is number` check fails.
+        status: 'pending',
+      }),
+    );
+  });
+
+  it('create: rule REJECTS an invite whose `expiresAt` is already in the past (back-dated)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(doc(db, 'invites', 'back-dated'), {
+        email: 'x@example.test',
+        role: 'member',
+        familyId: FAMILY_A,
+        invitedBy: UID.parentA,
+        createdAt: Date.now(),
+        expiresAt: Date.now() - 1000, // already expired
         status: 'pending',
       }),
     );
