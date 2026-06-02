@@ -38,7 +38,13 @@ import {
   pendingApprovalCount,
 } from '../chores/choresParentService';
 import { relativeTime } from '../board/relativeTime';
-import { bucketUpcomingEvents, selectRecent, selectSoonestChores } from './dashboardSelectors';
+import {
+  bucketUpcomingEvents,
+  dashboardWeeklyDigest,
+  selectRecent,
+  selectSoonestChores,
+  type WeeklyDigest,
+} from './dashboardSelectors';
 
 /**
  * A section feed slice — the screen renders one of three independent states per
@@ -260,7 +266,7 @@ function MemberSections(props: DashboardScreenProps): ReactElement {
 
 function ParentSections(props: DashboardScreenProps): ReactElement {
   const { t } = useTranslation();
-  const { approvals, members, onNavigate } = props;
+  const { approvals, members, events, nowMs, onNavigate } = props;
   const unavailable = t('common.unavailable');
   const fallbackName = t('dashboard.fallbackMemberName');
 
@@ -269,38 +275,127 @@ function ParentSections(props: DashboardScreenProps): ReactElement {
   const queue = approvalQueue(approvals.items);
   const pending = pendingApprovalCount(approvals.items);
 
+  // Weekly digest — derived purely from feeds the parent dashboard already
+  // subscribes to, so no extra Firestore listener and no extra round-trip.
+  // Skipped while the chores feed is still loading so the widget doesn't
+  // flash "0 / week" then jump to the real number.
+  const digestReady = !approvals.loading && approvals.error === null;
+  const digest = digestReady
+    ? dashboardWeeklyDigest(approvals.items, events.items, members, nowMs)
+    : null;
+
   return (
-    <SectionShell
-      heading={t('dashboard.section.approvals.heading')}
-      viewAllLabel={t('dashboard.section.approvals.viewAll')}
-      onViewAll={() => onNavigate('chores')}
+    <>
+      <WeeklyDigestCard digest={digest} loading={approvals.loading} />
+      <SectionShell
+        heading={t('dashboard.section.approvals.heading')}
+        viewAllLabel={t('dashboard.section.approvals.viewAll')}
+        onViewAll={() => onNavigate('chores')}
+      >
+        {!approvals.loading && approvals.error === null && (
+          <p className="text-meta text-ink-mute">
+            {t('dashboard.section.approvals.pendingCount', { count: pending })}
+          </p>
+        )}
+        <SectionBody
+          feed={approvals}
+          loadingLabel={t('dashboard.section.approvals.loading')}
+          emptyMessage={t('dashboard.section.approvals.empty')}
+          isEmpty={() => queue.length === 0}
+          renderItems={() =>
+            queue.slice(0, SECTION_CAP).map((chore) => (
+              <ListRow key={chore.id}>
+                <span className="flex-1 text-body font-semibold text-ink">{chore.title}</span>
+                <span className="text-meta text-ink-mute">{nameFor(chore.assignedTo)}</span>
+                <span
+                  className="text-meta font-semibold text-ink-mute"
+                  aria-label={moneyLabel(
+                    t('dashboard.worthPrefix'),
+                    chore.dollarValue,
+                    unavailable,
+                  )}
+                >
+                  {gatedMoney(chore.dollarValue)}
+                </span>
+              </ListRow>
+            ))
+          }
+        />
+      </SectionShell>
+    </>
+  );
+}
+
+/**
+ * Parent-only weekly summary card. Static numeric/string read-out — no
+ * actions inside, so it sits OUTSIDE the SectionShell scaffolding (which
+ * is built around "heading + list + view-all"). Reads only data already
+ * computed in `dashboardWeeklyDigest`; the screen owns the gating around
+ * loading / error.
+ *
+ * Money is formatted via the existing `gatedMoney` helper so a non-finite
+ * total falls back to MONEY_INVALID_INDICATOR (never "$0.00" on a
+ * corrupt cache).
+ *
+ * Spec: Feature 3 — Weekly Family Digest.
+ */
+function WeeklyDigestCard(props: { digest: WeeklyDigest | null; loading: boolean }): ReactElement {
+  const { t } = useTranslation();
+  const { digest, loading } = props;
+  if (loading || digest === null) {
+    return (
+      <section
+        aria-labelledby="weekly-digest-heading"
+        className="flex flex-col gap-12 rounded-card border border-surface-line bg-surface-card p-16"
+      >
+        <h2 id="weekly-digest-heading" className="text-title font-semibold text-ink">
+          {t('dashboard.weeklyDigest.heading')}
+        </h2>
+        <Skeleton label={t('dashboard.weeklyDigest.loading')} />
+      </section>
+    );
+  }
+  const stats: Array<{ label: string; value: string }> = [
+    {
+      label: t('dashboard.weeklyDigest.choresApproved'),
+      value: String(digest.choresApprovedThisWeek),
+    },
+    {
+      label: t('dashboard.weeklyDigest.pendingApprovals'),
+      value: String(digest.pendingApprovals),
+    },
+    {
+      label: t('dashboard.weeklyDigest.allowanceEarned'),
+      value: gatedMoney(digest.allowanceEarnedCentsThisWeek),
+    },
+    {
+      label: t('dashboard.weeklyDigest.upcomingEvents'),
+      value: String(digest.upcomingEvents7Days),
+    },
+    {
+      label: t('dashboard.weeklyDigest.topPerformer'),
+      value: digest.topChorePerformerName ?? t('dashboard.weeklyDigest.noPerformer'),
+    },
+  ];
+  return (
+    <section
+      aria-labelledby="weekly-digest-heading"
+      className="flex flex-col gap-12 rounded-card border border-surface-line bg-surface-card p-16"
     >
-      {!approvals.loading && approvals.error === null && (
-        <p className="text-meta text-ink-mute">
-          {t('dashboard.section.approvals.pendingCount', { count: pending })}
-        </p>
-      )}
-      <SectionBody
-        feed={approvals}
-        loadingLabel={t('dashboard.section.approvals.loading')}
-        emptyMessage={t('dashboard.section.approvals.empty')}
-        isEmpty={() => queue.length === 0}
-        renderItems={() =>
-          queue.slice(0, SECTION_CAP).map((chore) => (
-            <ListRow key={chore.id}>
-              <span className="flex-1 text-body font-semibold text-ink">{chore.title}</span>
-              <span className="text-meta text-ink-mute">{nameFor(chore.assignedTo)}</span>
-              <span
-                className="text-meta font-semibold text-ink-mute"
-                aria-label={moneyLabel(t('dashboard.worthPrefix'), chore.dollarValue, unavailable)}
-              >
-                {gatedMoney(chore.dollarValue)}
-              </span>
-            </ListRow>
-          ))
-        }
-      />
-    </SectionShell>
+      <h2 id="weekly-digest-heading" className="text-title font-semibold text-ink">
+        {t('dashboard.weeklyDigest.heading')}
+      </h2>
+      <dl className="grid grid-cols-2 gap-x-12 gap-y-12">
+        {stats.map((stat) => (
+          <div key={stat.label} className="flex flex-col gap-2">
+            <dt className="text-meta font-semibold uppercase tracking-wide text-ink-mute">
+              {stat.label}
+            </dt>
+            <dd className="text-title font-bold text-ink">{stat.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 

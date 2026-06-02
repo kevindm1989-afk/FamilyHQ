@@ -15,6 +15,10 @@
 import { eventLocalDay, localDayKey } from '../../lib/dates';
 import type { ChoreWithId } from '../chores/choresMemberService';
 import type { EventWithId } from '../calendar/calendarService';
+import type { UserWithId } from '../../lib/types';
+
+/** 7 days in ms — the weekly digest's "this week" window. */
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Keep only events whose `date` falls on the LOCAL calendar day of `nowMs` OR
@@ -143,4 +147,105 @@ export function bucketUpcomingEvents(
     });
 
   return { today, tomorrow, thisWeek, later };
+}
+
+/**
+ * Weekly digest result (parent dashboard widget).
+ *
+ * All counts and money sums are computed from feeds the parent dashboard
+ * already subscribes to (no new Firestore listener, satisfies the spec's
+ * "Optimize query count"). "This week" is the 7-day window ending at
+ * `nowMs`. The `topChorePerformerName` is derived from `assignedTo` →
+ * `members[].name`; ties break by stable input order, and the name falls
+ * back to `null` when the assignee is no longer in the active member
+ * list (e.g. deactivated mid-week).
+ *
+ * KNOWN APPROXIMATION (v1, no `approvedAt` field on chores): "this week"
+ * is matched against `chore.createdAt`, not the actual approval time. In
+ * practice a chore that's created and approved within the same week
+ * resolves correctly; long-lived chores created weeks earlier and
+ * approved this week are NOT counted. A later iteration can add an
+ * `approvedAt` field for exact accounting.
+ */
+export interface WeeklyDigest {
+  choresApprovedThisWeek: number;
+  pendingApprovals: number;
+  /** Approved-this-week chore dollar values summed, in INTEGER CENTS. */
+  allowanceEarnedCentsThisWeek: number;
+  upcomingEvents7Days: number;
+  /** `null` when no chores were approved this week (or no active member matched). */
+  topChorePerformerName: string | null;
+}
+
+/**
+ * Aggregate the parent dashboard's weekly digest from the chore + event
+ * feeds the screen already has in hand. Pure: no clock read, no
+ * side effects, no Firestore.
+ */
+export function dashboardWeeklyDigest(
+  chores: ChoreWithId[],
+  events: EventWithId[],
+  members: UserWithId[],
+  nowMs: number,
+): WeeklyDigest {
+  const weekStartMs = nowMs - SEVEN_DAYS_MS;
+  const todayKey = localDayKey(nowMs);
+  const sevenDaysOutKey = localDayKey(nowMs + SEVEN_DAYS_MS);
+
+  let approved = 0;
+  let pending = 0;
+  let cents = 0;
+  // Tally approved-this-week chores by assignee uid so we can pick the
+  // top performer. Map preserves insertion order → ties go to whoever
+  // hit their count first (stable).
+  const perAssignee = new Map<string, number>();
+
+  for (const chore of chores) {
+    if (chore.status === 'complete') {
+      pending += 1;
+    }
+    if (chore.status === 'approved') {
+      // Approximation: `createdAt` proxies for approval time (see comment
+      // on the interface). Drops chores whose createdAt isn't a finite
+      // number (defensive — production data is finite by rules).
+      if (typeof chore.createdAt === 'number' && chore.createdAt >= weekStartMs) {
+        approved += 1;
+        // dollarValue is INTEGER CENTS by rules; clamp non-finite
+        // defensively so a corrupt cache doesn't produce NaN sums.
+        if (Number.isFinite(chore.dollarValue) && chore.dollarValue >= 0) {
+          cents += chore.dollarValue;
+        }
+        const current = perAssignee.get(chore.assignedTo) ?? 0;
+        perAssignee.set(chore.assignedTo, current + 1);
+      }
+    }
+  }
+
+  let upcomingCount = 0;
+  for (const event of events) {
+    const day = eventLocalDay(event.date);
+    if (day !== null && day.key >= todayKey && day.key <= sevenDaysOutKey) {
+      upcomingCount += 1;
+    }
+  }
+
+  let topName: string | null = null;
+  let topCount = 0;
+  for (const [uid, count] of perAssignee.entries()) {
+    if (count > topCount) {
+      const member = members.find((m) => m.id === uid);
+      if (member !== undefined) {
+        topName = member.name;
+        topCount = count;
+      }
+    }
+  }
+
+  return {
+    choresApprovedThisWeek: approved,
+    pendingApprovals: pending,
+    allowanceEarnedCentsThisWeek: cents,
+    upcomingEvents7Days: upcomingCount,
+    topChorePerformerName: topName,
+  };
 }

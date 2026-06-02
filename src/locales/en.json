@@ -118,6 +118,16 @@
       "complete": "Waiting",
       "approved": "Approved",
       "rejected": "Needs another try"
+    },
+    "weeklyDigest": {
+      "heading": "Weekly family summary",
+      "loading": "Loading this week’s summary…",
+      "choresApproved": "Chores approved",
+      "pendingApprovals": "Pending approvals",
+      "allowanceEarned": "Allowance earned",
+      "upcomingEvents": "Upcoming events",
+      "topPerformer": "Top chore performer",
+      "noPerformer": "—"
     }
   },
 
