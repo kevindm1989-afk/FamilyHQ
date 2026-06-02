@@ -17,6 +17,7 @@ import type { EventWithId } from '../calendar/calendarService';
 import type { PostWithId } from '../board/boardService';
 import type { ChoreWithId } from '../chores/choresMemberService';
 import {
+  bucketUpcomingEvents,
   selectRecent,
   selectSoonestChores,
   selectUpcomingEvents,
@@ -384,5 +385,109 @@ describe('selectUpcomingEvents — F2: malformed / empty event.date is DROPPED (
     ];
     expect(() => selectUpcomingEvents(events, nowMs, 3)).not.toThrow();
     expect(selectUpcomingEvents(events, nowMs, 3)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bucketUpcomingEvents — Reminders widget (Feature 4 Phase 1)
+//
+// Groups events by urgency relative to the LOCAL day of `nowMs`. Same TZ
+// invariants as selectUpcomingEvents — both go through eventLocalDay /
+// localDayKey so the day comparison survives a UTC roll-over.
+// ---------------------------------------------------------------------------
+
+describe('bucketUpcomingEvents — Today / Tomorrow / This Week / Later buckets', () => {
+  // Anchor: 2026-06-15 19:00:00 UTC = 12:00 PM in America/Los_Angeles. Local
+  // today = 2026-06-15, local tomorrow = 2026-06-16.
+  const NOW_MS = new Date('2026-06-15T19:00:00.000Z').getTime();
+
+  it('groups a date-only event on the local today into the `today` bucket', () => {
+    const events = [mkEvent({ id: 't', date: '2026-06-15' })];
+    const { today, tomorrow, thisWeek, later } = bucketUpcomingEvents(events, NOW_MS);
+    expect(today.map((e) => e.id)).toEqual(['t']);
+    expect(tomorrow).toEqual([]);
+    expect(thisWeek).toEqual([]);
+    expect(later).toEqual([]);
+  });
+
+  it('groups an event dated local-tomorrow into the `tomorrow` bucket', () => {
+    const events = [mkEvent({ id: 'tom', date: '2026-06-16' })];
+    expect(bucketUpcomingEvents(events, NOW_MS).tomorrow.map((e) => e.id)).toEqual(['tom']);
+  });
+
+  it('groups an event 2–7 days out into the `thisWeek` bucket', () => {
+    const events = [
+      mkEvent({ id: 'd2', date: '2026-06-17' }),
+      mkEvent({ id: 'd5', date: '2026-06-20' }),
+      mkEvent({ id: 'd7', date: '2026-06-22' }),
+    ];
+    expect(bucketUpcomingEvents(events, NOW_MS).thisWeek.map((e) => e.id)).toEqual([
+      'd2',
+      'd5',
+      'd7',
+    ]);
+  });
+
+  it('groups events more than 7 days out into the `later` bucket (sorted soonest-first)', () => {
+    const events = [
+      mkEvent({ id: 'd30', date: '2026-07-15' }),
+      mkEvent({ id: 'd9', date: '2026-06-24' }),
+      mkEvent({ id: 'd15', date: '2026-06-30' }),
+    ];
+    expect(bucketUpcomingEvents(events, NOW_MS).later.map((e) => e.id)).toEqual([
+      'd9',
+      'd15',
+      'd30',
+    ]);
+  });
+
+  it('drops PAST events from every bucket (TZ-sensitive — yesterday local is past)', () => {
+    const events = [
+      mkEvent({ id: 'past', date: '2026-06-14' }),
+      mkEvent({ id: 'today', date: '2026-06-15' }),
+    ];
+    const result = bucketUpcomingEvents(events, NOW_MS);
+    expect(result.today.map((e) => e.id)).toEqual(['today']);
+    expect(result.tomorrow).toEqual([]);
+    expect(result.thisWeek).toEqual([]);
+    expect(result.later).toEqual([]);
+  });
+
+  it('drops malformed-date events from every bucket (never surfaces them)', () => {
+    const events = [
+      mkEvent({ id: 'garbage', date: 'not-a-date' }),
+      mkEvent({ id: 'empty', date: '' }),
+      mkEvent({ id: 'good', date: '2026-06-15' }),
+    ];
+    const result = bucketUpcomingEvents(events, NOW_MS);
+    expect(result.today.map((e) => e.id)).toEqual(['good']);
+    expect([...result.tomorrow, ...result.thisWeek, ...result.later]).toEqual([]);
+  });
+
+  it('sorts each bucket soonest-first (time-bearing events within Today preserve start-time order)', () => {
+    // Two events on local today, different times — earlier first.
+    const events = [
+      mkEvent({ id: 'pm', date: '2026-06-15T22:00:00.000Z' }), // 3pm PT
+      mkEvent({ id: 'am', date: '2026-06-15T15:00:00.000Z' }), // 8am PT
+    ];
+    expect(bucketUpcomingEvents(events, NOW_MS).today.map((e) => e.id)).toEqual(['am', 'pm']);
+  });
+
+  it('returns four empty buckets for an empty event list', () => {
+    const result = bucketUpcomingEvents([], NOW_MS);
+    expect(result.today).toEqual([]);
+    expect(result.tomorrow).toEqual([]);
+    expect(result.thisWeek).toEqual([]);
+    expect(result.later).toEqual([]);
+  });
+
+  it('does not mutate the input array', () => {
+    const events = [
+      mkEvent({ id: 'b', date: '2026-06-20' }),
+      mkEvent({ id: 'a', date: '2026-06-17' }),
+    ];
+    const before = events.map((e) => e.id);
+    bucketUpcomingEvents(events, NOW_MS);
+    expect(events.map((e) => e.id)).toEqual(before);
   });
 });

@@ -101,7 +101,10 @@
         "heading": "Upcoming events",
         "viewAll": "View all events",
         "loading": "Loading upcoming events…",
-        "empty": "Nothing on the calendar yet."
+        "empty": "Nothing on the calendar yet.",
+        "today": "Today",
+        "tomorrow": "Tomorrow",
+        "thisWeek": "This week"
       },
       "posts": {
         "heading": "Recent posts",
@@ -151,6 +154,9 @@
       "events_other": "{{count}} events"
     },
     "agendaEmpty": "Nothing scheduled — enjoy the open day.",
+    "upcomingHeading": "Upcoming events",
+    "upcomingEmpty": "Nothing coming up — enjoy the open week.",
+    "later": "Later",
     "tag": {
       "school": "School",
       "sports": "Sports",

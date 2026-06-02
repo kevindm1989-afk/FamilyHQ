@@ -38,7 +38,7 @@ import {
   pendingApprovalCount,
 } from '../chores/choresParentService';
 import { relativeTime } from '../board/relativeTime';
-import { selectRecent, selectSoonestChores, selectUpcomingEvents } from './dashboardSelectors';
+import { bucketUpcomingEvents, selectRecent, selectSoonestChores } from './dashboardSelectors';
 
 /**
  * A section feed slice — the screen renders one of three independent states per
@@ -311,33 +311,79 @@ function UpcomingEventsSection(props: {
 }): ReactElement {
   const { t } = useTranslation();
   const { feed, nowMs, onNavigate } = props;
-  const upcoming = selectUpcomingEvents(feed.items, nowMs, SECTION_CAP);
+  // Bucketed reminders: Today / Tomorrow / This Week. Urgency is conveyed by
+  // the grouping itself + a subheading per bucket (never colour alone, WCAG
+  // 1.4.1). Each bucket renders its own labeled <ul> so list semantics stay
+  // valid — a sub-heading + list is the standard a11y pattern for grouped
+  // collections (DPUB / WAI list-group). We render the body INLINE rather
+  // than via SectionBody because SectionBody wraps a single flat <ul>,
+  // which collides with multiple per-bucket lists.
+  const { today, tomorrow, thisWeek } = bucketUpcomingEvents(feed.items, nowMs);
+  const total = today.length + tomorrow.length + thisWeek.length;
   return (
     <SectionShell
       heading={t('dashboard.section.events.heading')}
       viewAllLabel={t('dashboard.section.events.viewAll')}
       onViewAll={() => onNavigate('calendar')}
     >
-      <SectionBody
-        feed={feed}
-        loadingLabel={t('dashboard.section.events.loading')}
-        emptyMessage={t('dashboard.section.events.empty')}
-        isEmpty={() => upcoming.length === 0}
-        renderItems={() =>
-          upcoming.map((event) => (
-            <ListRow key={event.id}>
-              <span className="flex-1 text-body font-semibold text-ink">{event.title}</span>
-              <time dateTime={event.date} className="text-meta text-ink-mute">
-                {friendlyDate(event.date)}
-              </time>
-              <Badge tone={event.tag} size="sm">
-                {EVENT_TAG_LABEL[event.tag]}
-              </Badge>
-            </ListRow>
-          ))
-        }
-      />
+      {feed.loading ? (
+        <Skeleton label={t('dashboard.section.events.loading')} />
+      ) : feed.error !== null ? (
+        <p className="text-meta text-status-danger-text">{feed.error}</p>
+      ) : total === 0 ? (
+        <EmptyState message={t('dashboard.section.events.empty')} />
+      ) : (
+        <div className="flex flex-col gap-12">
+          {today.length > 0 && (
+            <ReminderBucket label={t('dashboard.section.events.today')} tone="urgent">
+              {today}
+            </ReminderBucket>
+          )}
+          {tomorrow.length > 0 && (
+            <ReminderBucket label={t('dashboard.section.events.tomorrow')} tone="soon">
+              {tomorrow}
+            </ReminderBucket>
+          )}
+          {thisWeek.length > 0 && (
+            <ReminderBucket label={t('dashboard.section.events.thisWeek')} tone="later">
+              {thisWeek}
+            </ReminderBucket>
+          )}
+        </div>
+      )}
     </SectionShell>
+  );
+}
+
+/**
+ * Single bucket inside the reminders section — a subheading + a per-bucket
+ * <ul>. `tone` is a TEXT-only cue (heading label + data attr for tests);
+ * visual urgency rides on grouping/typography, never colour alone (WCAG).
+ */
+function ReminderBucket(props: {
+  label: string;
+  tone: 'urgent' | 'soon' | 'later';
+  children: EventWithId[];
+}): ReactElement {
+  return (
+    <div className="flex flex-col gap-4" data-reminder-bucket={props.tone}>
+      <h3 className="text-meta font-semibold uppercase tracking-wide text-ink-mute">
+        {props.label}
+      </h3>
+      <ul className="flex flex-col gap-8" aria-label={props.label}>
+        {props.children.map((event) => (
+          <ListRow key={event.id}>
+            <span className="flex-1 text-body font-semibold text-ink">{event.title}</span>
+            <time dateTime={event.date} className="text-meta text-ink-mute">
+              {friendlyDate(event.date)}
+            </time>
+            <Badge tone={event.tag} size="sm">
+              {EVENT_TAG_LABEL[event.tag]}
+            </Badge>
+          </ListRow>
+        ))}
+      </ul>
+    </div>
   );
 }
 

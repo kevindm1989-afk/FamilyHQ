@@ -101,7 +101,10 @@
         "heading": "Événements à venir",
         "viewAll": "Voir tous les événements",
         "loading": "Chargement des événements à venir…",
-        "empty": "Rien au calendrier pour l’instant."
+        "empty": "Rien au calendrier pour l’instant.",
+        "today": "Aujourd’hui",
+        "tomorrow": "Demain",
+        "thisWeek": "Cette semaine"
       },
       "posts": {
         "heading": "Publications récentes",
@@ -151,6 +154,9 @@
       "events_other": "{{count}} événements"
     },
     "agendaEmpty": "Rien de prévu — profitez de votre journée libre.",
+    "upcomingHeading": "Événements à venir",
+    "upcomingEmpty": "Rien à venir — profitez de la semaine libre.",
+    "later": "Plus tard",
     "tag": {
       "school": "École",
       "sports": "Sports",
