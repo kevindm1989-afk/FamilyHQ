@@ -355,6 +355,10 @@
       "title": "This invite is no longer valid",
       "body": "The link may have been used, revoked, or mistyped. Ask the person who invited you to send a fresh link.",
       "back": "← Back to sign in"
+    },
+    "emailInUse": {
+      "body": "You already have an account with this email.",
+      "signIn": "Sign in instead →"
     }
   },
 

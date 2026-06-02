@@ -355,6 +355,10 @@
       "title": "Cette invitation n’est plus valide",
       "body": "Le lien a peut-être déjà été utilisé, révoqué ou mal saisi. Demandez à la personne qui vous a invité d’envoyer un nouveau lien.",
       "back": "← Retour à la connexion"
+    },
+    "emailInUse": {
+      "body": "Vous avez déjà un compte avec cette adresse courriel.",
+      "signIn": "Se connecter à la place →"
     }
   },
 
