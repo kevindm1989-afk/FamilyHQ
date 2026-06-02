@@ -46,6 +46,7 @@ import {
   acceptInvite,
   InviteActionError,
   INVITE_EMAIL_IN_USE_ERROR,
+  INVITE_TTL_MS,
 } from './inviteService';
 
 const db = { __db: true } as never;
@@ -97,6 +98,18 @@ describe('createInvite', () => {
     expect(writtenPayload.status).toBe('pending');
   });
 
+  it('writes an explicit expiresAt = createdAt + INVITE_TTL_MS so the redeem page can enforce TTL', async () => {
+    addDocMock.mockResolvedValue({ id: 'new-invite' });
+    await createInvite(
+      { db },
+      { email: 'a@b.com', role: 'member', familyId: 'fam-A', invitedBy: 'p1' },
+    );
+    const payload = addDocMock.mock.calls[0]![1] as { createdAt: number; expiresAt: number };
+    // Use approximate equality — Date.now() advances between the test's read
+    // and the service's write, but the delta should be exactly INVITE_TTL_MS.
+    expect(payload.expiresAt - payload.createdAt).toBe(INVITE_TTL_MS);
+  });
+
   it('wraps a Firestore failure in a user-safe InviteActionError (no raw code)', async () => {
     addDocMock.mockRejectedValue(new Error('permission-denied'));
     await expect(createInvite({ db }, { email: 'a@b.com', role: 'member', familyId: 'fam-A', invitedBy: 'p1' })).rejects.toBeInstanceOf(InviteActionError);
@@ -120,6 +133,46 @@ describe('getInviteById', () => {
     expect(result).toBeNull();
   });
 
+  it('returns null when the invite is expired (past its expiresAt) — indistinguishable from missing/accepted/revoked', async () => {
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    getDocMock.mockResolvedValue({
+      id: 'inv-1',
+      exists: () => true,
+      data: () => ({
+        status: 'pending',
+        email: 'a@b.com',
+        role: 'member',
+        familyId: 'fam-A',
+        invitedBy: 'p1',
+        createdAt: oneHourAgo - INVITE_TTL_MS,
+        expiresAt: oneHourAgo, // Already past — strictly expired.
+      }),
+    });
+    const result = await getInviteById({ db }, 'inv-1');
+    expect(result).toBeNull();
+  });
+
+  it('returns null on a legacy pending invite (no expiresAt) whose createdAt + TTL is in the past', async () => {
+    // Pre-TTL invites have no expiresAt; the service falls back to
+    // createdAt + INVITE_TTL_MS and still enforces the cutoff. Important
+    // so old links don't outlive the policy.
+    getDocMock.mockResolvedValue({
+      id: 'inv-1',
+      exists: () => true,
+      data: () => ({
+        status: 'pending',
+        email: 'a@b.com',
+        role: 'member',
+        familyId: 'fam-A',
+        invitedBy: 'p1',
+        createdAt: Date.now() - INVITE_TTL_MS - 1000,
+        // expiresAt deliberately omitted to simulate a legacy doc.
+      }),
+    });
+    const result = await getInviteById({ db }, 'inv-1');
+    expect(result).toBeNull();
+  });
+
   it('returns the invite + id when pending', async () => {
     getDocMock.mockResolvedValue({
       id: 'inv-1',
@@ -130,18 +183,21 @@ describe('getInviteById', () => {
         role: 'member',
         familyId: 'fam-A',
         invitedBy: 'p1',
-        createdAt: 12345,
+        // Created just now with an explicit expiry well in the future — the
+        // happy path. Hardcoded timestamps would trip the TTL check and
+        // surface as a false-negative "expired" return.
+        createdAt: Date.now(),
+        expiresAt: Date.now() + INVITE_TTL_MS,
       }),
     });
     const result = await getInviteById({ db }, 'inv-1');
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       id: 'inv-1',
       status: 'pending',
       email: 'a@b.com',
       role: 'member',
       familyId: 'fam-A',
       invitedBy: 'p1',
-      createdAt: 12345,
     });
   });
 
@@ -192,7 +248,8 @@ describe('acceptInvite — validation gates', () => {
         role: 'member',
         familyId: 'fam-A',
         invitedBy: 'p1',
-        createdAt: 1,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + INVITE_TTL_MS,
       }),
     });
     await expect(
@@ -213,7 +270,8 @@ describe('acceptInvite — validation gates', () => {
         role: 'member',
         familyId: 'fam-A',
         invitedBy: 'p1',
-        createdAt: 1,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + INVITE_TTL_MS,
       }),
     });
     // Firebase auth errors carry a `code` string. acceptInvite must
@@ -243,7 +301,8 @@ describe('acceptInvite — validation gates', () => {
         role: 'member',
         familyId: 'fam-A',
         invitedBy: 'p1',
-        createdAt: 1,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + INVITE_TTL_MS,
       }),
     });
     const firebaseErr = Object.assign(new Error('Firebase: weak password'), {

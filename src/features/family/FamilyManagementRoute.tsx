@@ -16,7 +16,7 @@ import { useFamily } from '../../hooks/useFamily';
 import { FamilyManagementScreen } from './FamilyManagementScreen';
 import { useAllFamilyMembers } from './useAllFamilyMembers';
 import { FamilyManagementError, renameMember, setMemberActive } from './familyManagementService';
-import { createInvite, InviteActionError, revokeInvite } from './inviteService';
+import { createInvite, InviteActionError, inviteExpiresAt, revokeInvite } from './inviteService';
 import { usePendingFamilyInvites } from './usePendingFamilyInvites';
 import type { Role } from '../../lib/types';
 
@@ -96,7 +96,16 @@ export default function FamilyManagementRoute(): ReactElement {
       onSetActive={handleSetActive}
       onRefresh={() => void feed.refresh()}
       onCreateInvite={handleCreateInvite}
-      pendingInvites={invitesFeed.invites}
+      pendingInvites={invitesFeed.invites.map((inv) => ({
+        id: inv.id,
+        email: inv.email,
+        role: inv.role,
+        createdAt: inv.createdAt,
+        // Synthesize the derived expiry for legacy invites (pre-TTL) so
+        // the screen always has a value to render against, while still
+        // showing the real `expiresAt` for invites created post-TTL.
+        expiresAt: inviteExpiresAt(inv),
+      }))}
       onRevokeInvite={handleRevokeInvite}
     />
   );

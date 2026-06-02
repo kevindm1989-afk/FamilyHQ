@@ -389,7 +389,10 @@
     "linkCopied": "Lien copié dans le presse-papiers.",
     "pendingHeading": "Invitations en attente",
     "revoke": "Révoquer",
-    "revoked": "Invitation révoquée."
+    "revoked": "Invitation révoquée.",
+    "expiresIn_one": "Expire dans {{count}} jour",
+    "expiresIn_other": "Expire dans {{count}} jours",
+    "expired": "Expirée"
   },
 
   "errorBoundary": {
