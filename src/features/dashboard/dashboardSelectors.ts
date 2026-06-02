@@ -84,3 +84,63 @@ export function selectSoonestChores(chores: ChoreWithId[], limit: number): Chore
     .slice(0, limit)
     .map(({ chore }) => chore);
 }
+
+/**
+ * Group upcoming events by urgency relative to the LOCAL calendar day of
+ * `nowMs`:
+ *   - today      → event.date matches localDayKey(nowMs)
+ *   - tomorrow   → event.date matches localDayKey(nowMs + 24h)
+ *   - thisWeek   → event.date in (today+2 .. today+7]
+ *
+ * Past + malformed-date events are dropped (F2). Each bucket is sorted
+ * soonest-first; ties preserve input order. Useful for the dashboard's
+ * Today / Tomorrow / This Week reminders widget so the urgency cue is in
+ * the grouping itself, not just a date label.
+ */
+export function bucketUpcomingEvents(
+  events: EventWithId[],
+  nowMs: number,
+): {
+  today: EventWithId[];
+  tomorrow: EventWithId[];
+  thisWeek: EventWithId[];
+  later: EventWithId[];
+} {
+  const todayKey = localDayKey(nowMs);
+  const tomorrowKey = localDayKey(nowMs + 24 * 60 * 60 * 1000);
+  // Boundary for "this week" — anything up to and INCLUDING today + 7 days
+  // (so an event a full week out still surfaces as a reminder).
+  const sevenDaysOutKey = localDayKey(nowMs + 7 * 24 * 60 * 60 * 1000);
+
+  const today: EventWithId[] = [];
+  const tomorrow: EventWithId[] = [];
+  const thisWeek: EventWithId[] = [];
+  const later: EventWithId[] = [];
+
+  events
+    .map((event, index) => ({ event, index, day: eventLocalDay(event.date) }))
+    .filter((entry): entry is typeof entry & { day: { key: string; instant: number } } => {
+      return entry.day !== null && entry.day.key >= todayKey;
+    })
+    .sort((a, b) => {
+      const byInstant = a.day.instant - b.day.instant;
+      return byInstant !== 0 ? byInstant : a.index - b.index;
+    })
+    .forEach(({ event, day }) => {
+      if (day.key === todayKey) {
+        today.push(event);
+      } else if (day.key === tomorrowKey) {
+        tomorrow.push(event);
+      } else if (day.key <= sevenDaysOutKey) {
+        thisWeek.push(event);
+      } else {
+        // Beyond 7 days: still sorted ascending, available to surfaces
+        // that want a long list (calendar). The dashboard reminders
+        // widget intentionally ignores this bucket — it focuses on the
+        // actionable window.
+        later.push(event);
+      }
+    });
+
+  return { today, tomorrow, thisWeek, later };
+}

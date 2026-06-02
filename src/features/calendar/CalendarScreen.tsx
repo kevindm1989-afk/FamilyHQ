@@ -29,6 +29,7 @@ import { useToast } from '../../hooks/useToast';
 import type { EventTag, Role, UserWithId } from '../../lib/types';
 import { canManageEvents, eventTagDotClass, type EventWithId } from './calendarService';
 import { buildMonthGrid, eventsForDay, type GridDay, type YearMonthDay } from './monthGrid';
+import { bucketUpcomingEvents } from '../dashboard/dashboardSelectors';
 import { AddEvent, type AddEventValue } from './AddEvent';
 
 export interface CalendarScreenProps {
@@ -117,6 +118,15 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
     family: t('calendar.tag.family'),
     work: t('calendar.tag.work'),
   };
+
+  // Derived "now" instant (ms) for the upcoming-events bucketer. Pulled from
+  // the injected `today` so this screen has ZERO clock reads — keeps tests
+  // deterministic. The bucketer needs local-day arithmetic, not millisecond
+  // precision, so noon-of-today is a safe representative value.
+  const nowMs = useMemo(
+    () => new Date(today.year, today.month, today.day, 12, 0, 0, 0).getTime(),
+    [today.year, today.month, today.day],
+  );
 
   // The displayed month (starts on the reference month). Prev/Next step it.
   const [view, setView] = useState<{ year: number; month: number }>({
@@ -284,6 +294,13 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
               }}
               tagLabel={TAG_LABEL}
             />
+
+            {/* Upcoming events list — soonest-first, asc-sorted. Lives
+                under the agenda so a user who's scrolled past the month
+                grid still sees a flat list of what's coming up across
+                weeks (the grid is a single-month view; this list spans
+                up to the next 30 days). */}
+            <UpcomingEvents events={feed.events} nowMs={nowMs} tagLabel={TAG_LABEL} />
           </>
         )}
       </section>
@@ -383,6 +400,97 @@ function DayCell(props: DayCellProps): ReactElement {
         )}
       </button>
     </li>
+  );
+}
+
+/**
+ * Upcoming-events list — shown beneath the agenda. Groups events by urgency
+ * (Today / Tomorrow / This Week / Later) using the same bucketer the
+ * dashboard reminders widget uses, so the semantics match across surfaces.
+ * Soonest-first within each bucket. Past + malformed-date events are
+ * dropped by the bucketer.
+ *
+ * No edit / delete affordances here — those live on the per-day agenda
+ * above (and inside the day cell). This list is a "what's coming up"
+ * preview at a glance.
+ */
+function UpcomingEvents(props: {
+  events: EventWithId[];
+  nowMs: number;
+  tagLabel: Record<EventTag, string>;
+}): ReactElement {
+  const { t } = useTranslation();
+  const { events, nowMs, tagLabel } = props;
+  const { today, tomorrow, thisWeek, later } = bucketUpcomingEvents(events, nowMs);
+  const total = today.length + tomorrow.length + thisWeek.length + later.length;
+  return (
+    <section
+      aria-labelledby="calendar-upcoming-heading"
+      className="flex flex-col gap-12 rounded-card border border-surface-line bg-surface-card p-16"
+    >
+      <h2 id="calendar-upcoming-heading" className="text-title font-semibold text-ink">
+        {t('calendar.upcomingHeading')}
+      </h2>
+      {total === 0 ? (
+        <EmptyState message={t('calendar.upcomingEmpty')} />
+      ) : (
+        <div className="flex flex-col gap-16">
+          {today.length > 0 && (
+            <UpcomingBucket
+              label={t('dashboard.section.events.today')}
+              events={today}
+              tagLabel={tagLabel}
+            />
+          )}
+          {tomorrow.length > 0 && (
+            <UpcomingBucket
+              label={t('dashboard.section.events.tomorrow')}
+              events={tomorrow}
+              tagLabel={tagLabel}
+            />
+          )}
+          {thisWeek.length > 0 && (
+            <UpcomingBucket
+              label={t('dashboard.section.events.thisWeek')}
+              events={thisWeek}
+              tagLabel={tagLabel}
+            />
+          )}
+          {later.length > 0 && (
+            <UpcomingBucket label={t('calendar.later')} events={later} tagLabel={tagLabel} />
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function UpcomingBucket(props: {
+  label: string;
+  events: EventWithId[];
+  tagLabel: Record<EventTag, string>;
+}): ReactElement {
+  const { label, events, tagLabel } = props;
+  return (
+    <div className="flex flex-col gap-8">
+      <h3 className="text-meta font-semibold uppercase tracking-wide text-ink-mute">{label}</h3>
+      <ul className="flex flex-col gap-4">
+        {events.map((event) => (
+          <li
+            key={event.id}
+            className="flex items-center gap-12 rounded-control border border-surface-line bg-surface-bg px-14 py-12"
+          >
+            <span className="flex-1 text-body font-semibold text-ink">{event.title}</span>
+            <time dateTime={event.date} className="text-meta text-ink-mute">
+              {event.date}
+            </time>
+            <Badge tone={event.tag} size="sm">
+              {tagLabel[event.tag]}
+            </Badge>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
