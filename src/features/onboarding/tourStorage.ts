@@ -6,7 +6,13 @@
  * are pure data + localStorage shims — they have no React dependency.
  */
 
-export const TOUR_STORAGE_KEY = 'familyhq.onboarding.v1';
+// v2 (was v1): the parent-only `family` step was rewritten to focus on
+// inviting (link-based redeem, 14-day TTL — see inviteService.INVITE_TTL_MS).
+// Bumping the version re-shows the tour for users who already dismissed v1
+// so they actually see the updated nudge; v1 content was less actionable.
+// Future material changes (added/removed/reordered step OR substantive copy
+// changes on an existing step) should bump this again.
+export const TOUR_STORAGE_KEY = 'familyhq.onboarding.v2';
 
 export interface TourStep {
   id: string;

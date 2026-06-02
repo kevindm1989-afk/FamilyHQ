@@ -432,8 +432,8 @@
         "body": "A read-only ledger of every approved chore and the running balance. Members see their own; parents pick whose to view."
       },
       "family": {
-        "title": "Family management",
-        "body": "Parent-only tools: invite members, manage roles, and remove members who leave the household. Members don't see this section."
+        "title": "Invite the family",
+        "body": "From your Account menu, tap \"Manage family\" to send each member a one-tap invite link. Pending invitations expire after 14 days, and you can rename, deactivate, or revoke any invite at any time. Members don't see this section."
       }
     }
   },
