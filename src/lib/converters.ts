@@ -18,6 +18,7 @@ import type {
   FamilyEvent,
   Invite,
   Post,
+  SavingsGoal,
   Transaction,
   User,
   UserPrivate,
@@ -51,6 +52,9 @@ export const transactionConverter: FirestoreDataConverter<Transaction> =
   makeConverter<Transaction>();
 
 export const inviteConverter: FirestoreDataConverter<Invite> = makeConverter<Invite>();
+
+export const savingsGoalConverter: FirestoreDataConverter<SavingsGoal> =
+  makeConverter<SavingsGoal>();
 
 /**
  * Converter for `userPrivate/{uid}` (privacy finding 2). Shapes the adult email

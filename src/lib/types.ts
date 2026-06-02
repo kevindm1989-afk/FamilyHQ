@@ -140,6 +140,37 @@ export interface Transaction {
  */
 export const MONEY_MAX_CENTS = 100000000;
 
+/**
+ * Lifecycle of a savings goal (Feature 1 — savings goals & jars).
+ *  - 'active'    : the goal is being saved toward. Default on create.
+ *  - 'completed' : the parent has marked the goal as fulfilled (kid bought
+ *                  the thing). Terminal — no more contributions allowed.
+ *  - 'archived'  : the goal was given up on (kid changed their mind /
+ *                  parent retired a stale goal). Terminal — no more
+ *                  contributions, can be re-opened by re-creating.
+ */
+export type SavingsGoalStatus = 'active' | 'completed' | 'archived';
+
+export interface SavingsGoal {
+  familyId: string;
+  /** uid of the SUBJECT (the member whose goal this is). Set ONCE at create. */
+  ownerUid: string;
+  /** Free-text label the kid picks (e.g. "Nintendo Switch"). Trimmed by service. */
+  title: string;
+  /** INTEGER CENTS — how much to save in total. `>= 0` and `<= MONEY_MAX_CENTS`. */
+  targetAmount: number;
+  /** INTEGER CENTS — how much has been allocated/contributed so far. */
+  currentAmount: number;
+  /**
+   * Optional aspirational target date (ISO YYYY-MM-DD). Pure UI hint; no
+   * automatic deadline action.
+   */
+  targetDate?: string;
+  createdAt: number;
+  updatedAt: number;
+  status: SavingsGoalStatus;
+}
+
 export interface Invite {
   email: string; // [PI] adult email
   role: Role;

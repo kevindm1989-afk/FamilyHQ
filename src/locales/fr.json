@@ -163,6 +163,80 @@
     }
   },
 
+  "savings": {
+    "title": "Objectifs d’épargne",
+    "loading": "Chargement des objectifs…",
+    "unknownMember": "Un membre de la famille",
+    "section": {
+      "active": "Objectifs actifs",
+      "completed": "Atteints",
+      "archived": "Archivés",
+      "activeEmptyMember": "Aucun objectif — touchez le bouton + pour commencer à économiser pour quelque chose.",
+      "activeEmptyParent": "Aucun objectif familial actif."
+    },
+    "ownedBy": "Économies pour {{name}}",
+    "progressLabel": "{{current}} économisés sur {{target}} — {{percent}}% atteints",
+    "targetDate": "Date cible {{date}}",
+    "badge": {
+      "completed": "Atteint",
+      "archived": "Archivé"
+    },
+    "action": {
+      "create": "+ Nouvel objectif",
+      "contribute": "Ajouter",
+      "contributeLabel": "Ajouter à {{title}}",
+      "complete": "Marquer atteint",
+      "completeLabel": "Marquer {{title}} atteint",
+      "archive": "Archiver",
+      "archiveLabel": "Archiver {{title}}",
+      "delete": "Supprimer",
+      "deleteLabel": "Supprimer {{title}}"
+    },
+    "create": {
+      "title": "Nouvel objectif d’épargne",
+      "titleLabel": "Pour quoi économisez-vous ?",
+      "targetLabel": "Montant cible ($)",
+      "submit": "Créer l’objectif"
+    },
+    "contribute": {
+      "title": "Ajouter à l’objectif",
+      "body": "Combien ajouter à « {{title}} » ?",
+      "amountLabel": "Montant ($)",
+      "submit": "Ajouter"
+    },
+    "error": {
+      "titleRequired": "Veuillez saisir un titre.",
+      "titleTooLong": "Gardez le titre sous 80 caractères.",
+      "targetRequired": "Veuillez saisir un montant cible supérieur à zéro.",
+      "contributeRequired": "Veuillez saisir un montant positif.",
+      "generic": "Une erreur est survenue. Veuillez réessayer."
+    },
+    "toast": {
+      "created": "Objectif créé.",
+      "contributed": "Contribution ajoutée.",
+      "completed": "Objectif marqué comme atteint.",
+      "archived": "Objectif archivé.",
+      "deleted": "Objectif supprimé.",
+      "generic": "Une erreur est survenue. Veuillez réessayer."
+    },
+    "dashboard": {
+      "member": {
+        "heading": "Mes objectifs d’épargne",
+        "viewAll": "Voir tous les objectifs",
+        "empty": "Aucun objectif — créez-en un sur la page Objectifs."
+      },
+      "parent": {
+        "heading": "Épargne familiale",
+        "viewAll": "Voir tous les objectifs",
+        "activeCount_one": "{{count}} objectif actif",
+        "activeCount_other": "{{count}} objectifs actifs",
+        "completedCount_one": "{{count}} atteint",
+        "completedCount_other": "{{count}} atteints",
+        "empty": "Aucun objectif d’épargne familial."
+      }
+    }
+  },
+
   "allowance": {
     "title": "Allocation",
     "loading": "Chargement de l’historique d’allocation…",

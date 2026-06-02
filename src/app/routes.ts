@@ -16,6 +16,7 @@ export type ScreenId =
   | 'chores'
   | 'allowance'
   | 'family'
+  | 'goals'
   | 'accessibility'
   | 'privacy'
   | 'terms'
@@ -51,6 +52,10 @@ export const ROUTES: Record<ScreenId, RouteMeta> = {
     parentOnly: false,
   },
   family: { id: 'family', path: '/family', isModal: false, parentOnly: true },
+  // Savings Goals & Jars (Feature 1). NOT parent-only: members manage their
+  // own goals; parents see the family roll-up. Non-modal — has its own
+  // dedicated screen reached from the dashboard widgets.
+  goals: { id: 'goals', path: '/goals', isModal: false, parentOnly: false },
   // Accessibility statement (AODA launch-gate item). Reachable from both
   // signed-out (login footer) and signed-in (Account screen) — see
   // App.tsx + AppShell.tsx. NOT parent-only and NOT modal.
