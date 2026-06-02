@@ -193,19 +193,24 @@ export default defineConfig(async () => ({
         'src/vite-env.d.ts',
       ],
       // Thresholds — pinned with ~5% headroom below the baseline observed
-      // in PR #38 (lines 90.79, branches 89.45, functions 86.94, statements
-      // 90.79). The point isn't to ratchet up; it's to catch a meaningful
-      // regression — a PR that disables a test file, deletes assertions, or
-      // adds a sizable un-exercised feature gets flagged before merge.
+      // under @vitest/coverage-v8 v4 (PR #65 — vitest 3 → 4 bump). The v4
+      // provider measures lines vs. statements separately (v3 conflated
+      // them), and counts JSX/TSX paths more accurately, so the same code
+      // reads ~5–10 percentage points lower than under v3 without any
+      // tests being removed. New baseline (lines 82.5 / branches 75.0 /
+      // functions 79.6 / statements 80.2); thresholds tuned ~5% under
+      // that so we still catch a meaningful regression — a PR that
+      // disables a test file, deletes assertions, or adds a sizable
+      // un-exercised feature gets flagged before merge.
       //
       // Raise these when the suite naturally settles higher. Lower them
       // ONLY with an explicit reason in the PR description (e.g. a
       // dependency added a generated wrapper we can't reasonably cover).
       thresholds: {
-        lines: 85,
-        branches: 80,
-        functions: 80,
-        statements: 85,
+        lines: 78,
+        branches: 70,
+        functions: 75,
+        statements: 76,
       },
     },
   },
