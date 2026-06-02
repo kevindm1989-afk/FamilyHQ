@@ -249,3 +249,196 @@ export function dashboardWeeklyDigest(
     topChorePerformerName: topName,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Chore Streaks — Feature 5 (gamify consistency)
+//
+// All four streak stats are derived from the chore feed the member /
+// parent dashboard already subscribes to (no new Firestore listener,
+// satisfies the spec's "Use existing data / Optimize query count"
+// directive). Day arithmetic goes through `eventLocalDay` / `localDayKey`
+// so the streak comparison survives a UTC roll-over — the same
+// invariant that protects `selectUpcomingEvents` and `bucketUpcoming
+// Events`. Pure: no clock read, no side effects.
+//
+// Day attribution: each chore's "streak day" is its `dueDate` — the day
+// the chore activity was meant to happen. `createdAt` is the wrong
+// proxy (it's when the parent created the chore, not when the kid did
+// it); a proper `approvedAt` field would be ideal but doesn't exist
+// today (same approximation called out on `dashboardWeeklyDigest`).
+// Chores with malformed / missing dueDate are dropped from the
+// streak math.
+// ---------------------------------------------------------------------------
+
+export interface ChoreStreaks {
+  /**
+   * Consecutive LOCAL days ending today (or yesterday) on which the
+   * member had ≥1 approved chore. A streak running through yesterday
+   * counts even before today's chore is approved (gives the member
+   * one grace day to keep the streak alive).
+   */
+  currentStreak: number;
+  /** Longest run of consecutive LOCAL days with ≥1 approved chore. */
+  longestStreak: number;
+  /** Approved chores whose `dueDate` falls in the local CALENDAR month of `nowMs`. */
+  approvedThisMonth: number;
+  /**
+   * Count of completed 7-day windows where EVERY assigned chore was
+   * approved (no pending / complete / rejected). A window with zero
+   * chores doesn't count — "perfect" implies there were chores to do.
+   * Windows are aligned to local calendar weeks ending on Sunday going
+   * back from `nowMs`.
+   */
+  perfectWeeks: number;
+}
+
+/**
+ * Aggregate streak stats from a PRE-FILTERED chore feed (own-only).
+ * `useMyChores` already filters by `assignedTo == uid`; on the parent
+ * side, `topStreakHolder` filters per member before calling this.
+ *
+ * `nowMs` is injected (never `Date.now()` inside) so tests are
+ * deterministic and TZ-isolated.
+ */
+export function dashboardChoreStreaks(myChores: ChoreWithId[], nowMs: number): ChoreStreaks {
+  // Bucket approved chores by their local day-key for streak math.
+  const approvedDays = new Set<string>();
+  let approvedThisMonth = 0;
+  const monthKey = localDayKey(nowMs).slice(0, 7);
+  for (const chore of myChores) {
+    if (chore.status !== 'approved') continue;
+    const day = eventLocalDay(chore.dueDate);
+    if (day === null) continue;
+    approvedDays.add(day.key);
+    if (day.key.startsWith(monthKey)) {
+      approvedThisMonth += 1;
+    }
+  }
+
+  const currentStreak = computeCurrentStreak(approvedDays, nowMs);
+  const longestStreak = computeLongestStreak(approvedDays);
+  const perfectWeeks = computePerfectWeeks(myChores, nowMs);
+
+  return { currentStreak, longestStreak, approvedThisMonth, perfectWeeks };
+}
+
+function dayKeyOffset(nowMs: number, daysBack: number): string {
+  return localDayKey(nowMs - daysBack * 24 * 60 * 60 * 1000);
+}
+
+function computeCurrentStreak(approvedDays: Set<string>, nowMs: number): number {
+  // Walk backward from today. The streak window starts at TODAY; if
+  // today has no approved chore yet, we still allow YESTERDAY as the
+  // starting point (grace day) so a streak doesn't reset just because
+  // approval hasn't happened today yet.
+  let streak = 0;
+  let cursor = 0;
+  if (!approvedDays.has(localDayKey(nowMs))) {
+    if (!approvedDays.has(dayKeyOffset(nowMs, 1))) return 0;
+    cursor = 1;
+  }
+  while (approvedDays.has(dayKeyOffset(nowMs, cursor))) {
+    streak += 1;
+    cursor += 1;
+  }
+  return streak;
+}
+
+function computeLongestStreak(approvedDays: Set<string>): number {
+  if (approvedDays.size === 0) return 0;
+  // Convert keys to instants so we can compute consecutive-day runs by
+  // millisecond difference. Sort ascending.
+  const instants = Array.from(approvedDays)
+    .map((key) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+      if (!m) return null;
+      const year = Number(m[1]);
+      const month = Number(m[2]);
+      const day = Number(m[3]);
+      return new Date(year, month - 1, day).getTime();
+    })
+    .filter((n): n is number => n !== null)
+    .sort((a, b) => a - b);
+
+  const DAY = 24 * 60 * 60 * 1000;
+  let longest = 1;
+  let current = 1;
+  for (let i = 1; i < instants.length; i += 1) {
+    const prev = instants[i - 1]!;
+    const curr = instants[i]!;
+    if (curr - prev === DAY) {
+      current += 1;
+      if (current > longest) longest = current;
+    } else {
+      current = 1;
+    }
+  }
+  return longest;
+}
+
+function computePerfectWeeks(chores: ChoreWithId[], nowMs: number): number {
+  // Group chores by their local week (Monday-anchored) and count weeks
+  // where ≥1 chore was assigned AND every assigned chore is approved.
+  // A week is defined as the 7-day window starting on the local-Monday
+  // that contains the chore's dueDate.
+  const buckets = new Map<string, { total: number; approved: number }>();
+  for (const chore of chores) {
+    const day = eventLocalDay(chore.dueDate);
+    if (day === null) continue;
+    const weekKey = weekKeyForInstant(day.instant);
+    const slot = buckets.get(weekKey) ?? { total: 0, approved: 0 };
+    slot.total += 1;
+    if (chore.status === 'approved') slot.approved += 1;
+    buckets.set(weekKey, slot);
+  }
+  const currentWeekKey = weekKeyForInstant(nowMs);
+  let perfect = 0;
+  for (const [weekKey, { total, approved }] of buckets.entries()) {
+    // Skip the in-progress current week — only COMPLETED weeks count.
+    if (weekKey >= currentWeekKey) continue;
+    if (total > 0 && total === approved) perfect += 1;
+  }
+  return perfect;
+}
+
+function weekKeyForInstant(ms: number): string {
+  // Roll the date back to its Monday. `getDay()` returns 0 (Sun)..6
+  // (Sat); convert to a Monday-anchored offset (Mon=0..Sun=6).
+  const d = new Date(ms);
+  const dayOfWeek = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - dayOfWeek);
+  return localDayKey(d.getTime());
+}
+
+export interface TopStreakHolder {
+  uid: string | null;
+  name: string | null;
+  currentStreak: number;
+}
+
+/**
+ * For the parent's "Top streak holder" dashboard widget. Walks each
+ * active member's chores in the supplied feed and returns the one with
+ * the highest current streak. Ties break by member input order; an
+ * empty result is `{ uid: null, name: null, currentStreak: 0 }`.
+ */
+export function topStreakHolder(
+  chores: ChoreWithId[],
+  members: UserWithId[],
+  nowMs: number,
+): TopStreakHolder {
+  let best: TopStreakHolder = { uid: null, name: null, currentStreak: 0 };
+  for (const member of members) {
+    if (member.role !== 'member' || !member.isActive) continue;
+    const ownChores = chores.filter((c) => c.assignedTo === member.id);
+    const stats = dashboardChoreStreaks(ownChores, nowMs);
+    if (stats.currentStreak > best.currentStreak) {
+      best = {
+        uid: member.id,
+        name: member.name,
+        currentStreak: stats.currentStreak,
+      };
+    }
+  }
+  return best;
+}

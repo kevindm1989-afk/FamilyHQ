@@ -119,6 +119,20 @@
       "approved": "Approuvé",
       "rejected": "À refaire"
     },
+    "streaks": {
+      "heading": "Mes séries",
+      "loading": "Chargement des séries…",
+      "current": "Série actuelle",
+      "longest": "Plus longue série",
+      "thisMonth": "Approuvées ce mois-ci",
+      "perfectWeeks": "Semaines parfaites"
+    },
+    "topStreak": {
+      "heading": "Meilleure série",
+      "loading": "Chargement du meneur de série…",
+      "empty": "Aucune série active cette semaine — une seule tâche approuvée pour repartir.",
+      "body": "{{name}} est sur une série de {{count}} jours."
+    },
     "weeklyDigest": {
       "heading": "Résumé familial hebdomadaire",
       "loading": "Chargement du résumé de la semaine…",

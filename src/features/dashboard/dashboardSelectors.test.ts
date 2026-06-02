@@ -18,10 +18,12 @@ import type { PostWithId } from '../board/boardService';
 import type { ChoreWithId } from '../chores/choresMemberService';
 import {
   bucketUpcomingEvents,
+  dashboardChoreStreaks,
   dashboardWeeklyDigest,
   selectRecent,
   selectSoonestChores,
   selectUpcomingEvents,
+  topStreakHolder,
 } from './dashboardSelectors';
 
 function mkEvent(over: Partial<EventWithId> & { id: string; date: string }): EventWithId {
@@ -676,5 +678,242 @@ describe('dashboardWeeklyDigest — Feature 3 parent dashboard digest', () => {
       upcomingEvents7Days: 0,
       topChorePerformerName: null,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dashboardChoreStreaks + topStreakHolder — Feature 5 (Chore Streaks)
+//
+// Streaks derive day-of-credit from chore.dueDate (the day the chore was
+// for) — not createdAt (when the parent created it) and not an
+// approvedAt field (we don't have one). Caveat documented on the
+// selector docstring.
+// ---------------------------------------------------------------------------
+
+describe('dashboardChoreStreaks — current / longest streak', () => {
+  const ORIGINAL_TZ = process.env.TZ;
+  beforeEach(() => {
+    process.env.TZ = 'America/Los_Angeles';
+  });
+  afterEach(() => {
+    if (ORIGINAL_TZ === undefined) delete process.env.TZ;
+    else process.env.TZ = ORIGINAL_TZ;
+  });
+
+  const NOW_MS = new Date('2026-06-15T19:00:00.000Z').getTime(); // 12:00 PDT → local today = 2026-06-15
+  const UID = 'uid-member-a';
+
+  it('returns 0/0 for an empty chore list', () => {
+    const result = dashboardChoreStreaks([], NOW_MS);
+    expect(result.currentStreak).toBe(0);
+    expect(result.longestStreak).toBe(0);
+  });
+
+  it('counts a current streak of consecutive days ending TODAY', () => {
+    const chores = [
+      mkChore({ id: 'c1', dueDate: '2026-06-13', status: 'approved', assignedTo: UID }),
+      mkChore({ id: 'c2', dueDate: '2026-06-14', status: 'approved', assignedTo: UID }),
+      mkChore({ id: 'c3', dueDate: '2026-06-15', status: 'approved', assignedTo: UID }),
+    ];
+    expect(dashboardChoreStreaks(chores, NOW_MS).currentStreak).toBe(3);
+  });
+
+  it('grace day: a streak through YESTERDAY counts even if no chore is approved TODAY yet', () => {
+    const chores = [
+      mkChore({ id: 'c1', dueDate: '2026-06-13', status: 'approved', assignedTo: UID }),
+      mkChore({ id: 'c2', dueDate: '2026-06-14', status: 'approved', assignedTo: UID }),
+    ];
+    expect(dashboardChoreStreaks(chores, NOW_MS).currentStreak).toBe(2);
+  });
+
+  it('current streak is 0 when neither today nor yesterday has an approved chore', () => {
+    const chores = [
+      mkChore({ id: 'old', dueDate: '2026-06-10', status: 'approved', assignedTo: UID }),
+    ];
+    expect(dashboardChoreStreaks(chores, NOW_MS).currentStreak).toBe(0);
+  });
+
+  it('non-approved chores do NOT contribute to a streak', () => {
+    const chores = [
+      mkChore({ id: 'c1', dueDate: '2026-06-13', status: 'complete', assignedTo: UID }),
+      mkChore({ id: 'c2', dueDate: '2026-06-14', status: 'pending', assignedTo: UID }),
+      mkChore({ id: 'c3', dueDate: '2026-06-15', status: 'rejected', assignedTo: UID }),
+    ];
+    expect(dashboardChoreStreaks(chores, NOW_MS).currentStreak).toBe(0);
+  });
+
+  it('longestStreak picks the max historical run, not just the current one', () => {
+    const chores = [
+      // 5-day run in May:
+      mkChore({ id: 'm1', dueDate: '2026-05-01', status: 'approved', assignedTo: UID }),
+      mkChore({ id: 'm2', dueDate: '2026-05-02', status: 'approved', assignedTo: UID }),
+      mkChore({ id: 'm3', dueDate: '2026-05-03', status: 'approved', assignedTo: UID }),
+      mkChore({ id: 'm4', dueDate: '2026-05-04', status: 'approved', assignedTo: UID }),
+      mkChore({ id: 'm5', dueDate: '2026-05-05', status: 'approved', assignedTo: UID }),
+      // Current 2-day run:
+      mkChore({ id: 'c1', dueDate: '2026-06-14', status: 'approved', assignedTo: UID }),
+      mkChore({ id: 'c2', dueDate: '2026-06-15', status: 'approved', assignedTo: UID }),
+    ];
+    const result = dashboardChoreStreaks(chores, NOW_MS);
+    expect(result.currentStreak).toBe(2);
+    expect(result.longestStreak).toBe(5);
+  });
+
+  it('drops chores with malformed dueDate from the streak math (no throw)', () => {
+    const chores = [
+      mkChore({ id: 'good', dueDate: '2026-06-15', status: 'approved', assignedTo: UID }),
+      mkChore({ id: 'bad', dueDate: 'not-a-date', status: 'approved', assignedTo: UID }),
+      mkChore({ id: 'empty', dueDate: '', status: 'approved', assignedTo: UID }),
+    ];
+    expect(() => dashboardChoreStreaks(chores, NOW_MS)).not.toThrow();
+    expect(dashboardChoreStreaks(chores, NOW_MS).currentStreak).toBe(1);
+  });
+});
+
+describe('dashboardChoreStreaks — approvedThisMonth', () => {
+  const ORIGINAL_TZ = process.env.TZ;
+  beforeEach(() => {
+    process.env.TZ = 'America/Los_Angeles';
+  });
+  afterEach(() => {
+    if (ORIGINAL_TZ === undefined) delete process.env.TZ;
+    else process.env.TZ = ORIGINAL_TZ;
+  });
+
+  const NOW_MS = new Date('2026-06-15T19:00:00.000Z').getTime();
+  const UID = 'uid-member-a';
+
+  it('counts only approved chores whose dueDate is in the LOCAL calendar month of nowMs', () => {
+    const chores = [
+      mkChore({ id: 'this1', dueDate: '2026-06-01', status: 'approved', assignedTo: UID }),
+      mkChore({ id: 'this2', dueDate: '2026-06-15', status: 'approved', assignedTo: UID }),
+      mkChore({ id: 'last', dueDate: '2026-05-31', status: 'approved', assignedTo: UID }),
+      mkChore({ id: 'next', dueDate: '2026-07-01', status: 'approved', assignedTo: UID }),
+      mkChore({ id: 'pendingThisMonth', dueDate: '2026-06-10', status: 'pending', assignedTo: UID }),
+    ];
+    expect(dashboardChoreStreaks(chores, NOW_MS).approvedThisMonth).toBe(2);
+  });
+});
+
+describe('dashboardChoreStreaks — perfectWeeks', () => {
+  const ORIGINAL_TZ = process.env.TZ;
+  beforeEach(() => {
+    process.env.TZ = 'America/Los_Angeles';
+  });
+  afterEach(() => {
+    if (ORIGINAL_TZ === undefined) delete process.env.TZ;
+    else process.env.TZ = ORIGINAL_TZ;
+  });
+
+  const NOW_MS = new Date('2026-06-15T19:00:00.000Z').getTime(); // Mon 2026-06-15 PDT
+  const UID = 'uid-member-a';
+
+  it('counts a week where every assigned chore was approved as 1 perfect week', () => {
+    // Week of 2026-06-01 (Mon) → 06-07 (Sun): two chores, both approved.
+    const chores = [
+      mkChore({ id: 'a', dueDate: '2026-06-02', status: 'approved', assignedTo: UID }),
+      mkChore({ id: 'b', dueDate: '2026-06-05', status: 'approved', assignedTo: UID }),
+    ];
+    expect(dashboardChoreStreaks(chores, NOW_MS).perfectWeeks).toBe(1);
+  });
+
+  it('does NOT count a week where at least one chore was not approved', () => {
+    const chores = [
+      mkChore({ id: 'a', dueDate: '2026-06-02', status: 'approved', assignedTo: UID }),
+      mkChore({ id: 'b', dueDate: '2026-06-05', status: 'pending', assignedTo: UID }),
+    ];
+    expect(dashboardChoreStreaks(chores, NOW_MS).perfectWeeks).toBe(0);
+  });
+
+  it('excludes the IN-PROGRESS current week (only completed weeks count)', () => {
+    const chores = [
+      // Current week (containing 2026-06-15 Mon): perfect would normally count.
+      mkChore({ id: 'c1', dueDate: '2026-06-15', status: 'approved', assignedTo: UID }),
+    ];
+    expect(dashboardChoreStreaks(chores, NOW_MS).perfectWeeks).toBe(0);
+  });
+
+  it('a week with zero assigned chores does NOT count as perfect', () => {
+    expect(dashboardChoreStreaks([], NOW_MS).perfectWeeks).toBe(0);
+  });
+});
+
+describe('topStreakHolder', () => {
+  const ORIGINAL_TZ = process.env.TZ;
+  beforeEach(() => {
+    process.env.TZ = 'America/Los_Angeles';
+  });
+  afterEach(() => {
+    if (ORIGINAL_TZ === undefined) delete process.env.TZ;
+    else process.env.TZ = ORIGINAL_TZ;
+  });
+
+  const NOW_MS = new Date('2026-06-15T19:00:00.000Z').getTime();
+  const MAYA: import('../../lib/types').UserWithId = {
+    id: 'uid-maya',
+    name: 'Maya',
+    role: 'member',
+    familyId: 'fam-A',
+    isActive: true,
+    allowanceBalance: 0,
+    theme: 'light',
+  };
+  const BEN: import('../../lib/types').UserWithId = {
+    id: 'uid-ben',
+    name: 'Ben',
+    role: 'member',
+    familyId: 'fam-A',
+    isActive: true,
+    allowanceBalance: 0,
+    theme: 'light',
+  };
+
+  it('picks the member with the longest CURRENT streak', () => {
+    const chores = [
+      // Maya: 1-day current
+      mkChore({ id: 'm1', dueDate: '2026-06-15', status: 'approved', assignedTo: 'uid-maya' }),
+      // Ben: 3-day current
+      mkChore({ id: 'b1', dueDate: '2026-06-13', status: 'approved', assignedTo: 'uid-ben' }),
+      mkChore({ id: 'b2', dueDate: '2026-06-14', status: 'approved', assignedTo: 'uid-ben' }),
+      mkChore({ id: 'b3', dueDate: '2026-06-15', status: 'approved', assignedTo: 'uid-ben' }),
+    ];
+    expect(topStreakHolder(chores, [MAYA, BEN], NOW_MS)).toEqual({
+      uid: 'uid-ben',
+      name: 'Ben',
+      currentStreak: 3,
+    });
+  });
+
+  it('returns a null holder when no member has any approved chore', () => {
+    expect(topStreakHolder([], [MAYA, BEN], NOW_MS)).toEqual({
+      uid: null,
+      name: null,
+      currentStreak: 0,
+    });
+  });
+
+  it('SKIPS parents and deactivated members (only active members are eligible)', () => {
+    const parent: import('../../lib/types').UserWithId = {
+      id: 'uid-parent',
+      name: 'Sarah',
+      role: 'parent',
+      familyId: 'fam-A',
+      isActive: true,
+      allowanceBalance: 0,
+      theme: 'light',
+    };
+    const deactivated: import('../../lib/types').UserWithId = {
+      ...MAYA,
+      id: 'uid-old',
+      name: 'Old',
+      isActive: false,
+    };
+    const chores = [
+      mkChore({ id: 'p', dueDate: '2026-06-15', status: 'approved', assignedTo: 'uid-parent' }),
+      mkChore({ id: 'd', dueDate: '2026-06-15', status: 'approved', assignedTo: 'uid-old' }),
+    ];
+    expect(
+      topStreakHolder(chores, [parent, deactivated], NOW_MS).uid,
+    ).toBeNull();
   });
 });

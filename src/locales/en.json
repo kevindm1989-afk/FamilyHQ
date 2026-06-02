@@ -119,6 +119,20 @@
       "approved": "Approved",
       "rejected": "Needs another try"
     },
+    "streaks": {
+      "heading": "My streaks",
+      "loading": "Loading streaks…",
+      "current": "Current streak",
+      "longest": "Longest streak",
+      "thisMonth": "Approved this month",
+      "perfectWeeks": "Perfect weeks"
+    },
+    "topStreak": {
+      "heading": "Top streak holder",
+      "loading": "Loading streak leader…",
+      "empty": "No active streaks this week — a fresh start is just one approved chore away.",
+      "body": "{{name}} is on a {{count}}-day streak."
+    },
     "weeklyDigest": {
       "heading": "Weekly family summary",
       "loading": "Loading this week’s summary…",
