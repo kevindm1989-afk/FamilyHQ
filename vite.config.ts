@@ -192,14 +192,16 @@ export default defineConfig(async () => ({
         'src/main.tsx', // bootstrap shim, exercised by e2e not unit tests
         'src/vite-env.d.ts',
       ],
-      // Thresholds — pinned with ~5% headroom below the baseline observed
-      // under @vitest/coverage-v8 v4 (PR #65 — vitest 3 → 4 bump). The v4
-      // provider measures lines vs. statements separately (v3 conflated
-      // them), and counts JSX/TSX paths more accurately, so the same code
-      // reads ~5–10 percentage points lower than under v3 without any
-      // tests being removed. New baseline (lines 82.5 / branches 75.0 /
-      // functions 79.6 / statements 80.2); thresholds tuned ~5% under
-      // that so we still catch a meaningful regression — a PR that
+      // Thresholds — pinned with ~5% headroom below the baseline measured
+      // after the coverage backfill (PR #71 — useFamily Provider + Board
+      // Route + ChoresRoute tests). The post-Vitest-4 provider measures
+      // lines vs. statements separately and counts JSX/TSX paths
+      // accurately; previous baseline under v4 was lines 82.5 / branches
+      // 75.0 / funcs 79.6 / stmts 80.2 (thresholds 78/70/75/76). With
+      // the new tests the measured baseline is lines 89.6 / branches
+      // 80.2 / funcs 84.5 / stmts 86.7 — thresholds tightened ~5% under
+      // those to lock in the gain. The point isn't to ratchet up
+      // mechanically; it's to catch a meaningful regression — a PR that
       // disables a test file, deletes assertions, or adds a sizable
       // un-exercised feature gets flagged before merge.
       //
@@ -207,10 +209,10 @@ export default defineConfig(async () => ({
       // ONLY with an explicit reason in the PR description (e.g. a
       // dependency added a generated wrapper we can't reasonably cover).
       thresholds: {
-        lines: 78,
-        branches: 70,
-        functions: 75,
-        statements: 76,
+        lines: 84,
+        branches: 75,
+        functions: 79,
+        statements: 81,
       },
     },
   },
