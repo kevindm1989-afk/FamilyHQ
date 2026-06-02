@@ -178,6 +178,11 @@ export async function seedBaseline(env: RulesTestEnvironment): Promise<void> {
         familyId: fid,
         invitedBy: ownerUid,
         createdAt: Date.now(),
+        // 14-day TTL — matches INVITE_TTL_MS in inviteService.ts. Seeded
+        // explicitly because the new firestore rule (PR after #67) requires
+        // `expiresAt` to be in the future; an invite without this field
+        // reads as undefined and the freshness check fails-closed.
+        expiresAt: Date.now() + 14 * 24 * 60 * 60 * 1000,
         status: 'pending',
       });
     }
