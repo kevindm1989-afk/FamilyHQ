@@ -84,6 +84,15 @@ export function LoginScreen(): ReactElement {
       } else {
         await withApi((api, { auth }) => api.sendPasswordReset({ auth }, email));
         showToast(t('login.toast.resetSent'));
+        // Reset succeeded. Send the user back to sign-in so the next step is
+        // obvious — they can sign in here once they follow the reset link in
+        // their email. Email is preserved (they'll sign in with the same
+        // address); password is cleared so a stale value can't be submitted.
+        // Without this, the form stayed in `forgot` mode after the toast
+        // auto-dismissed, leaving the user staring at the same Send-reset
+        // CTA with no obvious next action.
+        setMode('signin');
+        setPassword('');
       }
     } catch (err) {
       showToast(userSafeError(err));
