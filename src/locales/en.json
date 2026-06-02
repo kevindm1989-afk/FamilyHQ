@@ -163,6 +163,80 @@
     }
   },
 
+  "savings": {
+    "title": "Savings goals",
+    "loading": "Loading goals…",
+    "unknownMember": "A family member",
+    "section": {
+      "active": "Active goals",
+      "completed": "Completed",
+      "archived": "Archived",
+      "activeEmptyMember": "No goals yet — tap the + button to start saving for something.",
+      "activeEmptyParent": "No active family goals yet."
+    },
+    "ownedBy": "Saving for {{name}}",
+    "progressLabel": "{{current}} saved of {{target}} — {{percent}}% complete",
+    "targetDate": "Target date {{date}}",
+    "badge": {
+      "completed": "Completed",
+      "archived": "Archived"
+    },
+    "action": {
+      "create": "+ New savings goal",
+      "contribute": "Add",
+      "contributeLabel": "Add to {{title}}",
+      "complete": "Mark complete",
+      "completeLabel": "Mark {{title}} complete",
+      "archive": "Archive",
+      "archiveLabel": "Archive {{title}}",
+      "delete": "Delete",
+      "deleteLabel": "Delete {{title}}"
+    },
+    "create": {
+      "title": "New savings goal",
+      "titleLabel": "What are you saving for?",
+      "targetLabel": "Target amount ($)",
+      "submit": "Create goal"
+    },
+    "contribute": {
+      "title": "Add to goal",
+      "body": "How much to add to “{{title}}”?",
+      "amountLabel": "Amount ($)",
+      "submit": "Add"
+    },
+    "error": {
+      "titleRequired": "Please enter a goal title.",
+      "titleTooLong": "Keep the title under 80 characters.",
+      "targetRequired": "Please enter a target amount greater than zero.",
+      "contributeRequired": "Please enter a positive amount.",
+      "generic": "Something went wrong. Please try again."
+    },
+    "toast": {
+      "created": "Goal created.",
+      "contributed": "Contribution added.",
+      "completed": "Goal marked complete.",
+      "archived": "Goal archived.",
+      "deleted": "Goal removed.",
+      "generic": "Something went wrong. Please try again."
+    },
+    "dashboard": {
+      "member": {
+        "heading": "My savings goals",
+        "viewAll": "View all goals",
+        "empty": "No goals yet — start saving for something on the Goals page."
+      },
+      "parent": {
+        "heading": "Family savings",
+        "viewAll": "View all goals",
+        "activeCount_one": "{{count}} active goal",
+        "activeCount_other": "{{count}} active goals",
+        "completedCount_one": "{{count}} completed",
+        "completedCount_other": "{{count}} completed",
+        "empty": "No family savings goals yet."
+      }
+    }
+  },
+
   "allowance": {
     "title": "Allowance",
     "loading": "Loading allowance history…",

@@ -656,6 +656,113 @@ service cloud.firestore {
       allow delete: if isParent() && sameFamily(resource);
     }
 
+    // --- savingsGoals (Feature 1: Savings Goals & Jars) ---------------------
+    // Members can manage their OWN active goal (create, update metadata,
+    // contribute); parents can contribute to any family goal AND archive /
+    // complete / delete any family goal. Family isolation: every read +
+    // write goes through `sameFamily(resource)` so a cross-tenant caller is
+    // denied. Money is integer cents and bounded by `isValidMoneyInt`.
+    match /savingsGoals/{goalId} {
+      // Helpers local to this block — keep the global scope uncluttered.
+      function isOwner() {
+        return isActive() && resource.data.ownerUid == request.auth.uid;
+      }
+      function incomingOwner() {
+        return isActive() && request.resource.data.ownerUid == request.auth.uid;
+      }
+      // The fields a non-status update can touch. Status flips have their
+      // own rule below (terminal transitions are parent-only).
+      function patchTouchesOnly(allowed) {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowed);
+      }
+      // Money/title shape checks for create + non-status update.
+      function shapeOk() {
+        return request.resource.data.targetAmount is int
+          && isValidMoneyInt(request.resource.data.targetAmount)
+          && request.resource.data.targetAmount > 0
+          && request.resource.data.currentAmount is int
+          && isValidMoneyInt(request.resource.data.currentAmount)
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 80;
+      }
+
+      // READ — family-scoped. Parents see all family goals (parent dashboard
+      // + family summary); members see only their own (privacy by query +
+      // rule). Cross-tenant + deactivated callers are denied.
+      function memberOwnRead() {
+        return isMember()
+          && sameFamily(resource)
+          && resource.data.ownerUid == request.auth.uid;
+      }
+      allow get: if (isParent() && sameFamily(resource)) || memberOwnRead();
+      allow list: if (isParent() && sameFamily(resource))
+        || memberOwnRead();
+
+      // CREATE — the OWNER creates their own goal, OR a parent creates on
+      // behalf of a same-family member. New goals start `active`,
+      // `currentAmount == 0`, exact key shape, valid money + title.
+      allow create: if isActive()
+        && incomingSameFamily()
+        && request.resource.data.keys().hasAll(
+             ['familyId', 'ownerUid', 'title', 'targetAmount',
+              'currentAmount', 'createdAt', 'updatedAt', 'status'])
+        && request.resource.data.keys().hasOnly(
+             ['familyId', 'ownerUid', 'title', 'targetAmount',
+              'currentAmount', 'targetDate', 'createdAt', 'updatedAt', 'status'])
+        && request.resource.data.status == 'active'
+        && request.resource.data.currentAmount == 0
+        && shapeOk()
+        && (incomingOwner() || isParent());
+
+      // UPDATE — three legal shapes:
+      //
+      //  A) OWNER edits metadata (title / targetAmount / targetDate /
+      //     updatedAt) on an ACTIVE goal. Money fields valid. familyId +
+      //     ownerUid + status + createdAt + currentAmount immutable.
+      //
+      //  B) Anyone same-family (owner or parent) CONTRIBUTES — increments
+      //     currentAmount only (+ updatedAt). Active goal only. New
+      //     currentAmount stays within bounds + does not exceed
+      //     targetAmount + is strictly greater than the prior value.
+      //
+      //  C) PARENT terminal-state transition — flips status active → completed
+      //     or active → archived (+ updatedAt). No money / title changes.
+      function ownerMetaPatch() {
+        return isOwner()
+          && resource.data.status == 'active'
+          && immutable('familyId')
+          && immutable('ownerUid')
+          && immutable('status')
+          && immutable('createdAt')
+          && immutable('currentAmount')
+          && shapeOk()
+          && patchTouchesOnly(['title', 'targetAmount', 'targetDate', 'updatedAt']);
+      }
+      function contributePatch() {
+        return (isOwner() || (isParent() && sameFamily(resource)))
+          && resource.data.status == 'active'
+          && request.resource.data.currentAmount is int
+          && isValidMoneyInt(request.resource.data.currentAmount)
+          && request.resource.data.currentAmount > resource.data.currentAmount
+          && request.resource.data.currentAmount <= resource.data.targetAmount
+          && patchTouchesOnly(['currentAmount', 'updatedAt']);
+      }
+      function statusPatch() {
+        return isParent()
+          && sameFamily(resource)
+          && resource.data.status == 'active'
+          && (request.resource.data.status == 'completed'
+              || request.resource.data.status == 'archived')
+          && patchTouchesOnly(['status', 'updatedAt']);
+      }
+      allow update: if ownerMetaPatch() || contributePatch() || statusPatch();
+
+      // DELETE — parent only, same family. Hard-delete is the "clean up
+      // an old goal" affordance. Members archive instead.
+      allow delete: if isParent() && sameFamily(resource);
+    }
+
     // --- default deny ------------------------------------------------------
     match /{document=**} {
       allow read, write: if false;

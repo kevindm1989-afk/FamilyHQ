@@ -32,6 +32,7 @@ const BoardRoute = lazy(() => import('../features/board/BoardRoute'));
 const ChoresRoute = lazy(() => import('../features/chores/ChoresRoute'));
 const AllowanceRoute = lazy(() => import('../features/allowance/AllowanceRoute'));
 const FamilyManagementRoute = lazy(() => import('../features/family/FamilyManagementRoute'));
+const SavingsGoalsRoute = lazy(() => import('../features/savings/SavingsGoalsRoute'));
 
 import { DashboardRouteSkeleton } from '../features/dashboard/DashboardRouteSkeleton';
 import { CalendarRouteSkeleton } from '../features/calendar/CalendarRouteSkeleton';
@@ -39,6 +40,7 @@ import { BoardRouteSkeleton } from '../features/board/BoardRouteSkeleton';
 import { ChoresRouteSkeleton } from '../features/chores/ChoresRouteSkeleton';
 import { AllowanceRouteSkeleton } from '../features/allowance/AllowanceRouteSkeleton';
 import { FamilyManagementRouteSkeleton } from '../features/family/FamilyManagementRouteSkeleton';
+import { SavingsGoalsRouteSkeleton } from '../features/savings/SavingsGoalsRouteSkeleton';
 
 /**
  * Wraps a lazy Route in its own Suspense + the matching skeleton. One-liner
@@ -130,6 +132,10 @@ export function AppShell(): ReactElement {
               'family',
               L(<FamilyManagementRoute />, <FamilyManagementRouteSkeleton />),
             )}
+          />
+          <Route
+            path={ROUTES.goals.path}
+            element={L(<SavingsGoalsRoute />, <SavingsGoalsRouteSkeleton />)}
           />
           <Route
             path={ROUTES.accessibility.path}
