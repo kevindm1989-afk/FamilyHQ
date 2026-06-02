@@ -55,6 +55,12 @@ export interface FamilyManagementScreenProps {
     email: string;
     role: Role;
     createdAt: number;
+    /**
+     * Epoch ms after which the invite can no longer be redeemed. Optional
+     * for legacy invites (pre-TTL). The screen derives the days-remaining
+     * label here; the service is the authority for the actual cutoff.
+     */
+    expiresAt?: number;
   }>;
   /**
    * Parent-only: revoke (delete) a pending invite. Used by the "Revoke"
@@ -387,6 +393,29 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
                       {t(`family.role.${inv.role}`)}
                     </Badge>
                   </div>
+                  {(() => {
+                    // "Expires in N days" hint — derived from expiresAt, with
+                    // the legacy fallback baked in at the route layer so this
+                    // component stays prop-driven. Round UP so an invite that
+                    // expires in 30 hours reads "Expires in 2 days" (parents
+                    // expect at-least-this-many-days, not at-most).
+                    const expiresAt = inv.expiresAt;
+                    if (expiresAt === undefined) return null;
+                    const msLeft = expiresAt - Date.now();
+                    if (msLeft <= 0) {
+                      return (
+                        <span className="text-meta text-status-danger-text">
+                          {t('familyInvite.expired')}
+                        </span>
+                      );
+                    }
+                    const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000));
+                    return (
+                      <span className="text-meta text-ink-mute">
+                        {t('familyInvite.expiresIn', { count: daysLeft })}
+                      </span>
+                    );
+                  })()}
                   <div className="flex flex-wrap gap-8">
                     <button
                       type="button"

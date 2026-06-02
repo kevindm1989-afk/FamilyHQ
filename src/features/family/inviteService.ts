@@ -42,6 +42,14 @@ import type { Invite, Role } from '../../lib/types';
 const INVITES_COLLECTION = 'invites';
 const USERS_COLLECTION = 'users';
 
+/**
+ * How long a pending invite remains redeemable. 14 days balances the parent's
+ * need to share the link asynchronously (text, email, in-person) with the
+ * privacy cost of an indefinitely-live credential. Tune here in one place if
+ * we learn we need shorter (security) or longer (usability) in practice.
+ */
+export const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+
 export const INVITE_CREATE_SUCCESS = 'Invitation created.';
 export const INVITE_REVOKE_SUCCESS = 'Invitation revoked.';
 export const INVITE_ACCEPT_SUCCESS = 'Welcome to the family!';
@@ -86,6 +94,7 @@ export async function createInvite(
     throw new InviteActionError('Please enter a valid email address.');
   }
   try {
+    const now = Date.now();
     const ref = await addDoc(
       collection(deps.db, INVITES_COLLECTION).withConverter(inviteConverter),
       {
@@ -93,7 +102,11 @@ export async function createInvite(
         role: input.role,
         familyId: input.familyId,
         invitedBy: input.invitedBy,
-        createdAt: Date.now(),
+        createdAt: now,
+        // Explicit expiry so the read-side check can compare without
+        // having to know INVITE_TTL_MS. Legacy invites without this field
+        // still work — getInviteById falls back to createdAt + TTL.
+        expiresAt: now + INVITE_TTL_MS,
         status: 'pending',
       } satisfies Invite,
     );
@@ -101,6 +114,16 @@ export async function createInvite(
   } catch {
     throw new InviteActionError();
   }
+}
+
+/**
+ * Returns the expiry timestamp for an invite. Legacy invites (pre-TTL
+ * feature) have no `expiresAt` field — we fall back to a derived value
+ * (createdAt + INVITE_TTL_MS). Public so the UI can render "expires in N
+ * days" against the same value the service enforces against.
+ */
+export function inviteExpiresAt(invite: Pick<Invite, 'createdAt' | 'expiresAt'>): number {
+  return invite.expiresAt ?? invite.createdAt + INVITE_TTL_MS;
 }
 
 /**
@@ -121,6 +144,11 @@ export async function getInviteById(
     if (!snap.exists()) return null;
     const data = snap.data();
     if (data.status !== 'pending') return null;
+    // Expired invites read as if they never existed — same null return as
+    // accepted/revoked, so the redeem UI shows the generic "no longer
+    // valid" copy and a bad actor can't tell expired from revoked from
+    // never-existed. Server-side rules enforcement is a follow-up.
+    if (inviteExpiresAt(data) <= Date.now()) return null;
     return { id: snap.id, ...data };
   } catch {
     return null;

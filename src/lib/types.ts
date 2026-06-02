@@ -147,6 +147,15 @@ export interface Invite {
   invitedBy: string;
   createdAt: number;
   status: InviteStatus;
+  /**
+   * Epoch ms after which the invite is no longer redeemable. Optional for
+   * backward compatibility with invites created before the TTL feature
+   * landed — those default to `createdAt + INVITE_TTL_MS` at read time.
+   * New invites always write this explicitly. Client-side enforcement
+   * (getInviteById returns null when past expiry); rules-level enforcement
+   * is a follow-up.
+   */
+  expiresAt?: number;
 }
 
 /** A user enriched with its document id (uid) for UI lists. */

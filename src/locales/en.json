@@ -389,7 +389,10 @@
     "linkCopied": "Link copied to clipboard.",
     "pendingHeading": "Pending invitations",
     "revoke": "Revoke",
-    "revoked": "Invitation revoked."
+    "revoked": "Invitation revoked.",
+    "expiresIn_one": "Expires in {{count}} day",
+    "expiresIn_other": "Expires in {{count}} days",
+    "expired": "Expired"
   },
 
   "errorBoundary": {
