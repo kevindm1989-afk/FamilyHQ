@@ -40,9 +40,13 @@ import {
 import { relativeTime } from '../board/relativeTime';
 import {
   bucketUpcomingEvents,
+  dashboardChoreStreaks,
   dashboardWeeklyDigest,
   selectRecent,
   selectSoonestChores,
+  topStreakHolder,
+  type ChoreStreaks,
+  type TopStreakHolder,
   type WeeklyDigest,
 } from './dashboardSelectors';
 
@@ -187,8 +191,17 @@ function MemberSections(props: DashboardScreenProps): ReactElement {
   const { balanceCents, earnings, myChores, nowMs, onNavigate } = props;
   const unavailable = t('common.unavailable');
 
+  // Member streaks — derived purely from the member's own chore feed
+  // (useMyChores is already filtered to assignedTo == self). No new
+  // Firestore listener.
+  const ownStreaks =
+    !myChores.loading && myChores.error === null
+      ? dashboardChoreStreaks(myChores.items, nowMs)
+      : null;
+
   return (
     <>
+      <StreaksCard streaks={ownStreaks} loading={myChores.loading} />
       <SectionShell
         heading={t('dashboard.section.earnings.heading')}
         viewAllLabel={t('dashboard.section.earnings.viewAll')}
@@ -283,10 +296,14 @@ function ParentSections(props: DashboardScreenProps): ReactElement {
   const digest = digestReady
     ? dashboardWeeklyDigest(approvals.items, events.items, members, nowMs)
     : null;
+  // Top streak holder — same family-chore feed; pure derivation, no
+  // new listener. Null while loading so the card doesn't flash empty.
+  const topHolder = digestReady ? topStreakHolder(approvals.items, members, nowMs) : null;
 
   return (
     <>
       <WeeklyDigestCard digest={digest} loading={approvals.loading} />
+      <TopStreakHolderCard holder={topHolder} loading={approvals.loading} />
       <SectionShell
         heading={t('dashboard.section.approvals.heading')}
         viewAllLabel={t('dashboard.section.approvals.viewAll')}
@@ -323,6 +340,105 @@ function ParentSections(props: DashboardScreenProps): ReactElement {
         />
       </SectionShell>
     </>
+  );
+}
+
+/**
+ * Member-only "My streaks" card (Feature 5). Pure read-out built from
+ * the member's own chore feed; no actions inside. Renders a Skeleton
+ * while the feed is loading.
+ */
+function StreaksCard(props: { streaks: ChoreStreaks | null; loading: boolean }): ReactElement {
+  const { t } = useTranslation();
+  const { streaks, loading } = props;
+  if (loading || streaks === null) {
+    return (
+      <section
+        aria-labelledby="streaks-heading"
+        className="flex flex-col gap-12 rounded-card border border-surface-line bg-surface-card p-16"
+      >
+        <h2 id="streaks-heading" className="text-title font-semibold text-ink">
+          {t('dashboard.streaks.heading')}
+        </h2>
+        <Skeleton label={t('dashboard.streaks.loading')} />
+      </section>
+    );
+  }
+  const stats: Array<{ label: string; value: string }> = [
+    { label: t('dashboard.streaks.current'), value: String(streaks.currentStreak) },
+    { label: t('dashboard.streaks.longest'), value: String(streaks.longestStreak) },
+    {
+      label: t('dashboard.streaks.thisMonth'),
+      value: String(streaks.approvedThisMonth),
+    },
+    { label: t('dashboard.streaks.perfectWeeks'), value: String(streaks.perfectWeeks) },
+  ];
+  return (
+    <section
+      aria-labelledby="streaks-heading"
+      className="flex flex-col gap-12 rounded-card border border-surface-line bg-surface-card p-16"
+    >
+      <h2 id="streaks-heading" className="text-title font-semibold text-ink">
+        {t('dashboard.streaks.heading')}
+      </h2>
+      <dl className="grid grid-cols-2 gap-x-12 gap-y-12">
+        {stats.map((stat) => (
+          <div key={stat.label} className="flex flex-col gap-2">
+            <dt className="text-meta font-semibold uppercase tracking-wide text-ink-mute">
+              {stat.label}
+            </dt>
+            <dd className="text-title font-bold text-ink">{stat.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+/**
+ * Parent-only "Top streak holder" card (Feature 5). Names the member
+ * with the longest current streak. When no one has an active streak,
+ * the card explains that honestly instead of pretending there's a
+ * leader.
+ */
+function TopStreakHolderCard(props: {
+  holder: TopStreakHolder | null;
+  loading: boolean;
+}): ReactElement {
+  const { t } = useTranslation();
+  const { holder, loading } = props;
+  if (loading || holder === null) {
+    return (
+      <section
+        aria-labelledby="top-streak-heading"
+        className="flex flex-col gap-12 rounded-card border border-surface-line bg-surface-card p-16"
+      >
+        <h2 id="top-streak-heading" className="text-title font-semibold text-ink">
+          {t('dashboard.topStreak.heading')}
+        </h2>
+        <Skeleton label={t('dashboard.topStreak.loading')} />
+      </section>
+    );
+  }
+  return (
+    <section
+      aria-labelledby="top-streak-heading"
+      className="flex flex-col gap-8 rounded-card border border-surface-line bg-surface-card p-16"
+    >
+      <h2 id="top-streak-heading" className="text-title font-semibold text-ink">
+        {t('dashboard.topStreak.heading')}
+      </h2>
+      {holder.name === null ? (
+        <p className="text-body text-ink-mute">{t('dashboard.topStreak.empty')}</p>
+      ) : (
+        <p className="text-body text-ink">
+          {t('dashboard.topStreak.body', {
+            name: holder.name,
+            count: holder.currentStreak,
+          })}
+        </p>
+      )}
+    </section>
   );
 }
 
