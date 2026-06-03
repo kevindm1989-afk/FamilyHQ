@@ -152,7 +152,7 @@ jobs:
           # deployed separately below so a hosting blip doesn't roll back
           # rule changes (and vice versa).
 
-      - name: Deploy firestore:rules + firestore:indexes
+      - name: Deploy firestore:rules + firestore:indexes + storage:rules
         # Authenticate via GOOGLE_APPLICATION_CREDENTIALS pointing at the
         # service-account JSON written to a temp file. The deprecated
         # FIREBASE_TOKEN env var is NOT set here on purpose — setting it
@@ -160,13 +160,20 @@ jobs:
         # confuses firebase-tools and the CLI exits 2 with "An unexpected
         # error has occurred". GOOGLE_APPLICATION_CREDENTIALS is the
         # forward-compatible auth path firebase-tools recommends.
+        #
+        # storage:rules added Feature 2 (Chore Photo Verification): the
+        # Cloud Storage rules at `storage.rules` gate the proof-image
+        # upload path. Without `storage:rules` in this --only list, the
+        # rules file would land in the repo but never take effect in
+        # production — the default rules (allow read,write: if false)
+        # would block every kid's upload.
         run: |
           SA_PATH="$(mktemp /tmp/sa-XXXXXX.json)"
           printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$SA_PATH"
           chmod 600 "$SA_PATH"
           GOOGLE_APPLICATION_CREDENTIALS="$SA_PATH" \
             npx firebase deploy \
-              --only firestore:rules,firestore:indexes \
+              --only firestore:rules,firestore:indexes,storage:rules \
               --project ${{ secrets.FIREBASE_PROJECT_ID_STAGING || secrets.FIREBASE_PROJECT_ID }} \
               --non-interactive
           rm -f "$SA_PATH"
@@ -273,16 +280,18 @@ jobs:
           projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
           channelId: live
 
-      - name: Deploy firestore:rules + firestore:indexes
+      - name: Deploy firestore:rules + firestore:indexes + storage:rules
         # Authenticate via GOOGLE_APPLICATION_CREDENTIALS (see the staging
         # job above for the rationale on why FIREBASE_TOKEN is NOT set).
+        # storage:rules added Feature 2 (Chore Photo Verification) — see
+        # the staging job comment for the full rationale.
         run: |
           SA_PATH="$(mktemp /tmp/sa-XXXXXX.json)"
           printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$SA_PATH"
           chmod 600 "$SA_PATH"
           GOOGLE_APPLICATION_CREDENTIALS="$SA_PATH" \
             npx firebase deploy \
-              --only firestore:rules,firestore:indexes \
+              --only firestore:rules,firestore:indexes,storage:rules \
               --project ${{ secrets.FIREBASE_PROJECT_ID }} \
               --non-interactive
           rm -f "$SA_PATH"
