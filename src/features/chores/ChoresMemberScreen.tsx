@@ -47,6 +47,16 @@ export interface ChoresMemberScreenProps {
   /** Injected mark-complete action (wired to choresMemberService.markComplete + toast). */
   onMarkComplete: (choreId: string) => Promise<void>;
   /**
+   * Optional photo-proof submission path (Feature 2). When the kid picks
+   * an image for a pending chore, the Mark done button dispatches THIS
+   * action instead of the plain `onMarkComplete` — uploading the file to
+   * Firebase Storage and patching the chore doc atomically (see
+   * chorePhotoService.markCompleteWithProof). If the route doesn't
+   * provide this prop (e.g. in a unit test), the photo input is hidden
+   * and the existing text-only flow runs unchanged.
+   */
+  onMarkCompleteWithProof?: (choreId: string, file: File) => Promise<void>;
+  /**
    * Navigate to the member's Allowance History (Allowance History feature). The
    * "View history" affordance is now an ENABLED control that invokes this —
    * superseding the earlier aria-disabled "coming soon" placeholder.
@@ -114,7 +124,7 @@ function formatMoney(value: number): string {
 
 export function ChoresMemberScreen(props: ChoresMemberScreenProps): ReactElement {
   const { t, i18n } = useTranslation();
-  const { viewer, feed, onMarkComplete, onViewHistory } = props;
+  const { viewer, feed, onMarkComplete, onMarkCompleteWithProof, onViewHistory } = props;
   const { showToast } = useToast();
   const locale = i18n.resolvedLanguage ?? 'en';
 
@@ -130,11 +140,17 @@ export function ChoresMemberScreen(props: ChoresMemberScreenProps): ReactElement
   const waitingHeadingRef = useRef<HTMLHeadingElement>(null);
   const pendingFocusRef = useRef(false);
 
-  const handleMarkComplete = (choreId: string): void => {
+  const handleMarkComplete = (choreId: string, file?: File): void => {
     // Guard: ignore a click while ANY mark-complete is in flight.
     if (submittingId !== null) return;
     setSubmittingId(choreId);
-    void onMarkComplete(choreId)
+    // Pick the right action: with-proof when a file was attached AND the
+    // route supplied the handler; otherwise the existing text-only path.
+    const action =
+      file !== undefined && onMarkCompleteWithProof !== undefined
+        ? onMarkCompleteWithProof(choreId, file)
+        : onMarkComplete(choreId);
+    void action
       .then(() => {
         // Defer the success toast to a macrotask so the steady-state UI (the
         // chore moving into the "Waiting for approval" section) settles first.
@@ -144,7 +160,9 @@ export function ChoresMemberScreen(props: ChoresMemberScreenProps): ReactElement
         setTimeout(() => showToast(t('chores.toast.completed')), 0);
         pendingFocusRef.current = true;
       })
-      .catch(() => showToast(t('chores.toast.generic')))
+      .catch((err: unknown) =>
+        showToast(err instanceof Error ? err.message : t('chores.toast.generic')),
+      )
       .finally(() => setSubmittingId(null));
   };
 
@@ -207,6 +225,7 @@ export function ChoresMemberScreen(props: ChoresMemberScreenProps): ReactElement
               locale={locale}
               onMarkComplete={handleMarkComplete}
               submittingId={submittingId}
+              allowProof={onMarkCompleteWithProof !== undefined}
             />
             <ChoreSection
               title={t('chores.section.waitingForApproval')}
@@ -230,6 +249,7 @@ export function ChoresMemberScreen(props: ChoresMemberScreenProps): ReactElement
               locale={locale}
               onTryAgain={handleMarkComplete}
               submittingId={submittingId}
+              allowProof={onMarkCompleteWithProof !== undefined}
             />
           </>
         )}
@@ -250,10 +270,12 @@ interface ChoreSectionProps {
   locale: string;
   faded?: boolean | undefined;
   strikeThrough?: boolean | undefined;
-  onMarkComplete?: ((choreId: string) => void) | undefined;
-  onTryAgain?: ((choreId: string) => void) | undefined;
+  onMarkComplete?: ((choreId: string, file?: File) => void) | undefined;
+  onTryAgain?: ((choreId: string, file?: File) => void) | undefined;
   submittingId?: string | null | undefined;
   headingRef?: RefObject<HTMLHeadingElement> | undefined;
+  /** When true, the row shows an optional "Attach proof photo" affordance. */
+  allowProof?: boolean | undefined;
 }
 
 function ChoreSection(props: ChoreSectionProps): ReactElement | null {
@@ -267,6 +289,7 @@ function ChoreSection(props: ChoreSectionProps): ReactElement | null {
     onTryAgain,
     submittingId,
     headingRef,
+    allowProof,
   } = props;
   if (chores.length === 0) return null;
   return (
@@ -291,6 +314,7 @@ function ChoreSection(props: ChoreSectionProps): ReactElement | null {
               onMarkComplete={onMarkComplete}
               onTryAgain={onTryAgain}
               submitting={submittingId === chore.id}
+              allowProof={allowProof}
             />
           </li>
         ))}
@@ -304,14 +328,29 @@ interface ChoreRowProps {
   locale: string;
   faded?: boolean | undefined;
   strikeThrough?: boolean | undefined;
-  onMarkComplete?: ((choreId: string) => void) | undefined;
-  onTryAgain?: ((choreId: string) => void) | undefined;
+  onMarkComplete?: ((choreId: string, file?: File) => void) | undefined;
+  onTryAgain?: ((choreId: string, file?: File) => void) | undefined;
   submitting?: boolean | undefined;
+  allowProof?: boolean | undefined;
 }
 
 function ChoreRow(props: ChoreRowProps): ReactElement {
   const { t } = useTranslation();
-  const { chore, locale, faded, strikeThrough, onMarkComplete, onTryAgain, submitting } = props;
+  const {
+    chore,
+    locale,
+    faded,
+    strikeThrough,
+    onMarkComplete,
+    onTryAgain,
+    submitting,
+    allowProof,
+  } = props;
+  // Per-row staged photo. State is local to the row because the file is
+  // ephemeral until the kid taps Mark done — there's no shared state to
+  // hoist. Cleared via setProofFile(null) after a successful submit.
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const proofInputId = useId();
   const isPending = chore.status === 'pending';
   const isApproved = chore.status === 'approved';
   const isRejected = chore.status === 'rejected';
@@ -382,13 +421,23 @@ function ChoreRow(props: ChoreRowProps): ReactElement {
         </p>
       )}
 
+      {(isRejected || isPending) && allowProof && (
+        <ProofPicker
+          inputId={proofInputId}
+          file={proofFile}
+          onPick={setProofFile}
+          choreTitle={chore.title}
+          disabled={submitting}
+        />
+      )}
+
       {isRejected && onTryAgain && (
         <button
           type="button"
           disabled={submitting}
           aria-disabled={submitting ? 'true' : undefined}
           aria-label={t('chores.tryAgainLabel', { title: chore.title })}
-          onClick={() => onTryAgain(chore.id)}
+          onClick={() => onTryAgain(chore.id, proofFile ?? undefined)}
           className="inline-flex min-h-tap items-center justify-center self-start rounded-control bg-accent px-20 text-body font-semibold text-onAccent transition-colors duration-cardPress ease-out hover:bg-accent-dark active:bg-accent-dark focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus disabled:opacity-60 motion-reduce:transition-none"
         >
           {t('chores.tryAgain')}
@@ -401,11 +450,54 @@ function ChoreRow(props: ChoreRowProps): ReactElement {
           disabled={submitting}
           aria-disabled={submitting ? 'true' : undefined}
           aria-label={t('chores.markDoneLabel', { title: chore.title })}
-          onClick={() => onMarkComplete(chore.id)}
+          onClick={() => onMarkComplete(chore.id, proofFile ?? undefined)}
           className="inline-flex min-h-tap items-center justify-center self-start rounded-control bg-accent px-20 text-body font-semibold text-onAccent transition-colors duration-cardPress ease-out hover:bg-accent-dark active:bg-accent-dark focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus disabled:opacity-60 motion-reduce:transition-none"
         >
           {t('chores.markDone')}
         </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Tiny labelled file picker for chore proof photos. Kept inline (no new
+ * file) because the only consumer is ChoreRow above. Real <label>+<input>
+ * for full keyboard + screen-reader support. Type/size validation is
+ * client-side defense in depth; chorePhotoService validates again before
+ * Storage, and storage.rules validates one more time at the boundary.
+ */
+function ProofPicker(props: {
+  inputId: string;
+  file: File | null;
+  onPick: (file: File | null) => void;
+  choreTitle: string;
+  disabled?: boolean | undefined;
+}): ReactElement {
+  const { t } = useTranslation();
+  const { inputId, file, onPick, choreTitle, disabled } = props;
+  return (
+    <div className="flex flex-col gap-4 self-start">
+      <label
+        htmlFor={inputId}
+        className="text-meta font-semibold text-ink-mute cursor-pointer underline focus-within:ring-focus focus-within:ring-brand focus-within:ring-offset-focus"
+      >
+        {t('chores.proof.attachLabel', { title: choreTitle })}
+      </label>
+      <input
+        id={inputId}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        disabled={disabled}
+        onChange={(e) => {
+          const picked = e.target.files?.[0] ?? null;
+          onPick(picked);
+        }}
+        className="text-meta text-ink"
+      />
+      {file !== null && (
+        <p className="text-meta text-status-info-text">{t('chores.proof.submitted')}</p>
       )}
     </div>
   );

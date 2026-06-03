@@ -362,6 +362,28 @@ function ApprovalRow(props: ApprovalRowProps): ReactElement {
           {formatMoney(chore.dollarValue)} {t('chores.rewardSuffix')}
         </span>
       </div>
+      {chore.proofImageUrl !== undefined && chore.proofImageUrl !== '' && (
+        // Feature 2 — Phase 2: kid attached a proof photo. Show a small
+        // thumbnail with a "View full size" link that opens the original in
+        // a new tab. Image is wrapped in an anchor (real link semantics +
+        // open in new tab via target=_blank rel=noopener). Alt-text names
+        // the chore so a screen-reader user gets the context.
+        <a
+          href={chore.proofImageUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block self-start focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+          aria-label={t('chores.proof.viewFull')}
+        >
+          <img
+            src={chore.proofImageUrl}
+            alt={t('chores.proof.thumbAlt', { title: chore.title })}
+            className="h-64 w-64 rounded-control border border-surface-line object-cover"
+            loading="lazy"
+            data-testid="chore-proof-thumb"
+          />
+        </a>
+      )}
 
       <div className="flex gap-8">
         <button

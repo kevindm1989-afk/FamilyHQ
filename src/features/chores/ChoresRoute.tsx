@@ -55,12 +55,20 @@ function MemberChoresRoute(props: {
     await markComplete({ db }, choreId);
   };
 
+  const handleMarkCompleteWithProof = async (choreId: string, file: File): Promise<void> => {
+    if (familyId === null) return;
+    const { db, storage } = await import('../../firebase/config');
+    const { markCompleteWithProof } = await import('./chorePhotoService');
+    await markCompleteWithProof({ db, storage }, { familyId, choreId, file });
+  };
+
   return (
     <ChoresMemberScreen
       familyId={familyId}
       viewer={viewer}
       feed={feed}
       onMarkComplete={handleMarkComplete}
+      onMarkCompleteWithProof={handleMarkCompleteWithProof}
       onViewHistory={() => navigate(ROUTES.allowance.path)}
     />
   );
