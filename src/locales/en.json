@@ -390,6 +390,15 @@
       "added": "Chore added.",
       "generic": "Something went wrong. Please try again."
     },
+    "proof": {
+      "attachLabel": "Attach proof photo for {{title}} (optional)",
+      "thumbAlt": "Proof photo for {{title}}",
+      "submitted": "Photo attached. Tap Mark done to submit.",
+      "viewFull": "View full size",
+      "errorInvalidType": "Please choose an image file (JPG, PNG, HEIC).",
+      "errorTooLarge": "That photo is too large — please pick one under 5 MB.",
+      "submittedAt": "Photo submitted {{relative}}"
+    },
     "addChore": {
       "sheetTitle": "Add Chore",
       "whatLabel": "What needs doing?",
