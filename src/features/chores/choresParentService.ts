@@ -171,6 +171,11 @@ export async function rejectChore(
     await updateDoc(doc(deps.db, CHORES_COLLECTION, choreId), {
       status: 'rejected',
       rejectionReason: trimmed,
+      // Feature 2 — paired with rejectionReason. Set on every reject so
+      // the parent UI can show "rejected N days ago" without a separate
+      // listener / inference. Cleared when the kid resubmits via
+      // markCompleteWithProof.
+      rejectedAt: Date.now(),
     });
   } catch {
     throw new ChoreActionError(CHORE_PARENT_GENERIC_ERROR);

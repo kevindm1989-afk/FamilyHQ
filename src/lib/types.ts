@@ -110,6 +110,24 @@ export interface Chore {
   dollarValue: number;
   status: ChoreStatus;
   rejectionReason?: string;
+  /**
+   * Optional epoch ms — set when a parent rejects a chore. Paired with
+   * `rejectionReason`. Both fields are cleared on the next mark-complete
+   * attempt (the kid retries with a fresh submission).
+   */
+  rejectedAt?: number;
+  /**
+   * Optional Firebase Storage download URL (Feature 2 — Chore Photo
+   * Verification). When the kid attaches a photo on mark-complete, the
+   * file is uploaded under `families/{familyId}/chores/{choreId}/proof.jpg`
+   * and the resulting download URL is stored here. Visible to same-family
+   * callers via storage.rules; chore writers attach via the
+   * markCompleteWithProof service. Optional — text-only completion still
+   * works.
+   */
+  proofImageUrl?: string;
+  /** Epoch ms when the proof image was attached. Paired with proofImageUrl. */
+  proofSubmittedAt?: number;
   familyId: string;
   createdBy: string;
   createdAt: number;

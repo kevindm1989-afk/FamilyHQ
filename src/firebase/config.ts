@@ -22,6 +22,7 @@ import {
   connectFirestoreEmulator,
   type Firestore,
 } from 'firebase/firestore';
+import { getStorage, connectStorageEmulator, type FirebaseStorage } from 'firebase/storage';
 
 const firebaseConfig: FirebaseOptions = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -43,12 +44,21 @@ export const db: Firestore = initializeFirestore(app, {
   }),
 });
 
+// Firebase Storage (Feature 2 — Chore Photo Verification). Lazy-instantiated
+// here so the chore service can attach a proof image when a member marks a
+// chore complete. The Storage SDK is small (~30KB gzip) but only meaningfully
+// used by one flow; it loads with the rest of the firebase config, which is
+// already gated behind the auth boundary, so it never hits the cold-load
+// public bundle. storage.rules enforces same-family read + assignee write.
+export const storage: FirebaseStorage = getStorage(app);
+
 const useEmulator = import.meta.env.VITE_USE_EMULATOR === 'true';
 
 if (useEmulator) {
   // Emulator ports mirror firebase.json. `disableWarnings` keeps console clean.
   connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
   connectFirestoreEmulator(db, '127.0.0.1', 8080);
+  connectStorageEmulator(storage, '127.0.0.1', 9199);
 }
 
 // Re-export the auth-state listener so useAuth can subscribe to it via the

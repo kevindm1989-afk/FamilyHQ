@@ -390,6 +390,15 @@
       "added": "Tâche ajoutée.",
       "generic": "Une erreur est survenue. Veuillez réessayer."
     },
+    "proof": {
+      "attachLabel": "Joindre une photo de preuve pour {{title}} (facultatif)",
+      "thumbAlt": "Photo de preuve pour {{title}}",
+      "submitted": "Photo jointe. Touchez Marquer terminé pour soumettre.",
+      "viewFull": "Voir en grand format",
+      "errorInvalidType": "Veuillez choisir un fichier image (JPG, PNG, HEIC).",
+      "errorTooLarge": "Cette photo est trop volumineuse — choisissez-en une de moins de 5 Mo.",
+      "submittedAt": "Photo soumise {{relative}}"
+    },
     "addChore": {
       "sheetTitle": "Ajouter une tâche",
       "whatLabel": "Que faut-il faire ?",

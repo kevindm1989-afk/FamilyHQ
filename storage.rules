@@ -1,0 +1,88 @@
+// Firebase Storage rules — Feature 2 (Chore Photo Verification).
+//
+// Single bucket, single object class: chore proof images at
+// `families/{familyId}/chores/{choreId}/proof.jpg`.
+//
+// Authority model:
+//   - READ: any signed-in user whose users/{uid} doc reports the same
+//     familyId as the requested family path. Parent + member both qualify;
+//     a cross-tenant caller is denied. The path-segment match is the
+//     primary tenant fence; the users/{uid} firestore lookup is the
+//     authority check (mirrors the Firestore rules pattern of `get()` on
+//     callerDoc for role/family).
+//   - WRITE (create + update): same family AND caller is the chore
+//     assignee. We look up the chore doc to verify `assignedTo ==
+//     request.auth.uid` AND `familyId == path-familyId`. So a peer member
+//     in the same family cannot upload a proof for someone else's chore,
+//     and a parent cannot impersonate the kid's submission (parents can
+//     still see + reject via the firestore rule; that's the right
+//     separation of duties).
+//   - DELETE: parent-only same family. Used by the parent "clear proof"
+//     action; the kid cannot delete a proof they submitted (audit trail).
+//
+// Object validation:
+//   - contentType must start with `image/` (no random binary uploads).
+//   - maxSize 5 MB — generous for a phone photo, hard ceiling against
+//     a runaway upload draining Firebase Storage's Spark-tier free quota.
+//
+// firebase/rules-unit-testing has a separate Storage rules tier; the
+// existing `test/rules/` suite is Firestore-only. A dedicated Storage
+// rules-test harness is a deliberate follow-up (the rules here are
+// small + reviewable line-by-line and exercised by the e2e:authed flow
+// once a kid uploads a proof in the emulator).
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // --- helpers ---------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function callerFamily() {
+      return firestore.get(
+        /databases/(default)/documents/users/$(request.auth.uid)
+      ).data.familyId;
+    }
+    function callerIsActive() {
+      return firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.isActive == true;
+    }
+    function callerIsParent() {
+      return callerIsActive()
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'parent';
+    }
+    function choreAssignedToCaller(familyId, choreId) {
+      // Single lookup against the chore doc the proof belongs to. Path
+      // `familyId` MUST match the chore's recorded familyId (defense in
+      // depth: the URL's family segment can't mismatch the doc), and the
+      // chore's assignee must be the caller.
+      return firestore.exists(/databases/(default)/documents/chores/$(choreId))
+        && firestore.get(/databases/(default)/documents/chores/$(choreId)).data.familyId == familyId
+        && firestore.get(/databases/(default)/documents/chores/$(choreId)).data.assignedTo == request.auth.uid;
+    }
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+    function isSmallEnough() {
+      // 5 MB cap — see header comment for rationale.
+      return request.resource.size < 5 * 1024 * 1024;
+    }
+
+    // --- families/{familyId}/chores/{choreId}/proof.jpg ------------------
+    match /families/{familyId}/chores/{choreId}/{fileName} {
+      allow read: if isSignedIn() && callerIsActive() && callerFamily() == familyId;
+      allow create, update: if isSignedIn()
+        && callerIsActive()
+        && callerFamily() == familyId
+        && choreAssignedToCaller(familyId, choreId)
+        && isImage()
+        && isSmallEnough();
+      allow delete: if isSignedIn() && callerIsParent() && callerFamily() == familyId;
+    }
+
+    // --- default deny ----------------------------------------------------
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
