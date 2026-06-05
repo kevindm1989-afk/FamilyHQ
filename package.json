@@ -18,6 +18,7 @@
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
     "test:rules": "vitest run --config vitest.rules.config.ts",
+    "test:storage-rules": "vitest run --config vitest.storage-rules.config.ts",
     "a11y": "vitest run --config vitest.a11y.config.ts",
     "e2e": "vite build && playwright test e2e/login-public.spec.ts",
     "e2e:authed": "VITE_DISABLE_PWA=true vite build --mode emulator && firebase emulators:exec --only auth,firestore --project demo-familyhq \"playwright test e2e/authed\"",
