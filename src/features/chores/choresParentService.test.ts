@@ -162,8 +162,12 @@ beforeEach(() => {
     status: 'complete',
     assignedTo: 'uid-member-a',
     dollarValue: 3,
+    pointValue: 10,
     familyId: 'fam-A',
     title: 'Take out the trash',
+    dueDate: '2026-05-30',
+    isRecurring: false,
+    recurrenceFrequency: 'none',
   };
   vi.clearAllMocks();
   vi.useFakeTimers();
@@ -175,12 +179,12 @@ afterEach(() => {
 
 describe('approveChore — runs ONE transaction with the exact ADR-0004 writes', () => {
   it('runs inside a single runTransaction (atomic — not separate writes)', async () => {
-    await approveChore({ db }, 'chore-1');
+    await approveChore({ db }, 'chore-1', 'uid-parent-a');
     expect(runTransactionMock).toHaveBeenCalledTimes(1);
   });
 
   it('flips the chore status to "approved"', async () => {
-    await approveChore({ db }, 'chore-1');
+    await approveChore({ db }, 'chore-1', 'uid-parent-a');
     const choreUpdate = txnOps.find(
       (o) => o.op === 'update' && o.ref.__collection === 'chores',
     );
@@ -189,7 +193,7 @@ describe('approveChore — runs ONE transaction with the exact ADR-0004 writes',
   });
 
   it('increments the ASSIGNEE allowanceBalance by EXACTLY dollarValue', async () => {
-    await approveChore({ db }, 'chore-1');
+    await approveChore({ db }, 'chore-1', 'uid-parent-a');
     const balUpdate = txnOps.find(
       (o) => o.op === 'update' && o.ref.__collection === 'users',
     );
@@ -203,7 +207,7 @@ describe('approveChore — runs ONE transaction with the exact ADR-0004 writes',
   });
 
   it('writes EXACTLY ONE earning transaction doc with the 7-field shape', async () => {
-    await approveChore({ db }, 'chore-1');
+    await approveChore({ db }, 'chore-1', 'uid-parent-a');
     const txnSets = txnOps.filter((o) => o.op === 'set' && o.ref.__collection === 'transactions');
     expect(txnSets, 'exactly one ledger doc is written').toHaveLength(1);
     const data = txnSets[0]!.data;
@@ -221,7 +225,7 @@ describe('approveChore — runs ONE transaction with the exact ADR-0004 writes',
   });
 
   it('does the chore-flip, balance increment, and ledger write ALL within the SAME transaction', async () => {
-    await approveChore({ db }, 'chore-1');
+    await approveChore({ db }, 'chore-1', 'uid-parent-a');
     // All three writes were recorded by the in-transaction tx object, not via a
     // separate top-level updateDoc/setDoc/addDoc (which would not be atomic).
     expect(txnOps.filter((o) => o.ref.__collection === 'chores')).toHaveLength(1);
@@ -235,19 +239,19 @@ describe('approveChore — runs ONE transaction with the exact ADR-0004 writes',
 describe('approveChore — idempotency guard: aborts unless the re-read chore is complete (F4)', () => {
   it('ABORTS (rejects) and writes NOTHING when the re-read chore is already approved', async () => {
     choreDocData = { ...choreDocData, status: 'approved' };
-    await expect(approveChore({ db }, 'chore-1')).rejects.toBeInstanceOf(ChoreActionError);
+    await expect(approveChore({ db }, 'chore-1', 'uid-parent-a')).rejects.toBeInstanceOf(ChoreActionError);
     expect(txnOps, 'no writes on a non-complete chore').toHaveLength(0);
   });
 
   it('ABORTS and writes NOTHING when the re-read chore is still pending', async () => {
     choreDocData = { ...choreDocData, status: 'pending' };
-    await expect(approveChore({ db }, 'chore-1')).rejects.toBeInstanceOf(ChoreActionError);
+    await expect(approveChore({ db }, 'chore-1', 'uid-parent-a')).rejects.toBeInstanceOf(ChoreActionError);
     expect(txnOps).toHaveLength(0);
   });
 
   it('ABORTS and writes NOTHING when the chore doc does not exist', async () => {
     choreDocData = undefined;
-    await expect(approveChore({ db }, 'chore-1')).rejects.toBeInstanceOf(ChoreActionError);
+    await expect(approveChore({ db }, 'chore-1', 'uid-parent-a')).rejects.toBeInstanceOf(ChoreActionError);
     expect(txnOps).toHaveLength(0);
   });
 });
@@ -257,20 +261,112 @@ describe('approveChore — error mapping (privacy): raw Firestore text never sur
     runTransactionMock.mockImplementationOnce(async () => {
       throw new Error('permission-denied: raw firebase, must not surface');
     });
-    await expect(approveChore({ db }, 'secret-chore')).rejects.toThrow(CHORE_PARENT_GENERIC_ERROR);
+    await expect(approveChore({ db }, 'secret-chore', 'uid-parent-a')).rejects.toThrow(CHORE_PARENT_GENERIC_ERROR);
   });
 
   it('the surfaced error contains no raw provider text and no chore id', async () => {
     runTransactionMock.mockImplementationOnce(async () => {
       throw new Error('permission-denied: raw firebase');
     });
-    const err = await approveChore({ db }, 'secret-chore-id').then(
+    const err = await approveChore({ db }, 'secret-chore-id', 'uid-parent-a').then(
       () => new Error('expected approveChore to reject'),
       (e: unknown) => e as Error,
     );
     expect(err.message).toBe(CHORE_PARENT_GENERIC_ERROR);
     expect(err.message).not.toMatch(/permission-denied|firebase/i);
     expect(err.message).not.toContain('secret-chore-id');
+  });
+});
+
+describe('approveChore — recurring respawn (Feature follow-up)', () => {
+  it('does NOT create a next instance when the chore is non-recurring (status flip + balance + ledger only)', async () => {
+    // Default fixture has isRecurring=false / recurrenceFrequency='none'.
+    await approveChore({ db }, 'chore-1', 'uid-parent-a');
+    const setOps = txnOps.filter((o) => o.op === 'set');
+    // Only the ledger doc — no second chore set.
+    expect(setOps).toHaveLength(1);
+    expect(setOps[0]!.ref.__collection).toBe('transactions');
+  });
+
+  it('creates a fresh PENDING chore advanced by 7 days for a WEEKLY recurring chore', async () => {
+    choreDocData = {
+      ...choreDocData,
+      isRecurring: true,
+      recurrenceFrequency: 'weekly',
+      dueDate: '2026-05-30',
+    };
+    await approveChore({ db }, 'chore-1', 'uid-parent-a');
+    const newChore = txnOps.find(
+      (o) => o.op === 'set' && o.ref.__collection === 'chores',
+    );
+    expect(newChore, 'a weekly recurring approve must spawn a next-instance chore').toBeDefined();
+    const payload = newChore!.data as Record<string, unknown>;
+    expect(payload.status).toBe('pending');
+    expect(payload.dueDate).toBe('2026-06-06'); // +7 days
+    expect(payload.title).toBe('Take out the trash');
+    expect(payload.assignedTo).toBe('uid-member-a');
+    expect(payload.dollarValue).toBe(3);
+    expect(payload.pointValue).toBe(10);
+    expect(payload.familyId).toBe('fam-A');
+    expect(payload.isRecurring).toBe(true);
+    expect(payload.recurrenceFrequency).toBe('weekly');
+  });
+
+  it('advances the dueDate by 14 days for a BIWEEKLY recurring chore', async () => {
+    choreDocData = {
+      ...choreDocData,
+      isRecurring: true,
+      recurrenceFrequency: 'biweekly',
+      dueDate: '2026-05-30',
+    };
+    await approveChore({ db }, 'chore-1', 'uid-parent-a');
+    const newChore = txnOps.find(
+      (o) => o.op === 'set' && o.ref.__collection === 'chores',
+    );
+    expect((newChore!.data as Record<string, unknown>).dueDate).toBe('2026-06-13');
+  });
+
+  it('sets `createdBy` on the new chore to the APPROVING parent uid (rule require)', async () => {
+    choreDocData = {
+      ...choreDocData,
+      isRecurring: true,
+      recurrenceFrequency: 'weekly',
+    };
+    // Use a DIFFERENT parent than the original creator to prove the new
+    // chore's createdBy follows the APPROVER, not the original chore's
+    // creator (the rule's check is on request.auth.uid).
+    await approveChore({ db }, 'chore-1', 'uid-parent-different');
+    const newChore = txnOps.find(
+      (o) => o.op === 'set' && o.ref.__collection === 'chores',
+    );
+    expect((newChore!.data as Record<string, unknown>).createdBy).toBe('uid-parent-different');
+  });
+
+  it('rolls the dueDate across a month boundary correctly (2026-06-28 + 7 days = 2026-07-05)', async () => {
+    choreDocData = {
+      ...choreDocData,
+      isRecurring: true,
+      recurrenceFrequency: 'weekly',
+      dueDate: '2026-06-28',
+    };
+    await approveChore({ db }, 'chore-1', 'uid-parent-a');
+    const newChore = txnOps.find(
+      (o) => o.op === 'set' && o.ref.__collection === 'chores',
+    );
+    expect((newChore!.data as Record<string, unknown>).dueDate).toBe('2026-07-05');
+  });
+
+  it('does NOT respawn when isRecurring is true but recurrenceFrequency is "none" (defensive — schema drift)', async () => {
+    choreDocData = {
+      ...choreDocData,
+      isRecurring: true,
+      recurrenceFrequency: 'none',
+    };
+    await approveChore({ db }, 'chore-1', 'uid-parent-a');
+    const newChore = txnOps.find(
+      (o) => o.op === 'set' && o.ref.__collection === 'chores',
+    );
+    expect(newChore, 'a "none" frequency must not respawn even with isRecurring=true').toBeUndefined();
   });
 });
 
