@@ -230,6 +230,72 @@ describe('updateTodo', () => {
     await updateTodo({ db }, 't-1', {});
     expect(updateDocMock).not.toHaveBeenCalled();
   });
+
+  it('writes a trimmed description', async () => {
+    await updateTodo({ db }, 't-1', { description: '  notes  ' });
+    expect(updateDocMock).toHaveBeenCalledWith(
+      { __ref: 'doc:todos/t-1' },
+      { description: 'notes' },
+    );
+  });
+
+  it('clears description with deleteField() when the trimmed value is empty', async () => {
+    await updateTodo({ db }, 't-1', { description: '   ' });
+    expect(updateDocMock).toHaveBeenCalledWith(
+      { __ref: 'doc:todos/t-1' },
+      { description: deleteFieldSentinel },
+    );
+  });
+
+  it('rejects an oversized description before writing', async () => {
+    await expect(
+      updateTodo({ db }, 't-1', { description: 'a'.repeat(2001) }),
+    ).rejects.toBeInstanceOf(TodoActionError);
+    expect(updateDocMock).not.toHaveBeenCalled();
+  });
+
+  it('writes a non-empty assignedTo straight through', async () => {
+    await updateTodo({ db }, 't-1', { assignedTo: 'uid-b' });
+    expect(updateDocMock).toHaveBeenCalledWith(
+      { __ref: 'doc:todos/t-1' },
+      { assignedTo: 'uid-b' },
+    );
+  });
+
+  it('maps a Firestore failure on update to TodoActionError', async () => {
+    updateDocMock.mockRejectedValueOnce(new Error('boom'));
+    await expect(
+      updateTodo({ db }, 't-1', { title: 'x' }),
+    ).rejects.toBeInstanceOf(TodoActionError);
+  });
+});
+
+describe('createTodo — description validation', () => {
+  it('rejects a description over 2000 chars before writing', async () => {
+    await expect(
+      createTodo(
+        { db },
+        {
+          familyId: 'fam-A',
+          createdBy: 'uid-a',
+          title: 'x',
+          description: 'a'.repeat(2001),
+        },
+      ),
+    ).rejects.toBeInstanceOf(TodoActionError);
+    expect(addDocMock).not.toHaveBeenCalled();
+  });
+
+  it('omits an empty-trimmed description from the create body', async () => {
+    await createTodo(
+      { db },
+      { familyId: 'fam-A', createdBy: 'uid-a', title: 'x', description: '   ' },
+    );
+    const call = addDocMock.mock.calls[0];
+    if (call === undefined) throw new Error('addDoc was not called');
+    const [, body] = call as [unknown, Record<string, unknown>];
+    expect('description' in body).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

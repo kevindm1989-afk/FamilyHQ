@@ -219,6 +219,53 @@ describe('TodoListPanel — create', () => {
   });
 });
 
+describe('TodoListPanel — edit sheet', () => {
+  it('opens the Edit sheet with the row pre-filled and submits only the changed patch', async () => {
+    const onEdit = vi.fn(async () => undefined);
+    renderPanel({
+      feed: {
+        todos: [
+          mkTodo({
+            id: 't-1',
+            title: 'Walk the dog',
+            description: 'around the block',
+            dueDate: '2026-06-10',
+          }),
+        ],
+        loading: false,
+        error: null,
+      },
+      onEdit,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /edit walk the dog/i }));
+    const sheet = await screen.findByRole('dialog');
+    // Title input is pre-filled.
+    const titleInput = within(sheet).getByLabelText(/what needs doing/i) as HTMLInputElement;
+    expect(titleInput.value).toBe('Walk the dog');
+    // Change only the title; everything else should be omitted from the patch.
+    fireEvent.change(titleInput, { target: { value: 'Walk the dog twice' } });
+    fireEvent.submit(within(sheet).getByRole('button', { name: /save changes/i }).closest('form')!);
+    await waitFor(() => {
+      expect(onEdit).toHaveBeenCalledWith('t-1', { title: 'Walk the dog twice' });
+    });
+  });
+
+  it('does NOT render the Edit button on a completed todo (only the checkbox + Delete)', () => {
+    renderPanel({
+      feed: {
+        todos: [
+          mkTodo({ id: 't-1', title: 'Done', isCompleted: true, completedAt: 1 }),
+        ],
+        loading: false,
+        error: null,
+      },
+      onEdit: vi.fn(async () => undefined),
+      onToggle: vi.fn(async () => undefined),
+    });
+    expect(screen.queryByRole('button', { name: /edit done/i })).not.toBeInTheDocument();
+  });
+});
+
 describe('TodoListPanel — role parity (UI is not gated by role)', () => {
   it('a member viewer sees the create FAB + delete control', () => {
     renderPanel({
