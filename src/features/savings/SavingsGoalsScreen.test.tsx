@@ -101,7 +101,9 @@ describe('SavingsGoalsScreen — member viewer affordances', () => {
 
   it('shows the per-goal "Add" (contribute) button on an active goal', () => {
     renderScreen({ onContribute: vi.fn(async () => undefined) });
-    expect(screen.getByRole('button', { name: /^add$/i })).toBeInTheDocument();
+    // The Button receives an aria-label that includes the goal title for
+    // screen-reader uniqueness; that is now its accessible name.
+    expect(screen.getByRole('button', { name: /add to new bike/i })).toBeInTheDocument();
   });
 
   it('hides the parent-only Complete / Archive / Delete affordances for a member viewer', () => {
@@ -132,8 +134,10 @@ describe('SavingsGoalsScreen — parent viewer affordances', () => {
       onComplete: vi.fn(async () => undefined),
       onArchive: vi.fn(async () => undefined),
     });
-    expect(screen.getByRole('button', { name: /mark complete/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^archive$/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /mark new bike complete/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /archive new bike/i })).toBeInTheDocument();
   });
 
   it('renders the "Saving for {name}" line so the parent sees whose goal it is', () => {
@@ -153,7 +157,7 @@ describe('SavingsGoalsScreen — parent viewer affordances', () => {
       },
       onDelete: vi.fn(async () => undefined),
     });
-    expect(screen.getByRole('button', { name: /^delete$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /delete new bike/i })).toBeInTheDocument();
   });
 });
 
@@ -202,7 +206,7 @@ describe('SavingsGoalsScreen — create + contribute sheets', () => {
 
   it('opens the contribute sheet when "Add" is tapped on a goal', () => {
     renderScreen({ onContribute: vi.fn(async () => undefined) });
-    fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /add to new bike/i }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText(/how much to add/i)).toBeInTheDocument();
   });

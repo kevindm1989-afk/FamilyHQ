@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { ROUTES, canAccess, hidesBottomNav, type ScreenId } from './routes';
 
 const MODAL_SCREENS: ScreenId[] = ['add_chore', 'add_event', 'compose'];
-const NAV_SCREENS: ScreenId[] = ['dashboard', 'calendar', 'board', 'chores'];
+const NAV_SCREENS: ScreenId[] = ['dashboard', 'calendar', 'board', 'chores', 'tasks'];
 const PARENT_ONLY: ScreenId[] = ['add_chore', 'add_event', 'family'];
 
 describe('route metadata', () => {
@@ -22,6 +22,7 @@ describe('route metadata', () => {
       'calendar',
       'board',
       'chores',
+      'tasks',
       'family',
       'add_chore',
       'add_event',
@@ -72,6 +73,10 @@ describe('parent-only route guards (member is bounced)', () => {
 
   it('allows a member onto the dashboard', () => {
     expect(canAccess('dashboard', 'member')).toBe(true);
+  });
+
+  it('allows a member onto the tasks screen (full family CRUD)', () => {
+    expect(canAccess('tasks', 'member')).toBe(true);
   });
 
   it('allows a member onto compose (not parent-only)', () => {

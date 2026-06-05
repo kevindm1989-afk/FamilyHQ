@@ -11,6 +11,14 @@ export interface ButtonProps {
   onClick?: () => void;
   type?: 'button' | 'submit';
   children: ReactNode;
+  /**
+   * Optional accessible-name override. When the visible label is too generic
+   * to identify the action (e.g. a row of "Delete" buttons one per item),
+   * callers pass a context-rich label here. Maps to the native HTML
+   * `aria-label` so screen readers announce the contextual name instead of
+   * the shared visible text.
+   */
+  'aria-label'?: string;
 }
 
 // a11y override (style-guide §2): amber + success use DARK INK text, never
@@ -50,6 +58,7 @@ export function Button(props: ButtonProps): ReactElement {
     type = 'button',
     children,
   } = props;
+  const ariaLabel = props['aria-label'];
 
   const inactive = disabled || loading;
 
@@ -58,6 +67,7 @@ export function Button(props: ButtonProps): ReactElement {
       type={type}
       aria-disabled={disabled || undefined}
       aria-busy={loading || undefined}
+      aria-label={ariaLabel}
       onClick={inactive ? undefined : onClick}
       className={`inline-flex min-h-tap items-center justify-center gap-8 rounded-control font-semibold transition-colors duration-cardPress ease-out focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none ${SIZE_CLASS[size]} ${VARIANT_CLASS[variant]} ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
     >

@@ -33,6 +33,7 @@ const ChoresRoute = lazy(() => import('../features/chores/ChoresRoute'));
 const AllowanceRoute = lazy(() => import('../features/allowance/AllowanceRoute'));
 const FamilyManagementRoute = lazy(() => import('../features/family/FamilyManagementRoute'));
 const SavingsGoalsRoute = lazy(() => import('../features/savings/SavingsGoalsRoute'));
+const TasksRoute = lazy(() => import('../features/tasks/TasksRoute'));
 
 import { DashboardRouteSkeleton } from '../features/dashboard/DashboardRouteSkeleton';
 import { CalendarRouteSkeleton } from '../features/calendar/CalendarRouteSkeleton';
@@ -41,6 +42,7 @@ import { ChoresRouteSkeleton } from '../features/chores/ChoresRouteSkeleton';
 import { AllowanceRouteSkeleton } from '../features/allowance/AllowanceRouteSkeleton';
 import { FamilyManagementRouteSkeleton } from '../features/family/FamilyManagementRouteSkeleton';
 import { SavingsGoalsRouteSkeleton } from '../features/savings/SavingsGoalsRouteSkeleton';
+import { TasksRouteSkeleton } from '../features/tasks/TasksRouteSkeleton';
 
 /**
  * Wraps a lazy Route in its own Suspense + the matching skeleton. One-liner
@@ -77,7 +79,9 @@ export function AppShell(): ReactElement {
 
   const showNav = !hidesBottomNav(activeScreen);
   const activeTab = (
-    ['dashboard', 'calendar', 'board', 'chores'].includes(activeScreen) ? activeScreen : 'dashboard'
+    ['dashboard', 'calendar', 'board', 'chores', 'tasks'].includes(activeScreen)
+      ? activeScreen
+      : 'dashboard'
   ) as NavTab;
 
   const guard = (screen: ScreenId, el: ReactElement): ReactElement =>
@@ -122,6 +126,7 @@ export function AppShell(): ReactElement {
           />
           <Route path={ROUTES.board.path} element={L(<BoardRoute />, <BoardRouteSkeleton />)} />
           <Route path={ROUTES.chores.path} element={L(<ChoresRoute />, <ChoresRouteSkeleton />)} />
+          <Route path={ROUTES.tasks.path} element={L(<TasksRoute />, <TasksRouteSkeleton />)} />
           <Route
             path={ROUTES.allowance.path}
             element={L(<AllowanceRoute />, <AllowanceRouteSkeleton />)}
