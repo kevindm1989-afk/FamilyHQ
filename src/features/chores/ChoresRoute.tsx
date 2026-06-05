@@ -93,7 +93,7 @@ function ParentChoresRoute(props: {
 
   const handleApprove = async (choreId: string): Promise<void> => {
     const { db } = await import('../../firebase/config');
-    await approveChore({ db }, choreId);
+    await approveChore({ db }, choreId, viewer.uid);
   };
   const handleReject = async (choreId: string, reason: string): Promise<void> => {
     const { db } = await import('../../firebase/config');

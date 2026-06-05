@@ -254,12 +254,14 @@ describe('ChoresRoute — parent service wiring', () => {
     };
   });
 
-  it('approve delegates to choresParentService.approveChore(db, choreId)', async () => {
+  it('approve delegates to choresParentService.approveChore(db, choreId, approverUid)', async () => {
     const r = mountAt('/chores');
     await act(async () => {
       fireEvent.click(r.getByText('approve'));
     });
-    expect(approveMock).toHaveBeenCalledWith({ db: { __db: true } }, 'chore-1');
+    // The viewer uid threads through so the new recurring-instance
+    // chore's `createdBy` matches request.auth.uid (rule require).
+    expect(approveMock).toHaveBeenCalledWith({ db: { __db: true } }, 'chore-1', 'uid-parent');
   });
 
   it('reject delegates to choresParentService.rejectChore(db, choreId, reason)', async () => {

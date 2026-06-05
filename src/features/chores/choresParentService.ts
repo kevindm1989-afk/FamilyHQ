@@ -96,6 +96,33 @@ export function isValidMoneyCents(value: number): boolean {
 }
 
 /**
+ * Advance a YYYY-MM-DD date string by N days, returning the same shape.
+ * Pure (no clock read). UTC math keeps the local calendar day stable for
+ * the relative offset — we're not asking "what's today", just "+7 days
+ * from this date". Malformed input passes through unchanged so the
+ * downstream create rule denies it (defense in depth — the recurring
+ * field set is already shape-checked at create).
+ */
+function advanceDueDate(dueDate: string, daysToAdd: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dueDate);
+  if (!m) return dueDate;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  d.setUTCDate(d.getUTCDate() + daysToAdd);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Per-frequency offset in days for the recurring-chore respawn (Feature
+ * follow-up). Kept in one place so a future "monthly" / "daily" frequency
+ * lands as a single table entry. `none` is intentionally absent — the
+ * caller short-circuits before consulting the table.
+ */
+const RECURRENCE_DAYS: Readonly<Record<'weekly' | 'biweekly', number>> = {
+  weekly: 7,
+  biweekly: 14,
+};
+
+/**
  * Approve a COMPLETE chore in ONE Firestore transaction (ADR-0004). Re-reads the
  * chore inside the transaction and ABORTS unless status=='complete' && the
  * chore is in the caller's family; otherwise sets status='approved', increments
@@ -103,8 +130,26 @@ export function isValidMoneyCents(value: number): boolean {
  * transaction doc — atomically. Idempotent: a second approve sees status !=
  * 'complete' and aborts (no double credit). Maps any failure to the generic
  * PII-free error (never the raw Firebase text nor the chore id).
+ *
+ * RECURRING-CHORE RESPAWN (Feature follow-up): when the approved chore has
+ * `isRecurring && recurrenceFrequency !== 'none'`, the same transaction also
+ * creates a fresh PENDING instance for the next cycle (dueDate advanced by
+ * the frequency's day count, money/identity fields preserved, proof fields
+ * NOT copied — each instance gets its own submission). Single tx so a kid
+ * never sees a window where the old chore is approved but the new one
+ * hasn't appeared yet, and the second approval can't double-spawn.
  */
-export async function approveChore(deps: { db: Firestore }, choreId: string): Promise<void> {
+export async function approveChore(
+  deps: { db: Firestore },
+  choreId: string,
+  /**
+   * The approving parent's uid. Used to populate `createdBy` on the new
+   * recurring-instance chore so the Firestore create rule's `request.
+   * resource.data.createdBy == request.auth.uid` check passes. Required
+   * for ALL approves (not just recurring) for API consistency.
+   */
+  approverUid: string,
+): Promise<void> {
   try {
     await runTransaction(deps.db, async (tx) => {
       const choreRef = doc(deps.db, CHORES_COLLECTION, choreId);
@@ -114,8 +159,12 @@ export async function approveChore(deps: { db: Firestore }, choreId: string): Pr
             status: string;
             assignedTo: string;
             dollarValue: number;
+            pointValue: number;
             familyId: string;
             title: string;
+            dueDate: string;
+            isRecurring: boolean;
+            recurrenceFrequency: 'none' | 'weekly' | 'biweekly';
           })
         : undefined;
       // Idempotency / integrity guard (ADR-0004 step 1): abort unless the
@@ -144,6 +193,32 @@ export async function approveChore(deps: { db: Firestore }, choreId: string): Pr
         familyId: chore.familyId,
         createdAt: serverTimestamp(),
       });
+      // Recurring respawn: clone the chore at status='pending' with an
+      // advanced dueDate. Keys + values match `choreCreateHardened` in
+      // firestore.rules — same shape the original Add Chore parent
+      // create would land. The new doc's createdBy is the approving
+      // parent (request.auth.uid); the rule's `createdBy ==
+      // request.auth.uid` check is satisfied because this transaction
+      // runs as that caller.
+      if (
+        chore.isRecurring &&
+        (chore.recurrenceFrequency === 'weekly' || chore.recurrenceFrequency === 'biweekly')
+      ) {
+        const nextRef = doc(collection(deps.db, CHORES_COLLECTION));
+        tx.set(nextRef, {
+          title: chore.title,
+          assignedTo: chore.assignedTo,
+          dueDate: advanceDueDate(chore.dueDate, RECURRENCE_DAYS[chore.recurrenceFrequency]),
+          pointValue: chore.pointValue,
+          dollarValue: chore.dollarValue,
+          status: 'pending',
+          familyId: chore.familyId,
+          createdBy: approverUid,
+          createdAt: Date.now(),
+          isRecurring: chore.isRecurring,
+          recurrenceFrequency: chore.recurrenceFrequency,
+        });
+      }
     });
   } catch {
     // Never surface a raw Firebase code / PII (or the chore id) to the caller.
