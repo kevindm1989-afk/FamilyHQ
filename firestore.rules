@@ -763,6 +763,136 @@ service cloud.firestore {
       allow delete: if isParent() && sameFamily(resource);
     }
 
+    // --- todos (Task Management feature: ad-hoc tasks) ----------------------
+    // Authority: ANY active same-family caller can create / read / update /
+    // delete a Todo (per spec). createdBy is recorded for audit but does not
+    // restrict edits — the family decides as a group. familyId + createdBy +
+    // createdAt are immutable on update; everything else (title, description,
+    // assignedTo, isCompleted, dueDate, completedAt) is mutable by anyone in
+    // the family.
+    match /todos/{todoId} {
+      function todoCreateOk() {
+        return isActive()
+          && incomingSameFamily()
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.isCompleted == false
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 200
+          && request.resource.data.keys().hasAll(
+               ['familyId', 'createdBy', 'title', 'isCompleted', 'createdAt'])
+          && request.resource.data.keys().hasOnly(
+               ['familyId', 'createdBy', 'assignedTo', 'title', 'description',
+                'isCompleted', 'dueDate', 'createdAt', 'completedAt']);
+      }
+      function todoUpdateOk() {
+        return isActive()
+          && sameFamily(resource)
+          && incomingSameFamily()
+          && immutable('familyId')
+          && immutable('createdBy')
+          && immutable('createdAt')
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 200;
+      }
+      allow get: if isActive() && sameFamily(resource);
+      allow list: if isActive() && sameFamily(resource);
+      allow create: if todoCreateOk();
+      allow update: if todoUpdateOk();
+      allow delete: if isActive() && sameFamily(resource);
+    }
+
+    // --- checklistTemplates (Task Management feature: repeatable routines) ---
+    // Read: everyone in the family when `isSharedWithFamily` is true; only the
+    // creator otherwise (draft state). Create: ANY active same-family caller,
+    // createdBy bound to self. Update + Delete: creator OR same-family parent
+    // (per Q-A — strict creator+parents to prevent sibling-pranks).
+    match /checklistTemplates/{templateId} {
+      function isOwner() {
+        return resource.data.createdBy == request.auth.uid;
+      }
+      function templateCreateOk() {
+        return isActive()
+          && incomingSameFamily()
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 200
+          && request.resource.data.isSharedWithFamily is bool
+          && request.resource.data.items is list
+          && request.resource.data.keys().hasAll(
+               ['familyId', 'createdBy', 'title', 'isSharedWithFamily',
+                'items', 'createdAt', 'updatedAt'])
+          && request.resource.data.keys().hasOnly(
+               ['familyId', 'createdBy', 'title', 'isSharedWithFamily',
+                'items', 'createdAt', 'updatedAt']);
+      }
+      function templateUpdateOk() {
+        return isActive()
+          && sameFamily(resource)
+          && incomingSameFamily()
+          && (isOwner() || isParent())
+          && immutable('familyId')
+          && immutable('createdBy')
+          && immutable('createdAt')
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 200;
+      }
+      allow get: if isActive() && sameFamily(resource)
+                 && (resource.data.isSharedWithFamily == true || isOwner());
+      allow list: if isActive() && sameFamily(resource)
+                  && (resource.data.isSharedWithFamily == true || isOwner());
+      allow create: if templateCreateOk();
+      allow update: if templateUpdateOk();
+      allow delete: if isActive() && sameFamily(resource)
+                    && (isOwner() || isParent());
+    }
+
+    // --- checklistInstances (Task Management feature: live routine runs) ----
+    // Create: any active same-family caller, userId bound to self (you only
+    // start runs for YOURSELF; parents don't impersonate). Read: any active
+    // same-family member (parents see kid progress; matches the rest of the
+    // app's family-visible chore data). Update: owner only (userId matches
+    // self), only the mutable fields can change. Delete: owner OR same-family
+    // parent.
+    match /checklistInstances/{instanceId} {
+      function isInstanceOwner() {
+        return resource.data.userId == request.auth.uid;
+      }
+      function instanceCreateOk() {
+        return isActive()
+          && incomingSameFamily()
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.isCompleted == false
+          && request.resource.data.templateId is string
+          && request.resource.data.date is string
+          && request.resource.data.keys().hasAll(
+               ['familyId', 'templateId', 'userId', 'date', 'isCompleted',
+                'itemsProgress', 'createdAt'])
+          && request.resource.data.keys().hasOnly(
+               ['familyId', 'templateId', 'userId', 'date', 'isCompleted',
+                'itemsProgress', 'createdAt', 'completedAt']);
+      }
+      function instanceUpdateOk() {
+        return isActive()
+          && sameFamily(resource)
+          && isInstanceOwner()
+          && immutable('familyId')
+          && immutable('templateId')
+          && immutable('userId')
+          && immutable('date')
+          && immutable('createdAt');
+      }
+      allow get: if isActive() && sameFamily(resource);
+      allow list: if isActive() && sameFamily(resource);
+      allow create: if instanceCreateOk();
+      allow update: if instanceUpdateOk();
+      allow delete: if isActive() && sameFamily(resource)
+                    && (isInstanceOwner() || isParent());
+    }
+
     // --- default deny ------------------------------------------------------
     match /{document=**} {
       allow read, write: if false;

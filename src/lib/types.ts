@@ -167,6 +167,108 @@ export const MONEY_MAX_CENTS = 100000000;
  *                  parent retired a stale goal). Terminal — no more
  *                  contributions, can be re-opened by re-creating.
  */
+/**
+ * Family-scoped ad-hoc task ("To-Do List" — Task Management feature). Distinct
+ * from `Chore` (which has allowance + parent approval); a Todo is a personal
+ * or shared item with no money attached.
+ *
+ * Authority model: ANY active same-family caller can create, edit, complete,
+ * or delete a Todo (per spec). `createdBy` is recorded for audit but does not
+ * restrict edits.
+ */
+export interface Todo {
+  familyId: string;
+  /** UID of the family member who created it. Set ONCE at create. */
+  createdBy: string;
+  /** Optional UID — when set, the Todo is "for" a specific family member. */
+  assignedTo?: string;
+  title: string;
+  description?: string;
+  isCompleted: boolean;
+  /**
+   * Optional ISO `YYYY-MM-DD`. When absent the Todo lives in the
+   * "Someday / No Deadline" bucket on the UI. Same date shape as Chore's
+   * `dueDate` for consistency.
+   */
+  dueDate?: string;
+  createdAt: number;
+  /** Epoch ms when `isCompleted` flipped to true. Cleared on un-complete. */
+  completedAt?: number;
+}
+
+/**
+ * Single item inside a `ChecklistTemplate`. The `id` is a stable client-
+ * generated string (UUID-ish) so a `ChecklistInstance.itemsProgress` map
+ * keyed by that id survives re-ordering / editing the template later.
+ */
+export interface ChecklistTemplateItem {
+  id: string;
+  text: string;
+}
+
+/**
+ * Repeatable checklist template ("Routine Checklists" — Task Management
+ * feature). ANY family member can create their own templates; the creator
+ * AND any same-family parent can edit/delete (per Q-A confirmation —
+ * deliberately stricter than the spec's literal "anyone-edits-anything"
+ * reading to prevent sibling-pranks / accidental destruction).
+ *
+ * `isSharedWithFamily` defaults to true at create time; a creator can flip
+ * it to false to keep a draft private (rules: only the creator reads when
+ * shared=false; everyone reads when shared=true).
+ */
+export interface ChecklistTemplate {
+  familyId: string;
+  /** UID of the family member who created it. Set ONCE at create. */
+  createdBy: string;
+  title: string;
+  /** Default true — toggle false to keep a draft private to the creator. */
+  isSharedWithFamily: boolean;
+  /**
+   * Ordered list of items. Each carries a stable `id` so the matching
+   * `ChecklistInstance.itemsProgress` map can survive template edits
+   * (rename, re-order, drop an item).
+   */
+  items: ChecklistTemplateItem[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * Running instance of a `ChecklistTemplate`. Created via "Start New
+ * Instance" so the same template can be reused without overwriting past
+ * runs. The owner toggles items via `itemsProgress`; isCompleted goes
+ * true when every (live) template item is checked OR the owner manually
+ * finishes the run.
+ *
+ * Authority: the running user creates + edits their own instance; any
+ * same-family active member READS (so a parent can see kid progress);
+ * the owner OR a same-family parent deletes.
+ */
+export interface ChecklistInstance {
+  familyId: string;
+  /** Which template this run was launched from. Set ONCE at create. */
+  templateId: string;
+  /** UID of the family member running this instance. Set ONCE at create. */
+  userId: string;
+  /**
+   * ISO `YYYY-MM-DD` — the day this run is "for" (today by default).
+   * Optional secondary axis; the primary identity is (userId, templateId,
+   * createdAt). Used by the UI to group runs by day.
+   */
+  date: string;
+  isCompleted: boolean;
+  /**
+   * Per-item completion. Key is `ChecklistTemplateItem.id`; value is
+   * `true` for checked. An absent key reads as unchecked — no need to
+   * seed every item to false at create time.
+   */
+  itemsProgress: { [itemId: string]: boolean };
+  createdAt: number;
+  /** Epoch ms when `isCompleted` flipped to true. Cleared on re-open. */
+  completedAt?: number;
+}
+
 export type SavingsGoalStatus = 'active' | 'completed' | 'archived';
 
 export interface SavingsGoal {
