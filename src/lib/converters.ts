@@ -13,12 +13,15 @@ import type {
   SnapshotOptions,
 } from 'firebase/firestore';
 import type {
+  ChecklistInstance,
+  ChecklistTemplate,
   Chore,
   Family,
   FamilyEvent,
   Invite,
   Post,
   SavingsGoal,
+  Todo,
   Transaction,
   User,
   UserPrivate,
@@ -55,6 +58,14 @@ export const inviteConverter: FirestoreDataConverter<Invite> = makeConverter<Inv
 
 export const savingsGoalConverter: FirestoreDataConverter<SavingsGoal> =
   makeConverter<SavingsGoal>();
+
+export const todoConverter: FirestoreDataConverter<Todo> = makeConverter<Todo>();
+
+export const checklistTemplateConverter: FirestoreDataConverter<ChecklistTemplate> =
+  makeConverter<ChecklistTemplate>();
+
+export const checklistInstanceConverter: FirestoreDataConverter<ChecklistInstance> =
+  makeConverter<ChecklistInstance>();
 
 /**
  * Converter for `userPrivate/{uid}` (privacy finding 2). Shapes the adult email
