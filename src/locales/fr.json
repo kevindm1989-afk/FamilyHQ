@@ -267,6 +267,72 @@
     }
   },
 
+  "tasks": {
+    "title": "Tâches",
+    "unknownMember": "Un membre de la famille",
+    "tabs": {
+      "label": "Vues des tâches",
+      "todos": "Liste à faire",
+      "routines": "Routines",
+      "routinesLabel": "Listes de routines"
+    },
+    "toast": {
+      "created": "Tâche ajoutée.",
+      "updated": "Tâche mise à jour.",
+      "deleted": "Tâche supprimée.",
+      "generic": "Une erreur est survenue. Veuillez réessayer."
+    },
+    "todo": {
+      "panelLabel": "Liste à faire familiale",
+      "loading": "Chargement des tâches…",
+      "allEmpty": "Aucune tâche — touchez le bouton + pour en ajouter une.",
+      "addedBy": "Ajoutée par {{name}}",
+      "forLabel": "Pour {{name}}",
+      "dueLabel": "Échéance {{date}}",
+      "section": {
+        "overdue": "En retard",
+        "upcoming": "Avec échéance",
+        "upcomingEmpty": "Rien au calendrier — ajoutez une tâche avec une échéance.",
+        "someday": "Un jour / sans échéance",
+        "somedayEmpty": "Aucune tâche sans échéance.",
+        "completed": "Terminées récemment"
+      },
+      "action": {
+        "create": "+ Nouvelle tâche",
+        "edit": "Modifier",
+        "editLabel": "Modifier {{title}}",
+        "delete": "Supprimer",
+        "deleteLabel": "Supprimer {{title}}",
+        "markCompleteLabel": "Marquer {{title}} comme terminée",
+        "markIncompleteLabel": "Marquer {{title}} comme à faire"
+      },
+      "create": {
+        "title": "Nouvelle tâche",
+        "titleLabel": "Que faut-il faire ?",
+        "descriptionLabel": "Notes (facultatif)",
+        "descriptionMaxHint": "Gardez les notes sous {{max}} caractères.",
+        "assigneeLabel": "Pour (facultatif)",
+        "assigneeNone": "Tout le monde dans la famille",
+        "dueDateLabel": "Date d’échéance (facultatif)",
+        "submit": "Ajouter la tâche"
+      },
+      "edit": {
+        "title": "Modifier la tâche",
+        "submit": "Enregistrer"
+      },
+      "error": {
+        "titleRequired": "Veuillez saisir un titre.",
+        "titleTooLong": "Gardez le titre sous 200 caractères.",
+        "descriptionTooLong": "Gardez les notes sous 2000 caractères.",
+        "dueDateInvalid": "Veuillez choisir une date d’échéance valide.",
+        "generic": "Une erreur est survenue. Veuillez réessayer."
+      }
+    },
+    "routines": {
+      "comingSoon": "Les listes de routines arrivent dans la prochaine mise à jour — vous y créerez vos modèles (routine matinale, sac de sport) et les cocherez chaque jour."
+    }
+  },
+
   "allowance": {
     "title": "Allocation",
     "loading": "Chargement de l’historique d’allocation…",

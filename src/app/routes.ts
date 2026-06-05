@@ -14,6 +14,7 @@ export type ScreenId =
   | 'calendar'
   | 'board'
   | 'chores'
+  | 'tasks'
   | 'allowance'
   | 'family'
   | 'goals'
@@ -43,6 +44,11 @@ export const ROUTES: Record<ScreenId, RouteMeta> = {
   },
   board: { id: 'board', path: '/board', isModal: false, parentOnly: false },
   chores: { id: 'chores', path: '/chores', isModal: false, parentOnly: false },
+  // Tasks — unified Task Management surface (To-Do List + Routine Checklists).
+  // NOT parent-only and NOT modal: any active same-family caller has full CRUD
+  // per the firestore.rules todos / checklistTemplates / checklistInstances
+  // matches landed in PR A. Lives on the 5th BottomNav slot.
+  tasks: { id: 'tasks', path: '/tasks', isModal: false, parentOnly: false },
   // Allowance History — a read-only ledger view. Non-modal (shows the nav) and
   // NOT parent-only (a member sees their own ledger; a parent picks a child).
   allowance: {

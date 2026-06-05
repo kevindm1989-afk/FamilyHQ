@@ -267,6 +267,72 @@
     }
   },
 
+  "tasks": {
+    "title": "Tasks",
+    "unknownMember": "A family member",
+    "tabs": {
+      "label": "Task views",
+      "todos": "To-Do List",
+      "routines": "Routine Checklists",
+      "routinesLabel": "Routine checklists"
+    },
+    "toast": {
+      "created": "To-do added.",
+      "updated": "To-do updated.",
+      "deleted": "To-do removed.",
+      "generic": "Something went wrong. Please try again."
+    },
+    "todo": {
+      "panelLabel": "Family to-do list",
+      "loading": "Loading to-dos…",
+      "allEmpty": "No to-dos yet — tap the + button to add the first one.",
+      "addedBy": "Added by {{name}}",
+      "forLabel": "For {{name}}",
+      "dueLabel": "Due {{date}}",
+      "section": {
+        "overdue": "Overdue",
+        "upcoming": "With deadlines",
+        "upcomingEmpty": "Nothing on the calendar — add a to-do with a due date.",
+        "someday": "Someday / No deadline",
+        "somedayEmpty": "No open-ended to-dos.",
+        "completed": "Recently completed"
+      },
+      "action": {
+        "create": "+ New to-do",
+        "edit": "Edit",
+        "editLabel": "Edit {{title}}",
+        "delete": "Delete",
+        "deleteLabel": "Delete {{title}}",
+        "markCompleteLabel": "Mark {{title}} complete",
+        "markIncompleteLabel": "Mark {{title}} incomplete"
+      },
+      "create": {
+        "title": "New to-do",
+        "titleLabel": "What needs doing?",
+        "descriptionLabel": "Notes (optional)",
+        "descriptionMaxHint": "Keep notes under {{max}} characters.",
+        "assigneeLabel": "For (optional)",
+        "assigneeNone": "Anyone in the family",
+        "dueDateLabel": "Due date (optional)",
+        "submit": "Add to-do"
+      },
+      "edit": {
+        "title": "Edit to-do",
+        "submit": "Save changes"
+      },
+      "error": {
+        "titleRequired": "Please enter a title.",
+        "titleTooLong": "Keep the title under 200 characters.",
+        "descriptionTooLong": "Keep the notes under 2000 characters.",
+        "dueDateInvalid": "Please pick a valid due date.",
+        "generic": "Something went wrong. Please try again."
+      }
+    },
+    "routines": {
+      "comingSoon": "Routine checklists land in the next update — you'll build templates here (morning routine, sports bag) and check them off each day."
+    }
+  },
+
   "allowance": {
     "title": "Allowance",
     "loading": "Loading allowance history…",

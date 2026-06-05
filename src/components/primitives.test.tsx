@@ -177,14 +177,15 @@ describe('TopBar', () => {
 });
 
 describe('BottomNav', () => {
-  const TABS = ['dashboard', 'calendar', 'board', 'chores'] as const;
+  const TABS = ['dashboard', 'calendar', 'board', 'chores', 'tasks'] as const;
 
-  it('renders all four tabs', () => {
+  it('renders all five tabs', () => {
     render(<BottomNav active="dashboard" onNavigate={vi.fn()} />);
     expect(screen.getByRole('button', { name: /home/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /calendar/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /board/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /chores/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /tasks/i })).toBeInTheDocument();
   });
 
   it('marks the active tab with aria-current=page (not color alone)', () => {
@@ -207,6 +208,13 @@ describe('BottomNav', () => {
       expect(screen.getByRole('button', { name: re }).className).toMatch(/min-h-tap/);
     });
   }
+
+  it('fires onNavigate with "tasks" when the 5th tab is tapped', () => {
+    const onNavigate = vi.fn();
+    render(<BottomNav active="dashboard" onNavigate={onNavigate} />);
+    fireEvent.click(screen.getByRole('button', { name: /tasks/i }));
+    expect(onNavigate).toHaveBeenCalledWith('tasks');
+  });
 });
 
 describe('Fab', () => {
