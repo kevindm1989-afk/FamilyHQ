@@ -166,7 +166,7 @@ export default defineConfig(async () => ({
     // A11y tests under src/__a11y__/ run as their own tier via `npm run a11y`
     // (verify.sh Tier 4); excluded here so they execute exactly once per
     // verifier invocation, not twice.
-    exclude: ['test/rules/**', 'node_modules/**', 'src/__a11y__/**'],
+    exclude: ['test/rules/**', 'test/storage-rules/**', 'node_modules/**', 'src/__a11y__/**'],
     // Coverage runs via `npm run coverage` AND inside the verifier's
     // npm-test gate (scripts/verify.sh): vitest fails the run if any of
     // the thresholds below is breached, so a PR that drops coverage

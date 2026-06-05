@@ -139,7 +139,7 @@ jobs:
   # (test/rules/) keeps this gate green and wired until then.
   # ---------------------------------------------------------------------------
   firestore-rules:
-    name: Firestore rules isolation tests
+    name: Firestore + Storage rules isolation tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -163,5 +163,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run rules tests against the Firestore emulator
+      - name: Run Firestore rules tests against the Firestore emulator
         run: npx firebase emulators:exec --only firestore "npm run test:rules"
+
+      - name: Run Storage rules tests against the Firestore + Storage emulators
+        # storage.rules uses cross-collection `firestore.get()` lookups
+        # (callerDoc + chore-assignee checks), so the Firestore emulator
+        # must also be live — the harness seeds users/chores docs there.
+        #
+        # `--project demo-storage-rules-test` aligns the emulator's
+        # default project with the @firebase/rules-unit-testing env's
+        # projectId. Without this, Storage's cross-service `firestore.
+        # get()` routes to the emulator's .firebaserc default project
+        # (familyhq-68638), misses the seeded data in the test project's
+        # namespace, and every "allowed" request is denied. The `demo-`
+        # prefix activates emulator demo-mode (no billing / no service
+        # account) — same pattern as e2e:authed uses `demo-familyhq`.
+        run: npx firebase emulators:exec --only firestore,storage --project demo-storage-rules-test "npm run test:storage-rules"
