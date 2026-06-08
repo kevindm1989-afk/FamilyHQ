@@ -23,6 +23,14 @@
     "switchedTo": "Langue changée pour {{language}}."
   },
 
+  "nav": {
+    "home": "Accueil",
+    "calendar": "Calendrier",
+    "board": "Babillard",
+    "chores": "Tâches",
+    "tasks": "Listes"
+  },
+
   "login": {
     "tagline": {
       "signin": "Votre point de rencontre familial.",

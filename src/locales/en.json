@@ -23,6 +23,14 @@
     "switchedTo": "Switched to {{language}}."
   },
 
+  "nav": {
+    "home": "Home",
+    "calendar": "Calendar",
+    "board": "Board",
+    "chores": "Chores",
+    "tasks": "Tasks"
+  },
+
   "login": {
     "tagline": {
       "signin": "Your shared family home base.",

@@ -215,6 +215,25 @@ describe('BottomNav', () => {
     fireEvent.click(screen.getByRole('button', { name: /tasks/i }));
     expect(onNavigate).toHaveBeenCalledWith('tasks');
   });
+
+  it('renders FRENCH labels when the i18n language is fr', async () => {
+    const { default: i18n } = await import('../i18n');
+    const original = i18n.language;
+    await i18n.changeLanguage('fr');
+    try {
+      render(<BottomNav active="dashboard" onNavigate={vi.fn()} />);
+      expect(screen.getByRole('button', { name: /accueil/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /calendrier/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /babillard/i })).toBeInTheDocument();
+      // "Tâches" for chores (matches the chores screen heading) and
+      // "Listes" for tasks (covers To-Do + Routines without colliding).
+      expect(screen.getByRole('button', { name: /tâches/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /listes/i })).toBeInTheDocument();
+    } finally {
+      // Restore so other tests in the same worker see EN again.
+      await i18n.changeLanguage(original);
+    }
+  });
 });
 
 describe('Fab', () => {
