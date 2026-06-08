@@ -22,6 +22,7 @@ import { useFamilyChores } from '../chores/useFamilyChores';
 import { useMyChores } from '../chores/useMyChores';
 import { useFamilyEvents } from '../calendar/useFamilyEvents';
 import { useFamilyPosts } from '../board/useFamilyPosts';
+import { useFamilyTodos } from '../tasks/useFamilyTodos';
 import { DashboardScreen } from './DashboardScreen';
 import { OnboardingTour } from '../onboarding/OnboardingTour';
 import { hasSeenTour, markTourSeen } from '../onboarding/tourStorage';
@@ -60,6 +61,10 @@ function MemberDashboardRoute(): ReactElement {
   const ledgerFeed = useAllowanceHistory(ownUid, familyId);
   const eventsFeed = useFamilyEvents(familyId);
   const postsFeed = useFamilyPosts(familyId);
+  // Todos are family-wide by design (Task Management spec: anyone in the
+  // family can CRUD any todo). Dashboard widget filters/prioritises in
+  // selectTopOpenTodos — no new query is needed.
+  const todosFeed = useFamilyTodos(familyId);
 
   if (!currentUser || !familyId) {
     return <Placeholder title="Dashboard" />;
@@ -70,6 +75,7 @@ function MemberDashboardRoute(): ReactElement {
     void ledgerFeed.refresh();
     void eventsFeed.refresh();
     void postsFeed.refresh();
+    // useFamilyTodos has no `refresh` — its onSnapshot already auto-refreshes.
   };
 
   return (
@@ -91,6 +97,7 @@ function MemberDashboardRoute(): ReactElement {
         loading: choresFeed.loading,
         error: choresFeed.error,
       }}
+      todos={{ items: todosFeed.todos, loading: todosFeed.loading, error: todosFeed.error }}
       approvals={{ items: [], loading: false, error: null }}
       events={{ items: eventsFeed.events, loading: eventsFeed.loading, error: eventsFeed.error }}
       posts={{ items: postsFeed.posts, loading: postsFeed.loading, error: postsFeed.error }}
@@ -128,6 +135,7 @@ function ParentDashboardRoute(): ReactElement {
       onRefresh={onRefresh}
       earnings={{ items: [], loading: false, error: null }}
       myChores={{ items: [], loading: false, error: null }}
+      todos={{ items: [], loading: false, error: null }}
       approvals={{
         items: choresFeed.chores,
         loading: choresFeed.loading,

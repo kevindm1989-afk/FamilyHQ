@@ -29,6 +29,8 @@ import type { ChoreWithId } from '../chores/choresMemberService';
 import { EVENT_TAG_LABEL, type EventWithId } from '../calendar/calendarService';
 import type { PostWithId } from '../board/boardService';
 import type { TransactionWithId } from '../allowance/allowanceService';
+import type { TodoWithId } from '../tasks/todosService';
+import { todayISOInLocalTZ } from '../tasks/todosBuckets';
 import type { ScreenId } from '../../app/routes';
 import {
   approvalQueue,
@@ -44,6 +46,7 @@ import {
   dashboardWeeklyDigest,
   selectRecent,
   selectSoonestChores,
+  selectTopOpenTodos,
   topStreakHolder,
   type ChoreStreaks,
   type TopStreakHolder,
@@ -84,6 +87,7 @@ export interface DashboardScreenProps {
   // Per-section injected feeds. Each role reads the subset it renders.
   earnings: SectionFeed<TransactionWithId>; // member
   myChores: SectionFeed<ChoreWithId>; // member
+  todos: SectionFeed<TodoWithId>; // member (Task Management — family-wide open todos)
   approvals: SectionFeed<ChoreWithId>; // parent (the full family-chore feed)
   events: SectionFeed<EventWithId>; // both
   posts: SectionFeed<PostWithId>; // both
@@ -188,8 +192,9 @@ export function DashboardScreen(props: DashboardScreenProps): ReactElement {
 
 function MemberSections(props: DashboardScreenProps): ReactElement {
   const { t } = useTranslation();
-  const { balanceCents, earnings, myChores, nowMs, onNavigate } = props;
+  const { balanceCents, earnings, myChores, todos, nowMs, onNavigate } = props;
   const unavailable = t('common.unavailable');
+  const todayISO = todayISOInLocalTZ(new Date(nowMs));
 
   // Member streaks — derived purely from the member's own chore feed
   // (useMyChores is already filtered to assignedTo == self). No new
@@ -202,6 +207,33 @@ function MemberSections(props: DashboardScreenProps): ReactElement {
   return (
     <>
       <StreaksCard streaks={ownStreaks} loading={myChores.loading} />
+      <SectionShell
+        heading={t('dashboard.section.todos.heading')}
+        viewAllLabel={t('dashboard.section.todos.viewAll')}
+        onViewAll={() => onNavigate('tasks')}
+      >
+        <SectionBody
+          feed={todos}
+          loadingLabel={t('dashboard.section.todos.loading')}
+          emptyMessage={t('dashboard.section.todos.empty')}
+          renderItems={(items) =>
+            selectTopOpenTodos(items, todayISO, SECTION_CAP).map((todo) => {
+              const isOverdue =
+                todo.dueDate !== undefined && todo.dueDate !== '' && todo.dueDate < todayISO;
+              return (
+                <ListRow key={todo.id}>
+                  <span className="flex-1 text-body font-semibold text-ink">{todo.title}</span>
+                  {todo.dueDate !== undefined && todo.dueDate !== '' && (
+                    <Badge tone={isOverdue ? 'danger' : 'mute'} size="sm">
+                      {t('dashboard.section.todos.dueLabel', { date: todo.dueDate })}
+                    </Badge>
+                  )}
+                </ListRow>
+              );
+            })
+          }
+        />
+      </SectionShell>
       <SectionShell
         heading={t('dashboard.section.earnings.heading')}
         viewAllLabel={t('dashboard.section.earnings.viewAll')}

@@ -16,12 +16,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { EventWithId } from '../calendar/calendarService';
 import type { PostWithId } from '../board/boardService';
 import type { ChoreWithId } from '../chores/choresMemberService';
+import type { TodoWithId } from '../tasks/todosService';
 import {
   bucketUpcomingEvents,
   dashboardChoreStreaks,
   dashboardWeeklyDigest,
   selectRecent,
   selectSoonestChores,
+  selectTopOpenTodos,
   selectUpcomingEvents,
   topStreakHolder,
 } from './dashboardSelectors';
@@ -917,3 +919,84 @@ describe('topStreakHolder', () => {
     ).toBeNull();
   });
 });
+
+function mkTodo(over: Partial<TodoWithId> & { id: string }): TodoWithId {
+  return {
+    familyId: 'fam-A',
+    createdBy: 'uid-a',
+    title: `T-${over.id}`,
+    isCompleted: false,
+    createdAt: 1000,
+    ...over,
+  };
+}
+
+describe('selectTopOpenTodos — prioritises overdue, drops completed, stable', () => {
+  const TODAY = '2026-06-05';
+
+  it('drops completed todos and surfaces overdue before upcoming before no-date', () => {
+    const todos = [
+      mkTodo({ id: 'done', isCompleted: true, completedAt: 1, dueDate: '2026-06-01' }),
+      mkTodo({ id: 'upcoming', dueDate: '2026-06-10' }),
+      mkTodo({ id: 'someday' }),
+      mkTodo({ id: 'overdue', dueDate: '2026-06-01' }),
+    ];
+    expect(selectTopOpenTodos(todos, TODAY, 5).map((t) => t.id)).toEqual([
+      'overdue',
+      'upcoming',
+      'someday',
+    ]);
+  });
+
+  it('within the overdue bucket, sorts by dueDate asc (earliest overdue first)', () => {
+    const todos = [
+      mkTodo({ id: 'late-by-one', dueDate: '2026-06-04' }),
+      mkTodo({ id: 'late-by-ten', dueDate: '2026-05-26' }),
+      mkTodo({ id: 'late-by-three', dueDate: '2026-06-02' }),
+    ];
+    expect(selectTopOpenTodos(todos, TODAY, 5).map((t) => t.id)).toEqual([
+      'late-by-ten',
+      'late-by-three',
+      'late-by-one',
+    ]);
+  });
+
+  it('today counts as upcoming (boundary), not overdue', () => {
+    const todos = [
+      mkTodo({ id: 'today', dueDate: TODAY }),
+      mkTodo({ id: 'yesterday', dueDate: '2026-06-04' }),
+    ];
+    expect(selectTopOpenTodos(todos, TODAY, 5).map((t) => t.id)).toEqual([
+      'yesterday',
+      'today',
+    ]);
+  });
+
+  it('caps at limit and never mutates input', () => {
+    const todos = [
+      mkTodo({ id: 'a', dueDate: '2026-06-01' }),
+      mkTodo({ id: 'b', dueDate: '2026-06-02' }),
+      mkTodo({ id: 'c', dueDate: '2026-06-03' }),
+      mkTodo({ id: 'd', dueDate: '2026-06-04' }),
+    ];
+    const before = todos.slice();
+    const out = selectTopOpenTodos(todos, TODAY, 2);
+    expect(out.map((t) => t.id)).toEqual(['a', 'b']);
+    expect(todos).toEqual(before);
+  });
+
+  it('tolerates malformed / missing dueDate without throwing — those sort as no-date', () => {
+    const todos = [
+      mkTodo({ id: 'good', dueDate: '2026-06-10' }),
+      mkTodo({ id: 'bad', dueDate: 'not-a-date' as string }),
+      mkTodo({ id: 'empty', dueDate: '' as string }),
+    ];
+    expect(() => selectTopOpenTodos(todos, TODAY, 5)).not.toThrow();
+    // 'good' is parseable → upcoming bucket. The other two have no usable
+    // due date → no-date bucket → sorted by createdAt (stable).
+    const ids = selectTopOpenTodos(todos, TODAY, 5).map((t) => t.id);
+    expect(ids[0]).toBe('good');
+    expect(ids.slice(1).sort()).toEqual(['bad', 'empty']);
+  });
+});
+

@@ -24,6 +24,7 @@ import type { ChoreWithId } from '../chores/choresMemberService';
 import type { EventWithId } from '../calendar/calendarService';
 import type { PostWithId } from '../board/boardService';
 import type { TransactionWithId } from '../allowance/allowanceService';
+import type { TodoWithId } from '../tasks/todosService';
 import { MONEY_INVALID_INDICATOR } from '../chores/choresParentService';
 import { DashboardScreen, type DashboardScreenProps, type SectionFeed } from './DashboardScreen';
 
@@ -131,6 +132,7 @@ function baseProps(over: Partial<DashboardScreenProps> = {}): DashboardScreenPro
     onRefresh: vi.fn(),
     earnings: settled<TransactionWithId>([]),
     myChores: settled<ChoreWithId>([]),
+    todos: settled<TodoWithId>([]),
     approvals: settled<ChoreWithId>([]),
     events: settled<EventWithId>([]),
     posts: settled<PostWithId>([]),
@@ -282,6 +284,65 @@ describe('DashboardScreen — MEMBER layout', () => {
   it('renders NO approvals section for a member', () => {
     renderDash({ role: 'member' });
     expect(screen.queryByRole('region', { name: /approval/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('DashboardScreen — MEMBER layout (todos widget)', () => {
+  function mkTodo(over: Partial<TodoWithId> & { id: string }): TodoWithId {
+    return {
+      familyId: 'fam-A',
+      createdBy: memberUser.id,
+      title: `T-${over.id}`,
+      isCompleted: false,
+      createdAt: 1_700_000_000_000,
+      ...over,
+    };
+  }
+
+  it('renders the "Open to-dos" section with the top items, prioritising overdue', () => {
+    // NOW is the unix epoch of NOW used by the file; the screen derives todayISO
+    // from `new Date(nowMs)` so we don't need to inject. Pick dueDates that
+    // span around the test's NOW value.
+    const todayMs = new Date(NOW).getTime();
+    const yesterday = new Date(todayMs - 86_400_000).toISOString().slice(0, 10);
+    const future = new Date(todayMs + 7 * 86_400_000).toISOString().slice(0, 10);
+    renderDash({
+      role: 'member',
+      todos: settled([
+        mkTodo({ id: 'done', isCompleted: true, completedAt: 1, title: 'Done thing' }),
+        mkTodo({ id: 'upcoming', dueDate: future, title: 'Pack lunch' }),
+        mkTodo({ id: 'overdue', dueDate: yesterday, title: 'Pay bill' }),
+      ]),
+    });
+    const todos = section(/open to-dos/i);
+    const rows = within(todos).getAllByRole('listitem');
+    // Overdue first, then upcoming. Completed is filtered out by the selector.
+    expect(rows[0]).toHaveTextContent(/pay bill/i);
+    expect(rows[1]).toHaveTextContent(/pack lunch/i);
+    expect(within(todos).queryByText(/done thing/i)).not.toBeInTheDocument();
+  });
+
+  it('renders the friendly empty state when there are no open todos', () => {
+    renderDash({ role: 'member', todos: settled([]) });
+    const todos = section(/open to-dos/i);
+    expect(within(todos).getByText(/no open to-dos/i)).toBeInTheDocument();
+  });
+
+  it('renders the Skeleton on the todos section while loading', () => {
+    renderDash({
+      role: 'member',
+      todos: { items: [], loading: true, error: null },
+    });
+    const todos = section(/open to-dos/i);
+    expect(within(todos).getByRole('status')).toBeInTheDocument();
+  });
+
+  it('routes to /tasks via onNavigate when the "View all" link is tapped', () => {
+    const onNavigate = vi.fn();
+    renderDash({ role: 'member', todos: settled([]), onNavigate });
+    const todos = section(/open to-dos/i);
+    fireEvent.click(within(todos).getByRole('button', { name: /view all to-dos/i }));
+    expect(onNavigate).toHaveBeenCalledWith('tasks');
   });
 });
 

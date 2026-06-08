@@ -97,6 +97,13 @@
         "loading": "Chargement de vos tâches…",
         "empty": "Vous êtes à jour — aucune tâche en ce moment."
       },
+      "todos": {
+        "heading": "À faire en cours",
+        "viewAll": "Voir toutes les listes",
+        "loading": "Chargement des tâches…",
+        "empty": "Aucune tâche en cours — tout est à jour.",
+        "dueLabel": "Échéance {{date}}"
+      },
       "approvals": {
         "heading": "Approbations",
         "viewAll": "Voir toutes les tâches",

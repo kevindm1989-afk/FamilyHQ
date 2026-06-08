@@ -97,6 +97,13 @@
         "loading": "Loading your chores…",
         "empty": "You’re all caught up — no chores right now."
       },
+      "todos": {
+        "heading": "Open to-dos",
+        "viewAll": "View all to-dos",
+        "loading": "Loading to-dos…",
+        "empty": "No open to-dos — nothing pending right now.",
+        "dueLabel": "Due {{date}}"
+      },
       "approvals": {
         "heading": "Approvals",
         "viewAll": "View all chores",
