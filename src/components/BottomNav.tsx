@@ -1,4 +1,5 @@
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
+import { useTranslation } from 'react-i18next';
 
 export type NavTab = 'dashboard' | 'calendar' | 'board' | 'chores' | 'tasks';
 
@@ -9,32 +10,39 @@ export interface BottomNavProps {
 
 interface TabDef {
   id: NavTab;
-  label: string;
+  /**
+   * i18n key under `nav.*` — translated at render time. The on-page text
+   * follows the active locale; the test suite uses `i18n` directly to
+   * resolve the same key.
+   */
+  labelKey: string;
   icon: (filled: boolean) => ReactElement;
 }
 
-// Tasks lands as the 5th slot per the Task Management spec (Q-B). Labels stay
-// hardcoded English here to match the rest of the BottomNav — promoting them to
-// i18n is a separate cross-cutting change that would touch every nav test.
+// Tasks lands as the 5th slot per the Task Management spec (Q-B). Labels are
+// now i18n keys (see `nav.*` in src/locales/en.json + fr.json). Tests assert
+// against the EN values so they keep matching the user-visible default.
 const TABS: TabDef[] = [
-  { id: 'dashboard', label: 'Home', icon: HomeIcon },
-  { id: 'calendar', label: 'Calendar', icon: CalendarIcon },
-  { id: 'board', label: 'Board', icon: BoardIcon },
-  { id: 'chores', label: 'Chores', icon: ChoresIcon },
-  { id: 'tasks', label: 'Tasks', icon: TasksIcon },
+  { id: 'dashboard', labelKey: 'nav.home', icon: HomeIcon },
+  { id: 'calendar', labelKey: 'nav.calendar', icon: CalendarIcon },
+  { id: 'board', labelKey: 'nav.board', icon: BoardIcon },
+  { id: 'chores', labelKey: 'nav.chores', icon: ChoresIcon },
+  { id: 'tasks', labelKey: 'nav.tasks', icon: TasksIcon },
 ];
 
 /**
  * Primary navigation. The active tab carries aria-current="page" plus a colour
  * + bolder weight + filled icon — never colour alone (WCAG 1.4.1). Each tab is
- * a 44px-tall tap target.
+ * a 44px-tall tap target. Labels are localised via i18n.
  */
 export function BottomNav(props: BottomNavProps): ReactElement {
   const { active, onNavigate } = props;
+  const { t } = useTranslation();
+  const tabs = useMemo(() => TABS.map((tab) => ({ ...tab, label: t(tab.labelKey) })), [t]);
 
   return (
     <nav className="flex h-nav items-stretch border-t border-surface-line bg-surface-card">
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const isActive = tab.id === active;
         return (
           <button
