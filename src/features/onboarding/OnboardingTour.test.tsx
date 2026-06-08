@@ -103,6 +103,22 @@ describe('OnboardingTour — role-scoped steps', () => {
     const ids = stepsForRole('parent').map((s) => s.id);
     expect(ids).toContain('family');
   });
+
+  it('both roles see the tasks step (Task Management feature intro)', () => {
+    expect(stepsForRole('parent').map((s) => s.id)).toContain('tasks');
+    expect(stepsForRole('member').map((s) => s.id)).toContain('tasks');
+  });
+
+  it('the tasks step sits between chores and allowance in the parent tour', () => {
+    const ids = stepsForRole('parent').map((s) => s.id);
+    const choresIdx = ids.indexOf('chores');
+    const tasksIdx = ids.indexOf('tasks');
+    const allowanceIdx = ids.indexOf('allowance');
+    expect(choresIdx).toBeGreaterThanOrEqual(0);
+    expect(allowanceIdx).toBeGreaterThan(choresIdx);
+    expect(tasksIdx).toBeGreaterThan(choresIdx);
+    expect(tasksIdx).toBeLessThan(allowanceIdx);
+  });
 });
 
 describe('OnboardingTour — storage round-trip', () => {

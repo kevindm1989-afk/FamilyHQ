@@ -6,13 +6,16 @@
  * are pure data + localStorage shims — they have no React dependency.
  */
 
+// v3 (was v2): added a `tasks` step covering the Task Management feature
+// (To-Do List + Routine Checklists) that landed in the 5th BottomNav slot.
+// Bumping the version re-shows the tour for users who already dismissed v2
+// so they discover the new tab. Future material changes (added/removed/
+// reordered step OR substantive copy changes on an existing step) should
+// bump this again.
+//
 // v2 (was v1): the parent-only `family` step was rewritten to focus on
 // inviting (link-based redeem, 14-day TTL — see inviteService.INVITE_TTL_MS).
-// Bumping the version re-shows the tour for users who already dismissed v1
-// so they actually see the updated nudge; v1 content was less actionable.
-// Future material changes (added/removed/reordered step OR substantive copy
-// changes on an existing step) should bump this again.
-export const TOUR_STORAGE_KEY = 'familyhq.onboarding.v2';
+export const TOUR_STORAGE_KEY = 'familyhq.onboarding.v3';
 
 export interface TourStep {
   id: string;
@@ -48,6 +51,15 @@ export const TOUR_STEPS: ReadonlyArray<TourStep> = [
     id: 'chores',
     titleKey: 'onboarding.steps.chores.title',
     bodyKey: 'onboarding.steps.chores.body',
+    rolesShown: ['parent', 'member'],
+  },
+  // Task Management feature (5th BottomNav slot — To-Do List + Routine
+  // Checklists). Both roles get the same intro since the feature is
+  // full-family CRUD.
+  {
+    id: 'tasks',
+    titleKey: 'onboarding.steps.tasks.title',
+    bodyKey: 'onboarding.steps.tasks.body',
     rolesShown: ['parent', 'member'],
   },
   {
