@@ -329,7 +329,67 @@
       }
     },
     "routines": {
-      "comingSoon": "Routine checklists land in the next update — you'll build templates here (morning routine, sports bag) and check them off each day."
+      "panelLabel": "Routine checklists",
+      "loading": "Loading routines…",
+      "deletedTemplate": "(Routine removed)",
+      "draftBadge": "Draft",
+      "allDoneBadge": "All done",
+      "itemsLabel_one": "{{count}} item",
+      "itemsLabel_other": "{{count}} items",
+      "createdBy": "Created by {{name}}",
+      "progressLabel": "{{checked}} of {{total}} done",
+      "section": {
+        "myRuns": "My runs today",
+        "myRunsEmpty": "No active runs — tap Start on a routine below to begin one.",
+        "templates": "Routines",
+        "templatesEmpty": "No routines yet — tap the + button to create your first one.",
+        "completed": "Recently completed"
+      },
+      "toast": {
+        "templateCreated": "Routine created.",
+        "templateUpdated": "Routine updated.",
+        "templateDeleted": "Routine removed.",
+        "runStarted": "Run started.",
+        "runCompleted": "Run completed.",
+        "runDeleted": "Run removed."
+      },
+      "action": {
+        "create": "+ New routine",
+        "start": "Start",
+        "startLabel": "Start a run of {{title}}",
+        "edit": "Edit",
+        "editLabel": "Edit {{title}}",
+        "delete": "Delete",
+        "deleteLabel": "Delete {{title}}",
+        "done": "Done",
+        "doneLabel": "Mark {{title}} run done",
+        "removeRun": "Remove",
+        "removeRunLabel": "Remove this {{title}} run",
+        "checkItemLabel": "Check off {{text}}",
+        "uncheckItemLabel": "Uncheck {{text}}"
+      },
+      "create": {
+        "title": "New routine",
+        "titleLabel": "What's this routine for?",
+        "shareLabel": "Share with the rest of the family",
+        "itemsLabel": "Items",
+        "itemPlaceholder": "Brush teeth",
+        "itemAria": "Item {{n}}",
+        "addItem": "+ Add item",
+        "removeItem": "Remove",
+        "removeItemAria": "Remove item {{n}}",
+        "submit": "Create routine"
+      },
+      "edit": {
+        "title": "Edit routine",
+        "submit": "Save routine"
+      },
+      "error": {
+        "titleRequired": "Please give the routine a title.",
+        "titleTooLong": "Keep the title under 200 characters.",
+        "itemsRequired": "Add at least one item.",
+        "generic": "Something went wrong. Please try again."
+      }
     }
   },
 
