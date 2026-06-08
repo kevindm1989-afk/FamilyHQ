@@ -67,6 +67,19 @@ The standing preferences above hold. Project-specific calls:
   for members, amber bg for parents; amber crown badge on parent avatars.
 - **Offline-first PWA:** Firestore offline persistence on; app-shell cached;
   offline fallback page; pull-to-refresh on Dashboard and Board.
+- **Billing-plan posture: stay on Firebase Spark.** Features that require
+  Blaze (Cloud Functions, Cloud Storage, scheduled jobs) ship coded but
+  **dormant** in production — never silently coupled to a deploy step
+  that would force a plan upgrade. Current example: Chore Photo
+  Verification is implemented but its `storage:rules` are excluded from
+  the deploy until Blaze is explicitly approved. See ADR-0010.
+- **Locale-string collisions across features are forbidden in
+  tightly-spaced surfaces** (notably the BottomNav). When a second
+  feature reuses a noun already taken by an existing one in a supported
+  locale, pick a distinct word for the new surface — even if it's a
+  looser translation. Example: French BottomNav uses "Tâches" for Chores
+  and "Listes" for the Tasks tab (PR #85) so a `fr-CA` user can tell the
+  two surfaces apart at a glance.
 
 ## Architecture taste
 
