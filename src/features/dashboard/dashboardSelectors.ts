@@ -90,6 +90,50 @@ export function selectSoonestChores(chores: ChoreWithId[], limit: number): Chore
 }
 
 /**
+ * Pick the top open Todos for the dashboard widget. "Open" = `!isCompleted`;
+ * priority is overdue first (parseable `dueDate < todayISO`), then upcoming
+ * by dueDate asc, then no-dueDate by `createdAt` asc. Ties at every level
+ * preserve input order. Capped at `limit`. Does not mutate the input.
+ *
+ * `todayISO` is passed in (`YYYY-MM-DD`) so the comparison is deterministic
+ * + unit-testable without freezing the system clock.
+ */
+export function selectTopOpenTodos<
+  T extends { isCompleted: boolean; dueDate?: string; createdAt: number },
+>(todos: T[], todayISO: string, limit: number): T[] {
+  const dueKey = (value: unknown): string | null => {
+    if (typeof value !== 'string' || value === '') return null;
+    return Number.isNaN(new Date(value).getTime()) ? null : value;
+  };
+  type Wrapped = { todo: T; index: number; due: string | null; rank: number };
+  // 0 = overdue, 1 = upcoming (today / future), 2 = no due date.
+  const rankFor = (due: string | null): number => {
+    if (due === null) return 2;
+    return due < todayISO ? 0 : 1;
+  };
+  return todos
+    .filter((todo) => !todo.isCompleted)
+    .map((todo, index): Wrapped => {
+      const due = dueKey(todo.dueDate);
+      return { todo, index, due, rank: rankFor(due) };
+    })
+    .sort((a, b) => {
+      if (a.rank !== b.rank) return a.rank - b.rank;
+      if (a.due !== null && b.due !== null) {
+        const byDue = a.due.localeCompare(b.due);
+        return byDue !== 0 ? byDue : a.index - b.index;
+      }
+      if (a.due === null && b.due === null) {
+        const byCreated = a.todo.createdAt - b.todo.createdAt;
+        return byCreated !== 0 ? byCreated : a.index - b.index;
+      }
+      return a.due === null ? 1 : -1;
+    })
+    .slice(0, limit)
+    .map(({ todo }) => todo);
+}
+
+/**
  * Group upcoming events by urgency relative to the LOCAL calendar day of
  * `nowMs`:
  *   - today      → event.date matches localDayKey(nowMs)
