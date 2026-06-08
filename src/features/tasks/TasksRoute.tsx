@@ -1,28 +1,49 @@
 /**
- * Tasks route — Task Management feature (PR B).
+ * Tasks route — Task Management feature (PRs B + C).
  *
  * Owns the two-tab shell ("To-Do List" + "Routine Checklists") that lives on
- * `/tasks`. PR B ships the To-Do tab wired to live data; the Routines tab is
- * a Placeholder until PR C lands the checklist editor / "Start New Instance"
- * UI. Tabs are pure client-side state — no URL fragment yet (the feature is
- * small enough that a `useState` is honest; we'll graduate to a route param
- * if deep-linking is ever asked for).
+ * `/tasks`. PR B shipped the To-Do tab; PR C lights up the Routines tab
+ * (templates + running instances). Tabs are pure client-side state — no URL
+ * fragment yet (the feature is small enough that `useState` is honest; we'll
+ * graduate to a route param if deep-linking is ever asked for).
  *
- * Authority model: ANY active same-family member has full CRUD on Todos
- * (firestore.rules — see `test/rules/todos.test.ts`). UI affordances are
- * not gated by role here; the rules-test suite is the safety net.
+ * Authority model:
+ *  - Todos: ANY active same-family member has full CRUD
+ *    (firestore.rules — see `test/rules/todos.test.ts`).
+ *  - Checklist templates: ANY active same-family member creates; creator
+ *    OR same-family parent edits / deletes (per Q-A — stricter than the
+ *    literal spec to stop sibling-pranks).
+ *  - Checklist instances: ANY active same-family member creates with
+ *    `userId=self` (parents don't impersonate); UPDATE is owner-only;
+ *    DELETE is owner OR same-family parent.
+ *
+ * UI affordances mirror these where useful (the Routines edit/delete
+ * buttons only render for the creator + a parent) but the rules-test
+ * suite is the safety net.
  *
  * Default-exported for React.lazy in AppShell.
  */
 import { useState, type ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Placeholder } from '../../app/Placeholder';
-import { EmptyState } from '../../components';
 import { useFamily } from '../../hooks/useFamily';
 import { useToast } from '../../hooks/useToast';
+import { RoutinesPanel } from './RoutinesPanel';
 import { TodoListPanel } from './TodoListPanel';
+import { useFamilyChecklistInstances } from './useFamilyChecklistInstances';
+import { useFamilyChecklistTemplates } from './useFamilyChecklistTemplates';
 import { useFamilyTodos } from './useFamilyTodos';
+import {
+  createTemplate,
+  deleteInstance,
+  deleteTemplate,
+  setInstanceCompletion,
+  setInstanceItemProgress,
+  startInstance,
+  updateTemplate,
+} from './checklistsService';
 import { createTodo, deleteTodo, setTodoCompletion, updateTodo } from './todosService';
+import { todayISOInLocalTZ } from './todosBuckets';
 
 type TabId = 'todos' | 'routines';
 
@@ -40,6 +61,8 @@ export default function TasksRoute(): ReactElement {
   const { showToast } = useToast();
   const { familyId, currentUser, members, role } = useFamily();
   const feed = useFamilyTodos(familyId);
+  const templatesFeed = useFamilyChecklistTemplates(familyId, currentUser?.id ?? null);
+  const instancesFeed = useFamilyChecklistInstances(familyId);
   const [tab, setTab] = useState<TabId>('todos');
 
   if (!currentUser || !familyId || role === null) {
@@ -126,6 +149,142 @@ export default function TasksRoute(): ReactElement {
     }
   };
 
+  // ---- Routines: templates ------------------------------------------------
+
+  const handleCreateTemplate = async (input: {
+    title: string;
+    isSharedWithFamily: boolean;
+    items: { id?: string; text: string }[];
+  }): Promise<void> => {
+    const db = await resolveDb();
+    if (db === null) {
+      showToast(t('tasks.toast.generic'));
+      return;
+    }
+    try {
+      await createTemplate(
+        { db },
+        {
+          familyId,
+          createdBy: currentUser.id,
+          title: input.title,
+          isSharedWithFamily: input.isSharedWithFamily,
+          items: input.items,
+        },
+      );
+      showToast(t('tasks.routines.toast.templateCreated'));
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('tasks.toast.generic'));
+    }
+  };
+
+  const handleEditTemplate = async (
+    templateId: string,
+    input: {
+      title?: string;
+      isSharedWithFamily?: boolean;
+      items?: { id?: string; text: string }[];
+    },
+  ): Promise<void> => {
+    const db = await resolveDb();
+    if (db === null) {
+      showToast(t('tasks.toast.generic'));
+      return;
+    }
+    try {
+      await updateTemplate({ db }, templateId, input);
+      showToast(t('tasks.routines.toast.templateUpdated'));
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('tasks.toast.generic'));
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId: string): Promise<void> => {
+    const db = await resolveDb();
+    if (db === null) {
+      showToast(t('tasks.toast.generic'));
+      return;
+    }
+    try {
+      await deleteTemplate({ db }, templateId);
+      showToast(t('tasks.routines.toast.templateDeleted'));
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('tasks.toast.generic'));
+    }
+  };
+
+  // ---- Routines: instances ------------------------------------------------
+
+  const handleStartInstance = async (templateId: string): Promise<void> => {
+    const db = await resolveDb();
+    if (db === null) {
+      showToast(t('tasks.toast.generic'));
+      return;
+    }
+    try {
+      await startInstance(
+        { db },
+        {
+          familyId,
+          templateId,
+          userId: currentUser.id,
+          date: todayISOInLocalTZ(),
+        },
+      );
+      showToast(t('tasks.routines.toast.runStarted'));
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('tasks.toast.generic'));
+    }
+  };
+
+  const handleToggleItem = async (
+    instanceId: string,
+    itemId: string,
+    checked: boolean,
+  ): Promise<void> => {
+    const db = await resolveDb();
+    if (db === null) {
+      showToast(t('tasks.toast.generic'));
+      return;
+    }
+    try {
+      await setInstanceItemProgress({ db }, instanceId, itemId, checked);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('tasks.toast.generic'));
+    }
+  };
+
+  const handleCompleteInstance = async (
+    instanceId: string,
+    isCompleted: boolean,
+  ): Promise<void> => {
+    const db = await resolveDb();
+    if (db === null) {
+      showToast(t('tasks.toast.generic'));
+      return;
+    }
+    try {
+      await setInstanceCompletion({ db }, instanceId, isCompleted);
+      showToast(t('tasks.routines.toast.runCompleted'));
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('tasks.toast.generic'));
+    }
+  };
+
+  const handleDeleteInstance = async (instanceId: string): Promise<void> => {
+    const db = await resolveDb();
+    if (db === null) {
+      showToast(t('tasks.toast.generic'));
+      return;
+    }
+    try {
+      await deleteInstance({ db }, instanceId);
+      showToast(t('tasks.routines.toast.runDeleted'));
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : t('tasks.toast.generic'));
+    }
+  };
+
   return (
     <section className="flex flex-col gap-12 pt-4">
       <header className="px-16">
@@ -143,9 +302,19 @@ export default function TasksRoute(): ReactElement {
           onDelete={handleDelete}
         />
       ) : (
-        <section className="px-16 pt-4 pb-24" aria-label={t('tasks.tabs.routinesLabel')}>
-          <EmptyState message={t('tasks.routines.comingSoon')} />
-        </section>
+        <RoutinesPanel
+          viewer={viewer}
+          members={members}
+          templatesFeed={templatesFeed}
+          instancesFeed={instancesFeed}
+          onCreateTemplate={handleCreateTemplate}
+          onEditTemplate={handleEditTemplate}
+          onDeleteTemplate={handleDeleteTemplate}
+          onStartInstance={handleStartInstance}
+          onToggleItem={handleToggleItem}
+          onCompleteInstance={handleCompleteInstance}
+          onDeleteInstance={handleDeleteInstance}
+        />
       )}
     </section>
   );

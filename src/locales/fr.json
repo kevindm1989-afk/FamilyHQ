@@ -329,7 +329,67 @@
       }
     },
     "routines": {
-      "comingSoon": "Les listes de routines arrivent dans la prochaine mise à jour — vous y créerez vos modèles (routine matinale, sac de sport) et les cocherez chaque jour."
+      "panelLabel": "Listes de routines",
+      "loading": "Chargement des routines…",
+      "deletedTemplate": "(Routine supprimée)",
+      "draftBadge": "Brouillon",
+      "allDoneBadge": "Terminée",
+      "itemsLabel_one": "{{count}} élément",
+      "itemsLabel_other": "{{count}} éléments",
+      "createdBy": "Créée par {{name}}",
+      "progressLabel": "{{checked}} sur {{total}} faits",
+      "section": {
+        "myRuns": "Mes routines en cours",
+        "myRunsEmpty": "Aucune routine en cours — touchez Démarrer sur une routine ci-dessous.",
+        "templates": "Routines",
+        "templatesEmpty": "Aucune routine — touchez le bouton + pour en créer une.",
+        "completed": "Terminées récemment"
+      },
+      "toast": {
+        "templateCreated": "Routine créée.",
+        "templateUpdated": "Routine mise à jour.",
+        "templateDeleted": "Routine supprimée.",
+        "runStarted": "Routine démarrée.",
+        "runCompleted": "Routine terminée.",
+        "runDeleted": "Routine supprimée."
+      },
+      "action": {
+        "create": "+ Nouvelle routine",
+        "start": "Démarrer",
+        "startLabel": "Démarrer une exécution de {{title}}",
+        "edit": "Modifier",
+        "editLabel": "Modifier {{title}}",
+        "delete": "Supprimer",
+        "deleteLabel": "Supprimer {{title}}",
+        "done": "Terminé",
+        "doneLabel": "Marquer la routine {{title}} comme terminée",
+        "removeRun": "Retirer",
+        "removeRunLabel": "Retirer cette exécution de {{title}}",
+        "checkItemLabel": "Cocher {{text}}",
+        "uncheckItemLabel": "Décocher {{text}}"
+      },
+      "create": {
+        "title": "Nouvelle routine",
+        "titleLabel": "À quoi sert cette routine ?",
+        "shareLabel": "Partager avec la famille",
+        "itemsLabel": "Étapes",
+        "itemPlaceholder": "Brosser les dents",
+        "itemAria": "Étape {{n}}",
+        "addItem": "+ Ajouter une étape",
+        "removeItem": "Retirer",
+        "removeItemAria": "Retirer l’étape {{n}}",
+        "submit": "Créer la routine"
+      },
+      "edit": {
+        "title": "Modifier la routine",
+        "submit": "Enregistrer"
+      },
+      "error": {
+        "titleRequired": "Veuillez donner un titre à la routine.",
+        "titleTooLong": "Gardez le titre sous 200 caractères.",
+        "itemsRequired": "Ajoutez au moins une étape.",
+        "generic": "Une erreur est survenue. Veuillez réessayer."
+      }
     }
   },
 

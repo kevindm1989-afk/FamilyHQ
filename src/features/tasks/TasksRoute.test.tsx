@@ -54,6 +54,26 @@ vi.mock('./useFamilyTodos', () => ({
   useFamilyTodos: () => mockFeed,
 }));
 
+// Stub the routines feeds — PR C wires them, but the To-Do tab is the default
+// surface these tests exercise. Tests that switch to the Routines tab assert
+// the empty / wired states from these fixtures.
+let mockTemplatesFeed: {
+  templates: unknown[];
+  loading: boolean;
+  error: string | null;
+} = { templates: [], loading: false, error: null };
+let mockInstancesFeed: {
+  instances: unknown[];
+  loading: boolean;
+  error: string | null;
+} = { instances: [], loading: false, error: null };
+vi.mock('./useFamilyChecklistTemplates', () => ({
+  useFamilyChecklistTemplates: () => mockTemplatesFeed,
+}));
+vi.mock('./useFamilyChecklistInstances', () => ({
+  useFamilyChecklistInstances: () => mockInstancesFeed,
+}));
+
 // Mock firebase/config so the route's lazy resolveDb() never touches Firebase.
 vi.mock('../../firebase/config', () => ({ db: { __db: true } }));
 
@@ -73,11 +93,39 @@ vi.mock('./todosService', async () => {
   };
 });
 
+// Spy on the checklist services. These cover the Routines tab dispatch.
+const createTemplateMock = vi.fn(async (..._args: unknown[]) => 'tpl-new');
+const updateTemplateMock = vi.fn(async (..._args: unknown[]) => undefined);
+const deleteTemplateMock = vi.fn(async (..._args: unknown[]) => undefined);
+const startInstanceMock = vi.fn(async (..._args: unknown[]) => 'inst-new');
+const setInstanceItemProgressMock = vi.fn(async (..._args: unknown[]) => undefined);
+const setInstanceCompletionMock = vi.fn(async (..._args: unknown[]) => undefined);
+const deleteInstanceMock = vi.fn(async (..._args: unknown[]) => undefined);
+vi.mock('./checklistsService', async () => {
+  const actual = await vi.importActual<typeof import('./checklistsService')>(
+    './checklistsService',
+  );
+  return {
+    ...actual,
+    createTemplate: (a: unknown, b: unknown) => createTemplateMock(a, b),
+    updateTemplate: (a: unknown, b: unknown, c: unknown) => updateTemplateMock(a, b, c),
+    deleteTemplate: (a: unknown, b: unknown) => deleteTemplateMock(a, b),
+    startInstance: (a: unknown, b: unknown) => startInstanceMock(a, b),
+    setInstanceItemProgress: (a: unknown, b: unknown, c: unknown, d: unknown) =>
+      setInstanceItemProgressMock(a, b, c, d),
+    setInstanceCompletion: (a: unknown, b: unknown, c: unknown) =>
+      setInstanceCompletionMock(a, b, c),
+    deleteInstance: (a: unknown, b: unknown) => deleteInstanceMock(a, b),
+  };
+});
+
 import TasksRoute from './TasksRoute';
 
 afterEach(() => {
   vi.clearAllMocks();
   mockFeed = { todos: [], loading: false, error: null };
+  mockTemplatesFeed = { templates: [], loading: false, error: null };
+  mockInstancesFeed = { instances: [], loading: false, error: null };
 });
 
 function renderRoute() {
@@ -113,14 +161,14 @@ describe('TasksRoute', () => {
     expect(screen.getByRole('region', { name: /family to-do list/i })).toBeInTheDocument();
   });
 
-  it('switches to the Routines tab and shows the "coming in next update" Placeholder (PR C)', () => {
+  it('switches to the Routines tab and renders the RoutinesPanel', () => {
     renderRoute();
     fireEvent.click(screen.getByRole('tab', { name: /routine checklists/i }));
     expect(screen.getByRole('tab', { name: /routine checklists/i })).toHaveAttribute(
       'aria-selected',
       'true',
     );
-    expect(screen.getByText(/routine checklists land in the next update/i)).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: /routine checklists/i })).toBeInTheDocument();
     // The To-Do panel must not also be rendered (single-tab visible at a time).
     expect(screen.queryByRole('region', { name: /family to-do list/i })).not.toBeInTheDocument();
   });
@@ -208,6 +256,89 @@ describe('TasksRoute — wired actions', () => {
     fireEvent.click(screen.getByRole('button', { name: /delete pack lunch/i }));
     await waitFor(() => {
       expect(deleteTodoMock).toHaveBeenCalledWith({ db: { __db: true } }, 't-1');
+    });
+  });
+});
+
+describe('TasksRoute — wired Routines actions', () => {
+  it('calls startInstance with familyId + userId bound to the viewer when Start is tapped', async () => {
+    mockTemplatesFeed = {
+      templates: [
+        {
+          id: 'tpl-1',
+          familyId: memberUser.familyId,
+          createdBy: memberUser.id,
+          title: 'Morning',
+          isSharedWithFamily: true,
+          items: [{ id: 'i1', text: 'Brush' }],
+          createdAt: 1000,
+          updatedAt: 1000,
+        },
+      ],
+      loading: false,
+      error: null,
+    };
+    renderRoute();
+    fireEvent.click(screen.getByRole('tab', { name: /routine checklists/i }));
+    fireEvent.click(screen.getByRole('button', { name: /start a run of morning/i }));
+    await waitFor(() => {
+      expect(startInstanceMock).toHaveBeenCalledTimes(1);
+    });
+    const [, payload] = startInstanceMock.mock.calls[0] as [unknown, {
+      familyId: string;
+      templateId: string;
+      userId: string;
+      date: string;
+    }];
+    expect(payload.familyId).toBe(memberUser.familyId);
+    expect(payload.templateId).toBe('tpl-1');
+    expect(payload.userId).toBe(memberUser.id);
+    expect(payload.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('calls setInstanceItemProgress with the dot-path-style (id, itemId, checked) tuple', async () => {
+    mockTemplatesFeed = {
+      templates: [
+        {
+          id: 'tpl-1',
+          familyId: memberUser.familyId,
+          createdBy: memberUser.id,
+          title: 'Morning',
+          isSharedWithFamily: true,
+          items: [{ id: 'i1', text: 'Brush' }],
+          createdAt: 1000,
+          updatedAt: 1000,
+        },
+      ],
+      loading: false,
+      error: null,
+    };
+    mockInstancesFeed = {
+      instances: [
+        {
+          id: 'inst-1',
+          familyId: memberUser.familyId,
+          templateId: 'tpl-1',
+          userId: memberUser.id,
+          date: '2026-06-05',
+          isCompleted: false,
+          itemsProgress: {},
+          createdAt: 1000,
+        },
+      ],
+      loading: false,
+      error: null,
+    };
+    renderRoute();
+    fireEvent.click(screen.getByRole('tab', { name: /routine checklists/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /check off brush/i }));
+    await waitFor(() => {
+      expect(setInstanceItemProgressMock).toHaveBeenCalledWith(
+        { db: { __db: true } },
+        'inst-1',
+        'i1',
+        true,
+      );
     });
   });
 });
