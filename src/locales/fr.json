@@ -681,6 +681,10 @@
         "title": "Tâches",
         "body": "Suivez qui fait quoi. Les membres marquent leurs tâches comme terminées ; les parents approuvent et le registre des allocations se met à jour automatiquement."
       },
+      "tasks": {
+        "title": "Listes",
+        "body": "Le nouvel onglet — une liste à faire partagée et des routines pour toute la famille. N’importe qui peut ajouter une tâche, cocher les étapes d’une routine matinale ou démarrer une nouvelle exécution. Pas d’allocation, pas d’approbation — simplement ce qui doit être fait."
+      },
       "allowance": {
         "title": "Allocation",
         "body": "Un registre en lecture seule de chaque tâche approuvée et du solde courant. Les membres voient le leur ; les parents choisissent celui qu’ils consultent."

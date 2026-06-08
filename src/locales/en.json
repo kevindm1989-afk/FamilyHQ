@@ -681,6 +681,10 @@
         "title": "Chores",
         "body": "Track who's doing what. Members mark their chores complete; parents approve and the allowance ledger updates automatically."
       },
+      "tasks": {
+        "title": "Tasks",
+        "body": "The newest tab — a shared to-do list and routine checklists for the whole family. Anyone can add a to-do, check items off a morning routine, or start a fresh run. No allowance, no approval — just things that need doing."
+      },
       "allowance": {
         "title": "Allowance",
         "body": "A read-only ledger of every approved chore and the running balance. Members see their own; parents pick whose to view."
