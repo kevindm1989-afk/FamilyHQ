@@ -483,3 +483,116 @@ normal approval path rests on the transaction's status-guard + tests, not rules.
 Revisit if/when the approval moves to a Cloud Function (server-only balance
 writes would let the rules deny all client balance writes). Tracked-numbers-only
 and fully tenant-isolated, so the blast radius is one family's own numbers.
+
+---
+
+## ADR-0010 — Stay on Firebase Spark; tier-gated features ship dormant
+
+**Date:** 2026-06-08
+**Status:** Accepted.
+**Decision owner:** the user.
+
+### Context
+
+Two features built for v1 require the Blaze (pay-as-you-go) billing plan to
+function in production:
+
+  - **Chore Photo Verification** (PRs #76/#77/#79) uses Firebase Storage to
+    hold proof images. Storage requires Blaze to initialize a bucket.
+  - **Recurring chores via Cloud Function** (originally scoped for ADR-0003)
+    was deferred because Functions require Blaze.
+
+Project default is Spark (free tier, no billing account). The user has
+explicitly said Blaze is a separate human decision tied to actual usage.
+
+### Decision
+
+**Stay on Spark.** Tier-gated features ship in the codebase (typed,
+tested, reviewed) but are **dormant in production**: the deploy step that
+would activate the gated service is excluded from `deploy.yml`.
+
+  - `storage:rules` is NOT in the `firebase deploy --only` list for either
+    the staging or production job (PR #84).
+  - Cloud Functions has no `functions` deploy step.
+  - The application code (`chorePhotoService`, the `markCompleteWithProof`
+    UI, the storage emulator rules-test suite) is fully present in the
+    bundle and the rules-test suite still gates it locally on every
+    `make verify`.
+
+### Consequence
+
+  - A user who tries to attach a chore photo on production will hit a
+    Firebase-side error because the bucket doesn't exist. We accept this:
+    the affordance is reachable, and the failure is honest. The UI surface
+    is small and the feature is "advanced" (parent-discoverable, not on
+    the primary path).
+  - Activating any tier-gated feature is a one-PR change (revert PR #84
+    for Storage; analogous step for Functions) PAIRED with a Firebase
+    Console action (enable Blaze, initialize Storage on the project).
+    Documented in PR #84's body and in `deploy.yml`'s comment.
+  - **Never silently couple a deploy step to a Blaze feature.** A deploy
+    that mixes tier-gated services with always-on ones (Firestore,
+    Hosting) creates a billing-plan trap — Firestore changes get blocked
+    because Storage isn't initialized. Each Firebase service gets its own
+    `--only <service>` invocation. See lessons.md (2026-06-08).
+
+Cross-references: ADR-0003 (Blaze human-gate for invites originally),
+ADR-0004 addendum (allowance moves to a Cloud Function if/when Blaze
+lands).
+
+---
+
+## ADR-0011 — Checklist authorship model: creator + parents edit; instances pin `userId` to `auth.uid`
+
+**Date:** 2026-06-08
+**Status:** Accepted.
+**Decision owner:** the user (Q-A this session).
+
+### Context
+
+The Task Management feature (PRs #81/#82/#83) introduces two new
+authorization shapes that don't fit ADR-0002's existing parent-or-creator
+defaults:
+
+  - **`checklistTemplates`:** repeatable routines a family member creates
+    (morning routine, sports bag). The literal spec said "anyone in the
+    family can edit anything," but that opens a sibling-prank surface: a
+    younger sibling renames an older sibling's morning routine to "Eat
+    worms" and the morning routine breaks. The user explicitly chose a
+    stricter model.
+  - **`checklistInstances`:** a live run of a template ("this morning's
+    routine"). Could plausibly be created by a parent on behalf of a kid
+    ("I'm starting your routine for you") OR strictly by the kid. The
+    user chose the strict model.
+
+### Decision
+
+**Templates: creator + same-family parent edit and delete.** Any active
+same-family caller CREATES; READ is gated by `isSharedWithFamily` (shared
+→ whole family; draft → only the creator); UPDATE and DELETE are
+restricted to the creator OR any same-family parent. Rules enforced in
+`firestore.rules` (`checklistTemplates` match block); UI mirrors the
+predicate so the affordance is hidden when the rule would deny.
+
+**Instances: `userId` MUST equal `request.auth.uid` on CREATE.** A
+parent cannot create an instance on behalf of a kid. UPDATE is
+owner-only (the running user). DELETE is owner OR same-family parent
+(for cleanup of stale runs). Rules enforced in `firestore.rules`
+(`checklistInstances` match block); the service always passes
+`currentUser.id`.
+
+### Consequence
+
+  - Sibling pranks on templates are blocked at the rule layer. A parent
+    who needs to clean up a malformed template still has the affordance
+    (covers the "kid abandoned a half-built routine" case).
+  - "Parents don't impersonate" is a real authorization boundary: parents
+    can READ a kid's instances (to see kid progress) but cannot CREATE
+    one as the kid. This matches the rest of the app's authorship model
+    — every doc's `createdBy` / `userId` ties to the actual caller.
+  - The rules-test suite (`test/rules/checklists.test.ts`) pins both
+    branches: 52 cases covering the cross-product of role × verb ×
+    same-family / cross-tenant.
+
+Cross-references: ADR-0002 (rules-as-authorization-boundary; this is a
+new concrete pattern under that umbrella).

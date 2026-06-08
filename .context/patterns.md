@@ -25,6 +25,34 @@ short code example
 
 ## Entries
 
+## Pure tolerant selectors for dashboard / widget surfaces (the F5 pattern)
+
+**When to use:** any widget that derives a small UI list from a Firestore
+collection that may contain malformed, in-flight, or missing fields.
+**How:** a pure `selectX(docs, opts) => view[]` function lives next to the
+hook, accepts the raw snapshot shape, tolerates missing / malformed fields
+without throwing (e.g. non-string `dueDate`, undefined optional, empty
+string), and is unit-tested with explicit bad-input fixtures. The
+component renders only what the selector returns. Compose buckets / sort
+keys inside the selector — never inline in the render function — so the
+ordering rules are testable in isolation.
+**Example:**
+```
+// src/features/dashboard/dashboardSelectors.ts
+export function selectTopOpenTodos(items, todayISO, limit) {
+  const dueKey = (v) => typeof v === 'string' && v !== ''
+    && !Number.isNaN(new Date(v).getTime()) ? v : null;
+  return items.filter((t) => !t.isCompleted)
+              .map((todo, index) => ({ todo, index, due: dueKey(todo.dueDate) }))
+              .sort(/* overdue → upcoming → no-date, stable ties */)
+              .slice(0, limit)
+              .map(({ todo }) => todo);
+}
+```
+**When not to use:** writes, or any path where a malformed doc is a true
+error to surface to the user — selectors must never silently swallow data
+loss that the user needs to know about.
+
 ## Exact-payload write contract for constrained user-doc updates
 
 **When to use:** any client write whose firestore.rules contract is

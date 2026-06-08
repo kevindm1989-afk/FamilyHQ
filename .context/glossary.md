@@ -46,3 +46,24 @@ own `users` doc (`role: 'parent'`). The ONLY place `role == 'parent'` is
 self-assigned and a `familyId` is self-set. Bounded in rules (via `!callerExists()`)
 so it cannot be replayed by an existing member to self-elevate or join another
 family. (ADR-0006, threat-model §4.)
+
+## Dormant feature
+
+Code that is merged, typed, tested, and bundled into production but is
+**disabled in the production deploy** because enabling it would require a
+Firebase billing-plan upgrade (Spark → Blaze). Currently: Chore Photo
+Verification (Storage-dependent — see `deploy.yml` and PR #84). The UI
+affordance is reachable and the rules-test suite still gates the rules
+file on every local `make verify`, but the deploy step that would push
+the rules to the live project is intentionally absent. Activating a
+dormant feature is a one-PR change (revert the deploy exclusion) paired
+with a Firebase Console action. (ADR-0010.)
+
+## Listes
+
+The French label for the **Tasks** tab in the BottomNav. Chosen over the
+literal translation "Tâches" because Chores already uses "Tâches" in
+French; placing both side-by-side in the 5-slot nav would be unparseable
+for a `fr-CA` user. `Tâches` → chores; `Listes` → the Task Management
+tab (To-Do List + Routine Checklists). See `src/locales/fr.json` `nav.*`
+and PR #85.

@@ -21,6 +21,52 @@ Append newest on top. Be specific — vague lessons don't prevent anything.
 
 ## Entries
 
+## 2026-06-08 — Deploy steps that mix tier-gated services with always-on services create a billing-plan trap
+
+**Symptom:** The Spark-tier project's deploy started failing on every
+push because `npx firebase deploy --only firestore:rules,firestore:indexes,storage:rules`
+bundled Storage with Firestore. Storage requires Blaze (billing plan
+upgrade) to initialize; the deploy step couldn't ship Firestore changes
+without also shipping Storage rules. PRs blocked until an out-of-band
+infra fix (PR #84) split the deploy.
+**Root cause:** A multi-service single `--only` flag couples
+billing-plan-gated services (Storage, Cloud Functions, Scheduler) to
+always-on ones (Firestore, Hosting). Adding the gated service later
+"just to keep the deploy tidy" creates a trap: the next change to the
+shared step requires the gated tier to be enabled, even if nothing in
+the PR actually needs it.
+**Fix:** Split the deploy step per service:
+`npx firebase deploy --only firestore:rules,firestore:indexes` and a
+SEPARATE step (currently commented out) for Storage / Functions, each
+flag-gated.
+**Prevention:** In `deploy.yml`, every Firebase service gets its own
+`--only <service>` invocation and can be independently disabled.
+Adding a new tier-gated service is its own deploy step + an explicit
+flag; never bundle it with always-on services from day one.
+
+## 2026-06-08 — Shared UI primitives must forward documented a11y props; verify with a primitive-level test, not only in callers
+
+**Symptom:** `SavingsGoalsScreen` had been passing
+`aria-label={t('savings.action.deleteLabel', { title: goal.title })}`
+to `<Button>` for months — for screen-reader uniqueness across a row
+of identical "Delete" buttons. The prop was silently dropped because
+the `Button` primitive's `ButtonProps` type didn't declare it. The
+caller's tests passed (they queried by visible text); a real screen
+reader heard "Delete, Delete, Delete" with no row context.
+**Root cause:** When a shared primitive receives a prop it doesn't
+declare, React passes it through to the DOM only if the underlying
+element accepts it directly. `<Button>` rendered a `<button>` from a
+manually-constructed `JSX.Element` and never spread the rest of its
+props, so `aria-label` vanished.
+**Fix:** Added `'aria-label'?: string` to `ButtonProps`, read it
+explicitly, and applied it to the underlying `<button>` (PR #82).
+**Prevention:** Every documented prop on a shared primitive needs a
+PRIMITIVE-LEVEL test that asserts it reaches the DOM. Do not assume a
+primitive honors a documented prop because a caller passes it — grep
+the primitive's implementation. Caller tests that query by visible
+text can mask a missing accessible name; primitive tests query by
+`role` + `name` (which IS `aria-label` when present).
+
 ## 2026-05-28 — Day-bucketing must use ONE local-day basis on BOTH sides; an ISO substring is UTC
 
 **Symptom:** Three separate features (allowance history grouping, dashboard
@@ -41,8 +87,9 @@ TZ-sensitive tests under a non-UTC TZ.
 **Prevention:** When comparing two dates by day, derive BOTH from the same
 basis via local parts. Never `iso.slice(0,10)` for "today"; never
 `new Date('YYYY-MM-DD')` for a local-day input. TZ-sensitive tests run under
-a non-UTC TZ. Three occurrences here is the rule-of-three — see the follow-up
-to extract a shared `localDayKey(ms)` helper before a fourth feature copies it.
+a non-UTC TZ. The shared helper `localDayKey(ms)` + `eventLocalDay(iso)`
+in `src/lib/dates.ts` is the one-and-only basis — every new feature reuses
+it instead of re-deriving day comparisons inline.
 
 ## 2026-05-28 — Snapshot-dedupe signatures for feed hooks must include rendered FIELD values, not just doc ids
 
