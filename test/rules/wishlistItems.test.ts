@@ -279,8 +279,8 @@ describe('transactions — type "spending" accepted (Allowance debit feature)', 
     await assertSucceeds(
       setDoc(doc(db, 'transactions', 'txn-spend-1'), {
         uid: UID.memberA,
-        choreId: 'wish-1', // reused as source id; rename to sourceId is a follow-up
-        choreTitle: 'Nintendo Switch',
+        sourceId: 'wish-1',
+        sourceLabel: 'Nintendo Switch',
         amount: 30000,
         type: 'spending',
         familyId: FAMILY_A,
@@ -295,8 +295,8 @@ describe('transactions — type "spending" accepted (Allowance debit feature)', 
     await assertFails(
       setDoc(doc(db, 'transactions', 'txn-bad'), {
         uid: UID.memberA,
-        choreId: 'wish-1',
-        choreTitle: 'X',
+        sourceId: 'wish-1',
+        sourceLabel: 'X',
         amount: 100,
         type: 'transfer',
         familyId: FAMILY_A,

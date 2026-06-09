@@ -107,14 +107,14 @@ PI markers: **[PI]** personal info, **[PI-child]** may belong to a child.
   `dollarValue`, `status` (`pending`|`complete`|`approved`|`rejected`),
   `rejectionReason`, `familyId`, `createdBy`, `createdAt`, `isRecurring`,
   `recurrenceFrequency` (`none`|`weekly`|`biweekly`).
-- **`transactions/{id}`** — `uid`, `choreId`, `choreTitle`, `amount`,
-  `type` (`earning`), `familyId`, `createdAt`. Append-only ledger.
+- **`transactions/{id}`** — `uid`, `sourceId`, `sourceLabel`, `amount`,
+  `type` (`earning`|`spending`), `familyId`, `createdAt`. Append-only ledger.
 - **`invites/{id}`** — `email` **[PI]**, `role`, `familyId`, `invitedBy`,
   `createdAt`, `status` (`pending`|`accepted`). Parent-written only.
 
 **Relationships:** a `family` has many `users`; a `user` belongs to exactly one
 `family`. `chores.assignedTo` -> a `user` in the same family. `transactions.uid`
--> a `user`; `transactions.choreId` -> a `chore`. `posts.authorId`,
+-> a `user`; `transactions.sourceId` -> a `chore` (earning) or `wishlistItem` (spending). `posts.authorId`,
 `events.createdBy`, `chores.createdBy`, `invites.invitedBy` -> `users`.
 
 **Role naming:** spec/handoff say `teen`; we use **`member`** everywhere (parent

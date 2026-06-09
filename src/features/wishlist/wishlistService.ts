@@ -219,12 +219,11 @@ export async function denyRedemption(
  * Writes (one transaction):
  *  - wishlistItems/{itemId}.status = 'redeemed', resolvedAt = now
  *  - users/{ownerUid}.allowanceBalance -= costCents
- *  - transactions/{auto} — { uid: ownerUid, choreId: itemId,
- *      choreTitle: title, amount: costCents, type: 'spending',
+ *  - transactions/{auto} — { uid: ownerUid, sourceId: itemId,
+ *      sourceLabel: title, amount: costCents, type: 'spending',
  *      familyId, createdAt: serverTimestamp() }
- *    (choreId/choreTitle reused as generic source identity + label
- *    per Transaction type — see types.ts; rename to sourceId/sourceLabel
- *    is a follow-up.)
+ *    (sourceId/sourceLabel are the generic "source identity + display
+ *    label" fields on Transaction — see types.ts.)
  *
  * Status-guard makes this idempotent: a repeated call after the first
  * approval sees status='redeemed' and aborts before any write.
@@ -273,8 +272,8 @@ export async function approveRedemption(deps: { db: Firestore }, itemId: string)
       const txnRef = doc(collection(deps.db, TRANSACTIONS_COLLECTION));
       tx.set(txnRef, {
         uid: item.ownerUid,
-        choreId: itemId,
-        choreTitle: item.title,
+        sourceId: itemId,
+        sourceLabel: item.title,
         amount: item.costCents,
         type: 'spending',
         familyId: item.familyId,

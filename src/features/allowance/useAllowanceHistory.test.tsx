@@ -108,8 +108,8 @@ function fakeSnapshot(
       id: d.id,
       data: () => ({
         uid: d.uid,
-        choreId: 'chore-1',
-        choreTitle: 'Take out trash',
+        sourceId: 'chore-1',
+        sourceLabel: 'Take out trash',
         amount: 300,
         type: 'earning',
         familyId: d.familyId,
@@ -406,21 +406,21 @@ describe('useAllowanceHistory — a recovered listener error clears (F6: stale e
 //
 // The redundant-re-fire dedupe (Finding 9 / patterns.md) must NOT short-
 // circuit a genuine mutation on the same id. For transactions the rendered
-// fields are choreTitle + amount + createdAt; an admin amount correction on
+// fields are sourceLabel + amount + createdAt; an admin amount correction on
 // the same row must surface, while a literal cache re-emission of the same
 // docs is still ignored.
 // =====================================================================
 describe('useAllowanceHistory — snapshot dedupe (lesson 2026-05-28 #2: field-aware signature)', () => {
   function snapshotOfTxns(
-    txns: Array<{ id: string; choreTitle?: string; amount?: number; createdAtMs?: number }>,
+    txns: Array<{ id: string; sourceLabel?: string; amount?: number; createdAtMs?: number }>,
   ) {
     return {
       docs: txns.map((t) => ({
         id: t.id,
         data: () => ({
           uid: 'uid-child-a',
-          choreId: 'chore-1',
-          choreTitle: t.choreTitle ?? 'Take out trash',
+          sourceId: 'chore-1',
+          sourceLabel: t.sourceLabel ?? 'Take out trash',
           amount: t.amount ?? 300,
           type: 'earning',
           familyId: 'fam-A',
@@ -435,7 +435,7 @@ describe('useAllowanceHistory — snapshot dedupe (lesson 2026-05-28 #2: field-a
     return (
       <ul>
         {transactions.map((t) => (
-          <li key={t.id} data-testid="txn-row">{`${t.id}:${t.choreTitle}:${t.amount}`}</li>
+          <li key={t.id} data-testid="txn-row">{`${t.id}:${t.sourceLabel}:${t.amount}`}</li>
         ))}
       </ul>
     );

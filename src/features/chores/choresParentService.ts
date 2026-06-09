@@ -186,8 +186,8 @@ export async function approveChore(
       });
       tx.set(doc(collection(deps.db, TRANSACTIONS_COLLECTION)), {
         uid: chore.assignedTo,
-        choreId,
-        choreTitle: chore.title,
+        sourceId: choreId,
+        sourceLabel: chore.title,
         amount: chore.dollarValue,
         type: 'earning',
         familyId: chore.familyId,

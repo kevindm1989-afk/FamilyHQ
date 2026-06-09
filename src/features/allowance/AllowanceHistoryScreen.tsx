@@ -10,7 +10,7 @@
  *  - LOADING  -> Skeleton (role="status", aria-busy)
  *  - EMPTY    -> friendly EmptyState ("No allowance yet"-style)
  *  - ERROR    -> a single inline role="alert" (A1: the SOLE error channel — no
- *                duplicate toast; no raw Firebase text / no PII like choreTitle)
+ *                duplicate toast; no raw Firebase text / no PII like sourceLabel)
  *  - LIST     -> reverse-chron, grouped by LOCAL day; each row exposes an sr-only
  *                sentence "Earned $X for <chore> on <date>" (A2) with the visible
  *                spans aria-hidden; the amount is gated like the balance (F5)
@@ -242,7 +242,7 @@ function TransactionRow(props: { txn: TransactionWithId; locale: string }): Reac
   // "Earned $X for <chore> on <date>".
   const rowSentence = t(isSpending ? 'allowance.rowSentenceSpent' : 'allowance.rowSentence', {
     amount,
-    chore: txn.choreTitle,
+    chore: txn.sourceLabel,
     date: friendly,
   });
   // Split the leading currency symbol off the VISIBLE amount so the matchable
@@ -260,7 +260,7 @@ function TransactionRow(props: { txn: TransactionWithId; locale: string }): Reac
     <div className="flex flex-col gap-8 rounded-control border border-surface-line bg-surface-card px-14 py-12">
       <span className="sr-only">{rowSentence}</span>
       <div className="flex items-start gap-12" aria-hidden="true">
-        <span className="flex-1 text-body font-semibold text-ink">{txn.choreTitle}</span>
+        <span className="flex-1 text-body font-semibold text-ink">{txn.sourceLabel}</span>
         <span className={`text-body font-bold ${amountColor}`}>
           {amountSign}
           <span>{amountSymbol}</span>

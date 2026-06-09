@@ -33,7 +33,7 @@ export interface TransactionWithId extends Transaction {
 
 /**
  * User-safe copy the allowance flows surface; asserted by the tests. Never
- * leaks a raw Firebase code or PII (a child's name / choreTitle).
+ * leaks a raw Firebase code or PII (a child's name / sourceLabel).
  */
 export const ALLOWANCE_LOAD_ERROR = 'We could not load the allowance history. Please try again.';
 export const ALLOWANCE_EMPTY_MESSAGE = 'No allowance yet — earnings will show up here.';

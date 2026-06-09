@@ -213,8 +213,8 @@ describe('M6/T1.6: transactions ledger is append-only', () => {
     await assertSucceeds(
       setDoc(doc(db, 'transactions', 'new-earning'), {
         uid: UID.memberA,
-        choreId: `chore-${FAMILY_A}`,
-        choreTitle: 'Take out trash',
+        sourceId: `chore-${FAMILY_A}`,
+        sourceLabel: 'Take out trash',
         amount: 3,
         type: 'earning',
         familyId: FAMILY_A,
@@ -243,8 +243,8 @@ describe('M6/T1.6: transactions ledger is append-only', () => {
     await assertFails(
       setDoc(doc(db, 'transactions', 'self-credit'), {
         uid: UID.memberA,
-        choreId: `chore-${FAMILY_A}`,
-        choreTitle: 'Take out trash',
+        sourceId: `chore-${FAMILY_A}`,
+        sourceLabel: 'Take out trash',
         amount: 100,
         type: 'earning',
         familyId: FAMILY_A,

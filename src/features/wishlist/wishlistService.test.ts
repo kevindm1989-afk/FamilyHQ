@@ -448,15 +448,15 @@ describe('approveRedemption — runs ONE transaction with three atomic writes', 
     expect(txnSets, 'exactly one ledger doc is written').toHaveLength(1);
     const data = txnSets[0]!.data;
     expect(data.uid).toBe('uid-member-a');
-    expect(data.choreId).toBe('item-1');
-    expect(data.choreTitle).toBe('Nintendo Switch');
+    expect(data.sourceId).toBe('item-1');
+    expect(data.sourceLabel).toBe('Nintendo Switch');
     expect(data.amount).toBe(30000);
     expect(data.type).toBe('spending');
     expect(data.familyId).toBe('fam-A');
     expect('createdAt' in data, 'the ledger doc carries createdAt').toBe(true);
     // No extra keys smuggled onto the ledger doc (shape lock).
     expect(Object.keys(data).sort()).toEqual(
-      ['amount', 'choreId', 'choreTitle', 'createdAt', 'familyId', 'type', 'uid'].sort(),
+      ['amount', 'createdAt', 'familyId', 'sourceId', 'sourceLabel', 'type', 'uid'].sort(),
     );
   });
 
