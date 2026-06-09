@@ -229,7 +229,7 @@ in a function, App Check misfire, etc.), not for forecasted operational cost.
 | -- | ---- | -------- | -------- |
 | F-PN-1 | Token rotation (browser revokes / kid clears storage) | FCM SDK fires `onTokenRefresh` (or `getToken()` returns a new value); the next app open re-registers; the old token will yield FCM 404/410 on next send | Client always upserts (replace by `tokenHash`); server cleans 404/410 (F-PN-3) |
 | F-PN-2 | User revoked notification permission in the browser | `getToken()` returns null; client deletes its `fcmTokens/{tokenHash}` doc; user sees "Notifications off" in preferences; no notification attempted | None needed; user re-grants via the UX path |
-| F-PN-3 | FCM returns `messaging/registration-token-not-registered` or 404/410 | Function receives per-recipient response array; for each failed token, deletes the corresponding `fcmTokens/{tokenHash}` doc | Pinned in implementer tests; idempotent (deleting a missing doc is no-op) |
+| F-PN-3 | FCM returns a permanently-stale-token error code | Function inspects each per-recipient response's `error.code`; deletes the corresponding `fcmTokens/{tokenHash}` doc **ONLY** when the code is in the explicit allow-list `['messaging/registration-token-not-registered', 'messaging/invalid-registration-token']` (threat-modeler pushback #4 / M37). Transient codes (`messaging/server-unavailable`, `messaging/internal-error`, `messaging/quota-exceeded`, etc.) NEVER trigger deletion — they get retried or dropped, not removed | Pinned in implementer tests (T-C.x); idempotent (deleting a missing doc is no-op). A test asserts that a `server-unavailable` response leaves the token doc untouched. |
 | F-PN-4 | Cloud Function cold start | First call after idle takes ~2-4s; user already saw the in-app success toast before the notification fires — non-blocking | Accepted; min-instances stays at 0 to keep cost at $0 |
 | F-PN-5 | Budget kill-switch fires → billing detached → all chargeable Functions return errors | App's notify-callable calls throw; client catches and **swallows silently** (no toast, no retry storm). Core app keeps working (Firestore reads/writes still free) | User flow continues; an admin (us) sees the billing alert and investigates |
 | F-PN-6 | Cloudflare or Google outage | Push doesn't deliver; the in-app inbox + Firestore-driven UI still reflects the state because the Firestore write already landed before the push attempt | Accepted (push is non-essential) |
@@ -328,11 +328,25 @@ Each task lists: deps · acceptance criteria · owner · risk · estimate.
 **A3. Provision IAM for kill-switch service account.**
 - Deps: A2.
 - Acceptance: a documented runbook (in `docs/runbooks/billing-killswitch.md`)
-  listing: the service account email (the default 2nd-gen functions SA is
-  fine); the role `roles/billing.projectManager` granted on the billing
-  account (NOT the project); the gcloud commands to grant; verification step
-  (`gcloud beta billing accounts get-iam-policy` shows the binding). This is
-  a **manual operator step** before A4 — explicitly NOT a CI job.
+  listing:
+  - The kill-switch SA email (a DEDICATED SA — NOT the default 2nd-gen
+    functions runtime SA; the runtime SA must NOT carry billing rights
+    — threat-modeler pushback #6 / M33b).
+  - The role `roles/billing.projectManager` granted on the BILLING
+    ACCOUNT (NOT the project); the gcloud commands to grant; verification
+    step (`gcloud beta billing accounts get-iam-policy` shows the
+    binding).
+  - **NEGATIVE IAM-binding assertions (T-KS.5, T-KS.6) the runbook MUST
+    walk through:**
+    - the kill-switch SA must NOT have `roles/owner`,
+      `roles/editor`, `roles/billing.admin`, or any
+      `roles/datastore.*` / `roles/firestore.*` binding.
+    - the default Cloud Functions runtime SA must NOT have ANY
+      `roles/billing.*` binding.
+    - the runbook lists the exact `gcloud` commands to verify each
+      negative binding.
+  This is a **manual operator step** before A4 — explicitly NOT a CI
+  job.
 - Owner: implementer writes runbook · user executes · Risk: medium ·
   Estimate: S.
 
@@ -383,12 +397,16 @@ firestore rules.**
 - Deps: B1.
 - Acceptance: rule additions: `get/list/create/update/delete` on
   `userPrivate/{uid}/fcmTokens/{tokenHash}` allowed ONLY for
-  `request.auth.uid == uid` AND `isActive()`. Cross-user read: denied.
-  Cross-family read: denied. Emulator tests:
+  `request.auth.uid == uid` AND `isActive()` **AND
+  `request.app_check_token != null` (App Check enforced on the write
+  path so a stolen session token alone cannot register attacker-
+  controlled tokens — threat-modeler pushback #1 / T-C.7)**. Cross-user
+  read: denied. Cross-family read: denied. Emulator tests:
   - own user reads own token: allowed
   - same-family parent reads child's token: denied
   - other-family user reads token: denied
   - unauthenticated: denied
+  - **own user, no App Check token: denied (write paths)**
   - subject lists own tokens: allowed
   - subject lists tokens with no `where` constraint: allowed (own subcollection)
 - Owner: test-writer + implementer · Risk: medium (rules) · Estimate: M.
@@ -417,12 +435,21 @@ token.**
   delivered; SW just relays it to the OS).
 - Owner: implementer · Risk: low · Estimate: S.
 
-**B5. Notification preferences UI.**
+**B5. Notification preferences UI + device list (data-minimization
+purpose-of-collection for `userAgent` — threat-modeler pushback #2).**
 - Deps: B1, B3.
 - Acceptance: settings screen lets a user toggle master push + per-category
   toggles. Master-off triggers `unregisterToken`. Master-on triggers the
-  permission prompt + `registerToken`. AODA: keyboard operable, 44px taps,
-  visible focus, screen-reader labels per `lessons.md` ARIA-role rule.
+  permission prompt + `registerToken`. **The same screen surfaces a
+  "Devices" sublist showing each `fcmTokens/{tokenHash}` doc's
+  `userAgent` + `lastSeenAt` with a "Sign out this device" button
+  (deletes that single fcmToken doc).** This is the purpose-of-collection
+  justification for storing `userAgent` — without a user-visible
+  affordance the field has no PIPEDA-permissible purpose and would be
+  dropped. AODA: keyboard operable, 44px taps, visible focus,
+  screen-reader labels per `lessons.md` ARIA-role rule. (If user
+  feedback rejects the device-list UX, drop `userAgent` from the token
+  doc shape — `B-T14` test forbids storing it without the surface.)
 - Owner: designer + implementer · Risk: low · Estimate: M.
 
 **B6. Permission-prompt UX (contextual, NOT on page load).**
@@ -440,8 +467,12 @@ token.**
 
 **C1. Implement `notifyChoreApproved` callable.**
 - Deps: A series deployed to prod, B series deployed to prod.
-- Acceptance: region `northamerica-northeast1`, runtime Node 20, App Check
-  required. Input: `{ choreId }`. Server steps:
+- Acceptance: region `northamerica-northeast1`, runtime Node 20,
+  **`onCall({ enforceAppCheck: true }, ...)` — the literal flag MUST
+  appear in the callable declaration (threat-modeler pushback #3 /
+  M32 — `cors` + auth alone do not satisfy App Check; a CI assertion
+  greps the source for `enforceAppCheck: true` on every notify-callable).**
+  Input: `{ choreId }`. Server steps:
   1. assert `context.auth`; reject UNAUTHENTICATED otherwise.
   2. read caller's `users/{uid}` (Admin SDK); reject if missing /
      `isActive == false`.
@@ -562,12 +593,30 @@ resolve.**
 
 ### PR E — Observability + the iOS-PWA hint + telemetry
 
-**E1. Structured logging assertions in CI.**
+**E1. Structured logging assertions in CI (threat-modeler pushback #5 /
+M38 — exact allow-list, no handwave).**
 - Deps: C, D series.
-- Acceptance: a static test (eslint rule or unit test) asserts no
-  `console.log` in `functions/src/`; only `functions.logger.info/warn/error`
-  with structured payload. Test asserts no field named
-  `[choreTitle, name, body, email, token]` is logged at info level.
+- Acceptance: TWO static tests.
+  - (1) **No `console.*`** in `functions/src/`: AST scan rejects any
+    `console.log` / `.info` / `.warn` / `.error` / `.debug`. Only
+    `functions.logger.{info,warn,error}` is allowed (or
+    `logger.info(...)` after import).
+  - (2) **Forbidden-substring scan** over every `logger.info(...)` AND
+    `logger.warn(...)` call site: the second-arg payload object's
+    key set must be a SUBSET of the allow-list
+    `['kind', 'fnName', 'recipientCount', 'tokensAttempted',
+      'tokensFailed', 'durationMs', 'familyId', 'callerUidHash']`.
+    Any of the forbidden field names — `choreTitle`, `sourceLabel`,
+    `wishlistTitle`, `todoTitle`, `postContent`, `name`, `email`,
+    `body`, `token`, `tokenHash`, `assignedTo`, `ownerUid`,
+    `reason`, `deniedReason`, `userAgent`, `amount`, `costCents`,
+    `dollarValue` — fails the test. (`callerUidHash` is the
+    `sha256(uid).slice(0,12)` hash, not the raw uid — a real uid in
+    the payload also fails.)
+  - (3) `logger.error(...)` calls MAY include a generic message string
+    plus the same allow-listed payload; the literal `error` object
+    is NEVER passed as a payload (it can carry the FCM token in
+    nested `errorInfo`).
 - Owner: implementer · Risk: low · Estimate: S.
 
 **E2. iOS-without-PWA hint.**
@@ -586,6 +635,35 @@ resolve.**
   invocations/kind, success ratio, token cleanups, kill-switch
   invocations.
 - Owner: observability-setup · Risk: low · Estimate: S.
+
+### PR F — Fast-follow: scheduled-event notifications (DEFERRED)
+
+**Out of scope of v1; ships after PRs A-E land.** Two scheduled events:
+event reminders (today/tomorrow) and birthday-in-N-days. Different
+trigger shape (Cloud Scheduler → Pub/Sub → onMessagePublished function),
+different trust model.
+
+**MANDATORY THREAT-MODELER RE-ENGAGEMENT GATE before PR F implementer
+begins (threat-modeler pushback #7):** Cloud Scheduler does NOT carry
+a `context.auth` token, and App Check (`enforceAppCheck: true`) does
+NOT apply to non-callable functions. The trust derivations for PRs
+A-E (caller identity, family membership, App Check origin attestation)
+ALL go away in PR F's scheduled-trigger model. The threat-modeler
+must produce a new mitigation matrix for the scheduled path before
+any code is written — at minimum covering:
+- caller-identity authority (the scheduler vs. an attacker who
+  somehow invokes the Pub/Sub topic)
+- Pub/Sub topic IAM (who can publish?)
+- the absence of a per-user request — the function picks recipients
+  itself, so the cross-tenant guard becomes "the function NEVER
+  reads across families in a single invocation"
+- per-family fanout cost (a 1000-family deployment × 5 birthdays/day
+  × recipient fanout)
+- body-vagueness rules for digest content (event/birthday names are
+  PI)
+
+This gate is enforced by leaving the PR F section deliberately
+incomplete in this brief.
 
 ---
 
