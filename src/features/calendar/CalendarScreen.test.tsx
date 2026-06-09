@@ -482,3 +482,267 @@ describe('CalendarScreen — day-cell accessibility (Finding E: full-date name, 
     }
   });
 });
+
+describe('CalendarScreen — recurring events: delete-scope and series-edit flows (ADR-0012 follow-up)', () => {
+  // A recurring occurrence carries a `recurrenceGroupId`; the screen detects
+  // that and surfaces a 3-option scope dialog on delete + a dedicated
+  // "Edit series" affordance.
+  const groupId = 'g-1';
+  function mkRecurring(over: Partial<EventWithId> & { id: string }): EventWithId {
+    return mkEvent({
+      title: 'Tuesday practice',
+      recurrenceFrequency: 'weekly',
+      recurrenceCount: 8,
+      recurrenceGroupId: groupId,
+      ...over,
+    });
+  }
+
+  it('clicking delete on a ONE-OFF event deletes directly (no scope dialog)', async () => {
+    const onDeleteEvent = vi.fn().mockResolvedValue(undefined);
+    const onDeleteEventSeries = vi.fn().mockResolvedValue(undefined);
+    renderCalendar({
+      feed: {
+        events: [mkEvent({ id: 'e-one' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+      onDeleteEvent,
+      onDeleteEventSeries,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /delete soccer practice/i }));
+    await waitFor(() => expect(onDeleteEvent).toHaveBeenCalledWith('e-one'));
+    expect(onDeleteEventSeries).not.toHaveBeenCalled();
+    // No scope dialog is opened.
+    expect(screen.queryByText(/how much of/i)).not.toBeInTheDocument();
+  });
+
+  it('clicking delete on a RECURRING event opens the 3-option scope dialog (no delete yet)', () => {
+    const onDeleteEvent = vi.fn().mockResolvedValue(undefined);
+    const onDeleteEventSeries = vi.fn().mockResolvedValue(undefined);
+    renderCalendar({
+      feed: {
+        events: [mkRecurring({ id: 'r1' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+      onDeleteEvent,
+      onDeleteEventSeries,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /delete tuesday practice/i }));
+    expect(screen.getByRole('dialog')).toHaveTextContent(/delete recurring event/i);
+    expect(screen.getByRole('button', { name: /only this occurrence/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /this and all future occurrences/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /delete the whole series/i })).toBeInTheDocument();
+    expect(onDeleteEvent).not.toHaveBeenCalled();
+    expect(onDeleteEventSeries).not.toHaveBeenCalled();
+  });
+
+  it('"Only this occurrence" calls onDeleteEvent(id) and toasts', async () => {
+    const onDeleteEvent = vi.fn().mockResolvedValue(undefined);
+    const onDeleteEventSeries = vi.fn().mockResolvedValue(undefined);
+    renderCalendar({
+      feed: {
+        events: [mkRecurring({ id: 'r1' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+      onDeleteEvent,
+      onDeleteEventSeries,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /delete tuesday practice/i }));
+    fireEvent.click(screen.getByRole('button', { name: /only this occurrence/i }));
+    await waitFor(() => expect(onDeleteEvent).toHaveBeenCalledWith('r1'));
+    expect(onDeleteEventSeries).not.toHaveBeenCalled();
+    expect(await screen.findByText(EVENT_DELETE_SUCCESS)).toBeInTheDocument();
+  });
+
+  it('"This and all future" calls onDeleteEventSeries(familyId, groupId, fromDate=event.date)', async () => {
+    const onDeleteEventSeries = vi.fn().mockResolvedValue(undefined);
+    renderCalendar({
+      feed: {
+        events: [mkRecurring({ id: 'r1', date: '2026-05-27T17:30:00.000Z' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+      onDeleteEventSeries,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /delete tuesday practice/i }));
+    fireEvent.click(screen.getByRole('button', { name: /this and all future occurrences/i }));
+    await waitFor(() =>
+      expect(onDeleteEventSeries).toHaveBeenCalledWith(
+        'fam-A',
+        groupId,
+        '2026-05-27T17:30:00.000Z',
+      ),
+    );
+  });
+
+  it('"Whole series" calls onDeleteEventSeries(familyId, groupId) with NO fromDate', async () => {
+    const onDeleteEventSeries = vi.fn().mockResolvedValue(undefined);
+    renderCalendar({
+      feed: {
+        events: [mkRecurring({ id: 'r1' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+      onDeleteEventSeries,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /delete tuesday practice/i }));
+    fireEvent.click(screen.getByRole('button', { name: /delete the whole series/i }));
+    await waitFor(() =>
+      expect(onDeleteEventSeries).toHaveBeenCalledWith('fam-A', groupId, undefined),
+    );
+  });
+
+  it('"Cancel" closes the dialog without calling either delete handler', () => {
+    const onDeleteEvent = vi.fn().mockResolvedValue(undefined);
+    const onDeleteEventSeries = vi.fn().mockResolvedValue(undefined);
+    renderCalendar({
+      feed: {
+        events: [mkRecurring({ id: 'r1' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+      onDeleteEvent,
+      onDeleteEventSeries,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /delete tuesday practice/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /^Cancel$/i })[0]!);
+    expect(screen.queryByText(/how much of/i)).not.toBeInTheDocument();
+    expect(onDeleteEvent).not.toHaveBeenCalled();
+    expect(onDeleteEventSeries).not.toHaveBeenCalled();
+  });
+
+  it('recurring rows expose an "Edit series" affordance; one-off rows do NOT', () => {
+    renderCalendar({
+      feed: {
+        events: [
+          mkRecurring({ id: 'r1', title: 'Recurring one' }),
+          mkEvent({ id: 'one-off', title: 'One-off thing' }),
+        ],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    expect(
+      screen.getByRole('button', { name: /edit the whole series for recurring one/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /edit the whole series for one-off thing/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('"Edit series" opens a sheet seeded with the event title / description / tag', () => {
+    renderCalendar({
+      feed: {
+        events: [
+          mkRecurring({
+            id: 'r1',
+            title: 'Tuesday practice',
+            description: 'Bring shin guards',
+            tag: 'sports',
+          }),
+        ],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /edit the whole series for tuesday/i }));
+    const sheet = screen.getByRole('dialog', { name: /edit the series/i });
+    expect(within(sheet).getByDisplayValue('Tuesday practice')).toBeInTheDocument();
+    expect(within(sheet).getByDisplayValue('Bring shin guards')).toBeInTheDocument();
+  });
+
+  it('submitting Edit series with "This and all future" calls onUpdateEventSeries with fromDate', async () => {
+    const onUpdateEventSeries = vi.fn().mockResolvedValue(undefined);
+    renderCalendar({
+      feed: {
+        events: [
+          mkRecurring({
+            id: 'r1',
+            title: 'Tuesday practice',
+            description: 'old desc',
+            date: '2026-05-27T17:30:00.000Z',
+            tag: 'sports',
+          }),
+        ],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+      onUpdateEventSeries,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /edit the whole series/i }));
+    const sheet = screen.getByRole('dialog', { name: /edit the series/i });
+    fireEvent.change(within(sheet).getByDisplayValue('Tuesday practice'), {
+      target: { value: 'Thursday practice' },
+    });
+    // Default scope is "This and all future"; keep it and submit.
+    fireEvent.click(within(sheet).getByRole('button', { name: /save changes/i }));
+    await waitFor(() =>
+      expect(onUpdateEventSeries).toHaveBeenCalledWith(
+        'fam-A',
+        groupId,
+        { title: 'Thursday practice', description: 'old desc', tag: 'sports' },
+        '2026-05-27T17:30:00.000Z',
+      ),
+    );
+  });
+
+  it('switching to "Whole series" submits with NO fromDate', async () => {
+    const onUpdateEventSeries = vi.fn().mockResolvedValue(undefined);
+    renderCalendar({
+      feed: {
+        events: [mkRecurring({ id: 'r1' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+      onUpdateEventSeries,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /edit the whole series/i }));
+    const sheet = screen.getByRole('dialog', { name: /edit the series/i });
+    fireEvent.click(within(sheet).getByRole('radio', { name: /the whole series/i }));
+    fireEvent.click(within(sheet).getByRole('button', { name: /save changes/i }));
+    await waitFor(() =>
+      expect(onUpdateEventSeries).toHaveBeenCalledWith(
+        'fam-A',
+        groupId,
+        expect.any(Object),
+        undefined,
+      ),
+    );
+  });
+
+  it('REJECTS an empty title in Edit series (inline error; no dispatch)', async () => {
+    const onUpdateEventSeries = vi.fn().mockResolvedValue(undefined);
+    renderCalendar({
+      feed: {
+        events: [mkRecurring({ id: 'r1', title: 'Tuesday practice' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+      onUpdateEventSeries,
+    });
+    fireEvent.click(screen.getByRole('button', { name: /edit the whole series/i }));
+    const sheet = screen.getByRole('dialog', { name: /edit the series/i });
+    fireEvent.change(within(sheet).getByDisplayValue('Tuesday practice'), {
+      target: { value: '   ' },
+    });
+    fireEvent.click(within(sheet).getByRole('button', { name: /save changes/i }));
+    expect(await within(sheet).findByText(/please give the event a name/i)).toBeInTheDocument();
+    expect(onUpdateEventSeries).not.toHaveBeenCalled();
+  });
+});

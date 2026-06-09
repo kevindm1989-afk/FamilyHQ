@@ -23,7 +23,7 @@
  */
 import { useMemo, useState, type ReactElement } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { Badge, EmptyState, Fab, Skeleton } from '../../components';
+import { Badge, BottomSheet, Button, EmptyState, Fab, Skeleton, TextField } from '../../components';
 import { ToastViewport } from '../../app/ToastViewport';
 import { useToast } from '../../hooks/useToast';
 import type { EventTag, Role, UserWithId } from '../../lib/types';
@@ -45,6 +45,19 @@ export interface CalendarScreenProps {
   /** The reference "today" (injected so the today-cell highlight is deterministic). */
   today: { year: number; month: number; day: number };
   onDeleteEvent: (eventId: string) => Promise<void>;
+  /**
+   * Parent-only series delete (Recurring events follow-up). Called from the
+   * delete-scope dialog when the user opts to remove more than the single
+   * occurrence. When `fromDate` is provided, the service removes only
+   * siblings whose `date >= fromDate` ("this and all future"); absent, the
+   * entire series is deleted. The cross-tenant guard lives in the service +
+   * the rule layer.
+   */
+  onDeleteEventSeries?: (
+    familyId: string,
+    recurrenceGroupId: string,
+    fromDate?: string,
+  ) => Promise<void>;
   onCreateEvent?: (input: {
     title: string;
     description: string;
@@ -60,6 +73,19 @@ export interface CalendarScreenProps {
   onUpdateEvent?: (
     eventId: string,
     input: { title: string; description: string; date: string; tag: EventTag },
+  ) => Promise<void>;
+  /**
+   * Parent-only series update (Recurring events follow-up). Title /
+   * description / tag are propagated across siblings; `date` is intentionally
+   * per-instance (never written by this path — ADR-0012). `fromDate` scopes
+   * to "this and all future" when provided; absent, the whole series is
+   * updated.
+   */
+  onUpdateEventSeries?: (
+    familyId: string,
+    recurrenceGroupId: string,
+    patch: { title: string; description: string; tag: EventTag },
+    fromDate?: string,
   ) => Promise<void>;
 }
 
@@ -108,7 +134,17 @@ function formatTime(iso: string): string {
 
 export function CalendarScreen(props: CalendarScreenProps): ReactElement {
   const { t, i18n } = useTranslation();
-  const { viewer, feed, today, onDeleteEvent, onCreateEvent, onUpdateEvent } = props;
+  const {
+    familyId,
+    viewer,
+    feed,
+    today,
+    onDeleteEvent,
+    onDeleteEventSeries,
+    onCreateEvent,
+    onUpdateEvent,
+    onUpdateEventSeries,
+  } = props;
   const { showToast } = useToast();
   const canManage = canManageEvents(viewer);
   const locale = i18n.resolvedLanguage ?? 'en';
@@ -147,6 +183,13 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
   // dismiss). Mutually exclusive with the create flow: opening edit also
   // closes the create sheet, and vice versa.
   const [editingEvent, setEditingEvent] = useState<EventWithId | null>(null);
+  // Recurring-events scope dialogs (ADR-0012 follow-up). When the user
+  // clicks the trash icon on a recurring occurrence we show a 3-option
+  // confirmation; one-off events delete directly as before. Editing the
+  // whole series goes through its own dedicated sheet, leaving AddEvent's
+  // per-instance edit untouched.
+  const [deletingSeriesEvent, setDeletingSeriesEvent] = useState<EventWithId | null>(null);
+  const [editingSeriesEvent, setEditingSeriesEvent] = useState<EventWithId | null>(null);
 
   const monthLabel = `${MONTH_NAMES[view.month]} ${view.year}`;
 
@@ -169,9 +212,72 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
     });
   };
 
-  const handleDelete = (eventId: string): void => {
-    void onDeleteEvent(eventId)
+  const handleDelete = (event: EventWithId): void => {
+    // Recurring → open the 3-option scope dialog. One-off → direct delete
+    // (no behaviour change for non-recurring events).
+    if (event.recurrenceGroupId !== undefined && onDeleteEventSeries !== undefined) {
+      setDeletingSeriesEvent(event);
+      return;
+    }
+    void onDeleteEvent(event.id)
       .then(() => showToast(t('calendar.toast.deleted')))
+      .catch(() => showToast(t('calendar.toast.generic')));
+  };
+
+  const handleDeleteScopeChoice = (
+    event: EventWithId,
+    scope: 'only-this' | 'this-and-future' | 'whole-series',
+  ): void => {
+    setDeletingSeriesEvent(null);
+    if (scope === 'only-this') {
+      void onDeleteEvent(event.id)
+        .then(() => showToast(t('calendar.toast.deleted')))
+        .catch(() => showToast(t('calendar.toast.generic')));
+      return;
+    }
+    if (
+      onDeleteEventSeries === undefined ||
+      familyId === null ||
+      event.recurrenceGroupId === undefined
+    ) {
+      showToast(t('calendar.toast.generic'));
+      return;
+    }
+    const fromDate = scope === 'this-and-future' ? event.date : undefined;
+    void onDeleteEventSeries(familyId, event.recurrenceGroupId, fromDate)
+      .then(() =>
+        showToast(
+          scope === 'this-and-future'
+            ? t('calendar.toast.deletedFuture')
+            : t('calendar.toast.deletedSeries'),
+        ),
+      )
+      .catch(() => showToast(t('calendar.toast.generic')));
+  };
+
+  const handleUpdateSeries = (
+    event: EventWithId,
+    patch: { title: string; description: string; tag: EventTag },
+    scope: 'this-and-future' | 'whole-series',
+  ): Promise<void> => {
+    if (
+      onUpdateEventSeries === undefined ||
+      familyId === null ||
+      event.recurrenceGroupId === undefined
+    ) {
+      showToast(t('calendar.toast.generic'));
+      return Promise.resolve();
+    }
+    const fromDate = scope === 'this-and-future' ? event.date : undefined;
+    return onUpdateEventSeries(familyId, event.recurrenceGroupId, patch, fromDate)
+      .then(() => {
+        showToast(
+          scope === 'this-and-future'
+            ? t('calendar.toast.updatedFuture')
+            : t('calendar.toast.updatedSeries'),
+        );
+        setEditingSeriesEvent(null);
+      })
       .catch(() => showToast(t('calendar.toast.generic')));
   };
 
@@ -294,6 +400,11 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
                 setAddOpen(false);
                 setEditingEvent(event);
               }}
+              onEditSeries={(event) => {
+                setAddOpen(false);
+                setEditingEvent(null);
+                setEditingSeriesEvent(event);
+              }}
               tagLabel={TAG_LABEL}
             />
 
@@ -341,6 +452,26 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
             today={today}
           />
         </div>
+      )}
+
+      {/* Delete-scope confirmation for recurring occurrences (ADR-0012). */}
+      {deletingSeriesEvent !== null && (
+        <DeleteScopeSheet
+          event={deletingSeriesEvent}
+          onClose={() => setDeletingSeriesEvent(null)}
+          onChoose={(scope) => handleDeleteScopeChoice(deletingSeriesEvent, scope)}
+        />
+      )}
+
+      {/* Series-edit sheet (recurring events). Separate from AddEvent's
+          per-instance edit so the per-instance flow stays unchanged. */}
+      {editingSeriesEvent !== null && (
+        <EditSeriesSheet
+          event={editingSeriesEvent}
+          onClose={() => setEditingSeriesEvent(null)}
+          onSubmit={(patch, scope) => handleUpdateSeries(editingSeriesEvent, patch, scope)}
+          tagLabel={TAG_LABEL}
+        />
       )}
 
       {/* Single toast live region for calendar flows (ToastViewport is a global
@@ -499,16 +630,18 @@ function UpcomingBucket(props: {
 interface AgendaProps {
   events: EventWithId[];
   canManage: boolean;
-  onDelete: (eventId: string) => void;
+  onDelete: (event: EventWithId) => void;
   /** Opens the edit sheet for this event. Parent owns the modal state. */
   onEdit: (event: EventWithId) => void;
+  /** Opens the edit-series sheet (only invoked for recurring events). */
+  onEditSeries: (event: EventWithId) => void;
   /** Tag → human-readable label map resolved from i18n by the parent. */
   tagLabel: Record<EventTag, string>;
 }
 
 function Agenda(props: AgendaProps): ReactElement {
   const { t } = useTranslation();
-  const { events, canManage, onDelete, onEdit, tagLabel } = props;
+  const { events, canManage, onDelete, onEdit, onEditSeries, tagLabel } = props;
   return (
     <div data-testid="agenda" className="flex flex-col gap-12">
       {events.length === 0 ? (
@@ -545,10 +678,20 @@ function Agenda(props: AgendaProps): ReactElement {
                     >
                       <EditIcon />
                     </button>
+                    {event.recurrenceGroupId !== undefined && (
+                      <button
+                        type="button"
+                        aria-label={t('calendar.editSeriesLabel', { title: event.title })}
+                        onClick={() => onEditSeries(event)}
+                        className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute hover:text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+                      >
+                        <SeriesIcon />
+                      </button>
+                    )}
                     <button
                       type="button"
                       aria-label={t('calendar.deleteEvent', { title: event.title })}
-                      onClick={() => onDelete(event.id)}
+                      onClick={() => onDelete(event)}
                       className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control text-ink-mute hover:text-status-danger-text focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
                     >
                       <TrashIcon />
@@ -614,5 +757,173 @@ function TrashIcon(): ReactElement {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+/** Concentric circles — the "this is a series" affordance icon. */
+function SeriesIcon(): ReactElement {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="h-20 w-20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+    >
+      <path d="M4 12a8 8 0 1 0 3-6.2M4 4v4h4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+interface DeleteScopeSheetProps {
+  event: EventWithId;
+  onClose: () => void;
+  onChoose: (scope: 'only-this' | 'this-and-future' | 'whole-series') => void;
+}
+
+/**
+ * Three-option confirmation for deleting a recurring event. Each row is its
+ * own real <button> so a keyboard / screen-reader user can navigate the
+ * options as discrete choices. The danger styling applies to "Whole series"
+ * (the most destructive) — colour is paired with TEXT so it is never the
+ * sole signal.
+ */
+function DeleteScopeSheet(props: DeleteScopeSheetProps): ReactElement {
+  const { t } = useTranslation();
+  const { event, onClose, onChoose } = props;
+  return (
+    <BottomSheet open onClose={onClose} title={t('calendar.deleteSeries.title')}>
+      <div className="flex flex-col gap-12">
+        <p className="text-meta text-ink-mute">
+          {t('calendar.deleteSeries.body', { title: event.title })}
+        </p>
+        <div className="flex flex-col gap-8">
+          <Button variant="soft" onClick={() => onChoose('only-this')}>
+            {t('calendar.deleteSeries.onlyThis')}
+          </Button>
+          <Button variant="soft" onClick={() => onChoose('this-and-future')}>
+            {t('calendar.deleteSeries.thisAndFuture')}
+          </Button>
+          <Button variant="danger" onClick={() => onChoose('whole-series')}>
+            {t('calendar.deleteSeries.wholeSeries')}
+          </Button>
+          <Button variant="ghost" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+        </div>
+      </div>
+    </BottomSheet>
+  );
+}
+
+interface EditSeriesSheetProps {
+  event: EventWithId;
+  onClose: () => void;
+  onSubmit: (
+    patch: { title: string; description: string; tag: EventTag },
+    scope: 'this-and-future' | 'whole-series',
+  ) => Promise<void>;
+  tagLabel: Record<EventTag, string>;
+}
+
+/**
+ * Edit the WHOLE recurrence series (or this + future). Date is intentionally
+ * not editable here — that's a per-instance concern (use the existing edit
+ * button instead). Mirrors AddEvent's form fields for title/description/tag
+ * so the user sees a familiar shape.
+ */
+function EditSeriesSheet(props: EditSeriesSheetProps): ReactElement {
+  const { t } = useTranslation();
+  const { event, onClose, onSubmit, tagLabel } = props;
+  const [title, setTitle] = useState(event.title);
+  const [description, setDescription] = useState(event.description ?? '');
+  const [tag, setTag] = useState<EventTag>(event.tag);
+  const [scope, setScope] = useState<'this-and-future' | 'whole-series'>('this-and-future');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    if (busy) return;
+    const trimmed = title.trim();
+    if (trimmed.length === 0) {
+      setError(t('calendar.editSeries.titleRequired'));
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    try {
+      await onSubmit({ title: trimmed, description, tag }, scope);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <BottomSheet open onClose={onClose} title={t('calendar.editSeries.title')}>
+      <form className="flex flex-col gap-12" onSubmit={handleSubmit}>
+        <p className="text-meta text-ink-mute">{t('calendar.editSeries.body')}</p>
+        <TextField label={t('calendar.editSeries.titleLabel')} value={title} onChange={setTitle} />
+        <TextField
+          label={t('calendar.editSeries.descriptionLabel')}
+          value={description}
+          onChange={setDescription}
+        />
+        <fieldset className="flex flex-col gap-4">
+          <legend className="text-label font-semibold text-ink-2">
+            {t('calendar.editSeries.tagLabel')}
+          </legend>
+          <select
+            value={tag}
+            onChange={(e) => setTag(e.target.value as EventTag)}
+            className="min-h-tap rounded-control border border-surface-line bg-surface-card px-12 text-body text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+          >
+            <option value="school">{tagLabel.school}</option>
+            <option value="sports">{tagLabel.sports}</option>
+            <option value="family">{tagLabel.family}</option>
+            <option value="work">{tagLabel.work}</option>
+          </select>
+        </fieldset>
+        <fieldset className="flex flex-col gap-4">
+          <legend className="text-label font-semibold text-ink-2">
+            {t('calendar.editSeries.scopeLabel')}
+          </legend>
+          <label className="flex items-center gap-8 text-body text-ink">
+            <input
+              type="radio"
+              name="scope"
+              value="this-and-future"
+              checked={scope === 'this-and-future'}
+              onChange={() => setScope('this-and-future')}
+            />
+            {t('calendar.editSeries.scopeThisAndFuture')}
+          </label>
+          <label className="flex items-center gap-8 text-body text-ink">
+            <input
+              type="radio"
+              name="scope"
+              value="whole-series"
+              checked={scope === 'whole-series'}
+              onChange={() => setScope('whole-series')}
+            />
+            {t('calendar.editSeries.scopeWholeSeries')}
+          </label>
+        </fieldset>
+        {error !== null && (
+          <p role="alert" className="text-meta text-status-danger-text">
+            {error}
+          </p>
+        )}
+        <div className="flex justify-end gap-8">
+          <Button variant="ghost" type="button" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button type="submit" loading={busy}>
+            {t('calendar.editSeries.submit')}
+          </Button>
+        </div>
+      </form>
+    </BottomSheet>
   );
 }

@@ -209,6 +209,26 @@
     "upcomingEmpty": "Rien à venir — profitez de la semaine libre.",
     "later": "Plus tard",
     "recurringBadge": "Récurrent",
+    "editSeriesLabel": "Modifier toute la série pour {{title}}",
+    "deleteSeries": {
+      "title": "Supprimer un événement récurrent",
+      "body": "Quelle portion de « {{title}} » faut-il supprimer ?",
+      "onlyThis": "Cette occurrence seulement",
+      "thisAndFuture": "Cette occurrence et toutes les suivantes",
+      "wholeSeries": "Supprimer toute la série"
+    },
+    "editSeries": {
+      "title": "Modifier la série",
+      "body": "Les changements s’appliquent à la portée choisie. La date de chaque occurrence reste la même — utilisez le bouton Modifier standard pour déplacer une seule occurrence.",
+      "titleLabel": "Titre",
+      "titleRequired": "Veuillez nommer l’événement.",
+      "descriptionLabel": "Description",
+      "tagLabel": "Étiquette",
+      "scopeLabel": "Appliquer à",
+      "scopeThisAndFuture": "Cette occurrence et toutes les suivantes",
+      "scopeWholeSeries": "Toute la série",
+      "submit": "Enregistrer"
+    },
     "tag": {
       "school": "École",
       "sports": "Sports",
@@ -217,6 +237,10 @@
     },
     "toast": {
       "deleted": "Événement supprimé.",
+      "deletedFuture": "Cette occurrence et les suivantes ont été supprimées.",
+      "deletedSeries": "Toute la série a été supprimée.",
+      "updatedFuture": "Cette occurrence et les suivantes ont été mises à jour.",
+      "updatedSeries": "Toute la série a été mise à jour.",
       "generic": "Une erreur est survenue. Veuillez réessayer."
     }
   },

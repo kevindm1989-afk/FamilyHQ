@@ -16,7 +16,9 @@ import { useFamilyEvents } from './useFamilyEvents';
 import {
   createEvent,
   deleteEvent,
+  deleteEventSeries,
   updateEvent,
+  updateEventSeries,
   type CreateEventInput,
   type UpdateEventInput,
 } from './calendarService';
@@ -81,6 +83,23 @@ export default function CalendarRoute(): ReactElement {
     const input: UpdateEventInput = { ...value };
     await updateEvent({ db }, eventId, input);
   };
+  const handleDeleteSeries = async (
+    fam: string,
+    groupId: string,
+    fromDate?: string,
+  ): Promise<void> => {
+    const { db } = await import('../../firebase/config');
+    await deleteEventSeries({ db }, fam, groupId, fromDate);
+  };
+  const handleUpdateSeries = async (
+    fam: string,
+    groupId: string,
+    patch: { title: string; description: string; tag: EventTag },
+    fromDate?: string,
+  ): Promise<void> => {
+    const { db } = await import('../../firebase/config');
+    await updateEventSeries({ db }, fam, groupId, patch, fromDate);
+  };
 
   return (
     <CalendarScreen
@@ -90,8 +109,10 @@ export default function CalendarRoute(): ReactElement {
       feed={feed}
       today={today}
       onDeleteEvent={handleDelete}
+      onDeleteEventSeries={handleDeleteSeries}
       onCreateEvent={handleCreate}
       onUpdateEvent={handleUpdate}
+      onUpdateEventSeries={handleUpdateSeries}
     />
   );
 }

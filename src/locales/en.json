@@ -209,6 +209,26 @@
     "upcomingEmpty": "Nothing coming up — enjoy the open week.",
     "later": "Later",
     "recurringBadge": "Recurring",
+    "editSeriesLabel": "Edit the whole series for {{title}}",
+    "deleteSeries": {
+      "title": "Delete recurring event",
+      "body": "How much of \"{{title}}\" should we remove?",
+      "onlyThis": "Only this occurrence",
+      "thisAndFuture": "This and all future occurrences",
+      "wholeSeries": "Delete the whole series"
+    },
+    "editSeries": {
+      "title": "Edit the series",
+      "body": "Changes apply across the chosen scope. The date of each occurrence stays the same — use the regular Edit button to move a single occurrence.",
+      "titleLabel": "Title",
+      "titleRequired": "Please give the event a name.",
+      "descriptionLabel": "Description",
+      "tagLabel": "Tag",
+      "scopeLabel": "Apply to",
+      "scopeThisAndFuture": "This and all future occurrences",
+      "scopeWholeSeries": "The whole series",
+      "submit": "Save changes"
+    },
     "tag": {
       "school": "School",
       "sports": "Sports",
@@ -217,6 +237,10 @@
     },
     "toast": {
       "deleted": "Event deleted.",
+      "deletedFuture": "This and future occurrences deleted.",
+      "deletedSeries": "Whole series deleted.",
+      "updatedFuture": "This and future occurrences updated.",
+      "updatedSeries": "Whole series updated.",
       "generic": "Something went wrong. Please try again."
     }
   },

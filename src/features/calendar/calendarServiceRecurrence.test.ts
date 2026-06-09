@@ -12,9 +12,14 @@ interface BatchedSet {
 interface BatchedDelete {
   ref: { __collection: string; __id: string };
 }
+interface BatchedUpdate {
+  ref: { __collection: string; __id: string };
+  data: Record<string, unknown>;
+}
 
 let batchSets: BatchedSet[];
 let batchDeletes: BatchedDelete[];
+let batchUpdates: BatchedUpdate[];
 let batchCommits: number;
 let lastQueryConstraints: { type: string; field?: string; op?: string; value?: unknown }[];
 let mockQueryDocs: { id: string; data: () => Record<string, unknown>; ref: { __id: string } }[];
@@ -56,6 +61,9 @@ vi.mock('firebase/firestore', () => ({
     delete: (ref: BatchedDelete['ref']) => {
       batchDeletes.push({ ref });
     },
+    update: (ref: BatchedUpdate['ref'], data: Record<string, unknown>) => {
+      batchUpdates.push({ ref, data });
+    },
     commit: vi.fn(async () => {
       batchCommits += 1;
     }),
@@ -72,6 +80,7 @@ import {
   createEvent,
   deleteEventSeries,
   expandRecurrenceDates,
+  updateEventSeries,
 } from './calendarService';
 
 const db = {} as import('firebase/firestore').Firestore;
@@ -79,6 +88,7 @@ const db = {} as import('firebase/firestore').Firestore;
 beforeEach(() => {
   batchSets = [];
   batchDeletes = [];
+  batchUpdates = [];
   batchCommits = 0;
   lastQueryConstraints = [];
   mockQueryDocs = [];
@@ -232,6 +242,73 @@ describe('deleteEventSeries', () => {
   it('does NOT commit the batch when no docs match', async () => {
     mockQueryDocs = [];
     await deleteEventSeries({ db }, 'fam-A', groupId);
+    expect(batchCommits).toBe(0);
+  });
+});
+
+describe('updateEventSeries', () => {
+  const groupId = 'g-1';
+  const patch = { title: 'Updated title', description: 'updated desc', tag: 'sports' as const };
+
+  beforeEach(() => {
+    mockQueryDocs = [
+      { id: 'e1', data: () => ({ date: '2026-06-01T09:00:00.000Z' }), ref: { __id: 'e1' } },
+      { id: 'e2', data: () => ({ date: '2026-06-08T09:00:00.000Z' }), ref: { __id: 'e2' } },
+      { id: 'e3', data: () => ({ date: '2026-06-15T09:00:00.000Z' }), ref: { __id: 'e3' } },
+    ];
+  });
+
+  it('queries by familyId + recurrenceGroupId (mirrors deleteEventSeries safety)', async () => {
+    await updateEventSeries({ db }, 'fam-A', groupId, patch);
+    const wheres = lastQueryConstraints.filter((c) => c.type === 'where');
+    expect(wheres).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: 'familyId', op: '==', value: 'fam-A' }),
+        expect.objectContaining({ field: 'recurrenceGroupId', op: '==', value: groupId }),
+      ]),
+    );
+  });
+
+  it('updates every sibling when no fromDate is provided', async () => {
+    await updateEventSeries({ db }, 'fam-A', groupId, patch);
+    expect(batchUpdates.map((u) => u.ref.__id).sort()).toEqual(['e1', 'e2', 'e3']);
+    expect(batchCommits).toBe(1);
+  });
+
+  it('writes title / description / tag — NEVER date (per-instance is the model)', async () => {
+    await updateEventSeries({ db }, 'fam-A', groupId, patch);
+    for (const u of batchUpdates) {
+      expect(Object.keys(u.data).sort()).toEqual(['description', 'tag', 'title']);
+      expect(u.data.title).toBe('Updated title');
+      expect(u.data.description).toBe('updated desc');
+      expect(u.data.tag).toBe('sports');
+      expect('date' in u.data).toBe(false);
+    }
+  });
+
+  it('trims the title before persisting', async () => {
+    await updateEventSeries({ db }, 'fam-A', groupId, { ...patch, title: '  Trimmed  ' });
+    for (const u of batchUpdates) {
+      expect(u.data.title).toBe('Trimmed');
+    }
+  });
+
+  it('with fromDate, updates only siblings with date >= fromDate', async () => {
+    await updateEventSeries({ db }, 'fam-A', groupId, patch, '2026-06-08T09:00:00.000Z');
+    expect(batchUpdates.map((u) => u.ref.__id).sort()).toEqual(['e2', 'e3']);
+  });
+
+  it('REJECTS an empty / whitespace title BEFORE any write', async () => {
+    await expect(
+      updateEventSeries({ db }, 'fam-A', groupId, { ...patch, title: '   ' }),
+    ).rejects.toBeInstanceOf(EventActionError);
+    expect(batchUpdates).toHaveLength(0);
+    expect(batchCommits).toBe(0);
+  });
+
+  it('does NOT commit the batch when no docs match', async () => {
+    mockQueryDocs = [];
+    await updateEventSeries({ db }, 'fam-A', groupId, patch);
     expect(batchCommits).toBe(0);
   });
 });
