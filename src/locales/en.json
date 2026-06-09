@@ -75,6 +75,7 @@
     "manageBirthdays": "Manage birthdays",
     "shoppingList": "Shopping list",
     "wishlist": "Wishlist",
+    "notifications": "Notifications",
     "resourcesLabel": "Site resources",
     "accessibilityLink": "Accessibility statement & feedback"
   },
@@ -890,6 +891,31 @@
     "expiresIn_one": "Expires in {{count}} day",
     "expiresIn_other": "Expires in {{count}} days",
     "expired": "Expired"
+  },
+
+  "notifications": {
+    "title": "Notifications",
+    "iosHint": "Add to Home Screen to receive notifications on iPhone or iPad.",
+    "categoriesLegend": "Notification types",
+    "master": {
+      "label": "Push notifications",
+      "on": "On",
+      "off": "Off"
+    },
+    "category": {
+      "choreApprovalsNeeded": "Chore approvals needed",
+      "wishlistApprovalsNeeded": "Wishlist approvals needed",
+      "myChoreResolved": "My chore updates",
+      "myWishlistResolved": "My wishlist updates",
+      "familyBoardPosts": "Family board posts",
+      "familyTodos": "Family to-dos"
+    },
+    "devices": {
+      "heading": "Devices",
+      "empty": "No devices registered for push.",
+      "listLabel": "Devices registered to receive push notifications",
+      "signOut": "Sign out this device"
+    }
   },
 
   "errorBoundary": {

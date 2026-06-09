@@ -74,6 +74,49 @@ export interface User {
 export interface UserPrivate {
   email: string; // [PI] adult email (child credential model per ADR-0006 Q3)
   familyId: string; // immutable from client — for rule scoping only
+  /**
+   * Per-user push notification preferences (PR B — push notifications).
+   * Optional so existing users (created before push landed) have implicit
+   * safe-by-default behaviour at read time via DEFAULT_NOTIFICATION_PREFERENCES.
+   * When absent, the UI treats the user as master-off / all-categories-off.
+   */
+  notificationPreferences?: NotificationPreferences;
+}
+
+/**
+ * Notification category keys (PR B). The architect's locked-in set:
+ *   - choreApprovalsNeeded   — parent only (kid completed a chore, needs review)
+ *   - wishlistApprovalsNeeded — parent only (kid requested an allowance redeem)
+ *   - myChoreResolved        — kid only (parent approved/rejected your chore)
+ *   - myWishlistResolved     — kid only (parent approved/denied your wish)
+ *   - familyBoardPosts       — all members (someone posted to the board)
+ *   - familyTodos            — all members (a new to-do landed)
+ */
+export type NotificationCategoryKey =
+  | 'choreApprovalsNeeded'
+  | 'wishlistApprovalsNeeded'
+  | 'myChoreResolved'
+  | 'myWishlistResolved'
+  | 'familyBoardPosts'
+  | 'familyTodos';
+
+/**
+ * Per-subject notification preferences doc shape (PR B). Stored as
+ * `userPrivate.notificationPreferences`. Master `pushEnabled` is OFF by
+ * default (safe-by-default — no push without explicit opt-in); every
+ * category is also OFF by default. `showDetails` is a v1 invariant
+ * (always false — title/body never carry PI); v1.1 will introduce a
+ * per-device opt-in surface.
+ */
+export interface NotificationPreferences {
+  /** Master switch. Default false — no push at all until the user opts in. */
+  pushEnabled: boolean;
+  /** Per-category opt-in map. Every category defaults to false. */
+  categories: Record<NotificationCategoryKey, boolean>;
+  /** v1 invariant: always false (no PI on the lock screen). v1.1 opt-in. */
+  showDetails: boolean;
+  /** Epoch ms — last time the user mutated their preferences. */
+  updatedAt: number;
 }
 
 export interface FamilyEvent {

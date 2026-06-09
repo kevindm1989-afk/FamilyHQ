@@ -93,17 +93,18 @@ const deleteDocMock = vi.fn(async (ref: CapturedRef) => {
 });
 const getDocsMock = vi.fn(async (ref: CapturedRef) => {
   getDocsCalls.push(ref);
+  const docs = getDocsResult.map((d) => ({
+    id: d.id,
+    data: () => d.data,
+    ref: makeRef([...ref.__segments, d.id]),
+    exists: () => true,
+  }));
   return {
-    size: getDocsResult.length,
-    empty: getDocsResult.length === 0,
-    docs: getDocsResult.map((d) => ({
-      id: d.id,
-      data: () => d.data,
-      ref: makeRef([...ref.__segments, d.id]),
-      exists: () => true,
-    })),
-    forEach: function (cb: (snap: { id: string; data: () => Record<string, unknown> }) => void) {
-      this.docs.forEach(cb);
+    size: docs.length,
+    empty: docs.length === 0,
+    docs,
+    forEach: (cb: (snap: (typeof docs)[number]) => void) => {
+      docs.forEach(cb);
     },
   };
 });
