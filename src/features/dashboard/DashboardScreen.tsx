@@ -31,6 +31,8 @@ import type { PostWithId } from '../board/boardService';
 import type { TransactionWithId } from '../allowance/allowanceService';
 import type { TodoWithId } from '../tasks/todosService';
 import { todayISOInLocalTZ } from '../tasks/todosBuckets';
+import type { BirthdayWithId } from '../birthdays/birthdaysService';
+import { localToday, selectUpcomingBirthdays } from '../birthdays/birthdayBuckets';
 import type { ScreenId } from '../../app/routes';
 import {
   approvalQueue,
@@ -88,6 +90,7 @@ export interface DashboardScreenProps {
   earnings: SectionFeed<TransactionWithId>; // member
   myChores: SectionFeed<ChoreWithId>; // member
   todos: SectionFeed<TodoWithId>; // member (Task Management — family-wide open todos)
+  birthdays: SectionFeed<BirthdayWithId>; // both — upcoming birthdays/anniversaries
   approvals: SectionFeed<ChoreWithId>; // parent (the full family-chore feed)
   events: SectionFeed<EventWithId>; // both
   posts: SectionFeed<PostWithId>; // both
@@ -184,9 +187,67 @@ export function DashboardScreen(props: DashboardScreenProps): ReactElement {
 
       {isParent ? <ParentSections {...props} /> : <MemberSections {...props} />}
 
+      <UpcomingBirthdaysSection feed={props.birthdays} nowMs={nowMs} onNavigate={onNavigate} />
       <UpcomingEventsSection feed={props.events} nowMs={nowMs} onNavigate={onNavigate} />
       <RecentPostsSection feed={props.posts} nowMs={nowMs} onNavigate={onNavigate} />
     </section>
+  );
+}
+
+function UpcomingBirthdaysSection(props: {
+  feed: SectionFeed<BirthdayWithId>;
+  nowMs: number;
+  onNavigate: (screen: ScreenId) => void;
+}): ReactElement {
+  const { t } = useTranslation();
+  const today = localToday(new Date(props.nowMs));
+  return (
+    <SectionShell
+      heading={t('birthdays.dashboard.heading')}
+      viewAllLabel={t('birthdays.dashboard.viewAll')}
+      onViewAll={() => props.onNavigate('birthdays')}
+    >
+      <SectionBody
+        feed={props.feed}
+        loadingLabel={t('birthdays.dashboard.loading')}
+        emptyMessage={t('birthdays.dashboard.empty')}
+        renderItems={(items) => {
+          const upcoming = selectUpcomingBirthdays(items, today, SECTION_CAP);
+          if (upcoming.length === 0) {
+            return [
+              <ListRow key="empty">
+                <span className="flex-1 text-meta text-ink-mute">
+                  {t('birthdays.dashboard.empty')}
+                </span>
+              </ListRow>,
+            ];
+          }
+          return upcoming.map((b) => {
+            const label =
+              b.daysUntil === 0
+                ? t('birthdays.dashboard.today')
+                : b.daysUntil === 1
+                  ? t('birthdays.dashboard.tomorrow')
+                  : t('birthdays.dashboard.daysUntil', { count: b.daysUntil });
+            return (
+              <ListRow key={b.id}>
+                <span className="flex-1 text-body font-semibold text-ink">{b.name}</span>
+                {b.type === 'anniversary' ? (
+                  <Badge tone="indigo" size="sm">
+                    {t('birthdays.dashboard.anniversary')}
+                  </Badge>
+                ) : b.turningAge !== null ? (
+                  <Badge tone="mute" size="sm">
+                    {t('birthdays.dashboard.turning', { age: b.turningAge })}
+                  </Badge>
+                ) : null}
+                <span className="text-meta text-ink-mute">{label}</span>
+              </ListRow>
+            );
+          });
+        }}
+      />
+    </SectionShell>
   );
 }
 

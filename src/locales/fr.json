@@ -72,6 +72,7 @@
     "signOut": "Se déconnecter",
     "signOutError": "Nous n’avons pas pu vous déconnecter complètement. Veuillez réessayer.",
     "manageFamily": "Gérer la famille",
+    "manageBirthdays": "Gérer les anniversaires",
     "resourcesLabel": "Ressources du site",
     "accessibilityLink": "Déclaration d’accessibilité et commentaires"
   },
@@ -205,6 +206,69 @@
     "toast": {
       "deleted": "Événement supprimé.",
       "generic": "Une erreur est survenue. Veuillez réessayer."
+    }
+  },
+
+  "birthdays": {
+    "title": "Anniversaires",
+    "loading": "Chargement des anniversaires…",
+    "empty": "Aucun anniversaire — touchez le bouton + pour en ajouter un.",
+    "listLabel": "Anniversaires de la famille",
+    "dayBadge": "Le {{day}}",
+    "badge": {
+      "anniversary": "Mariage"
+    },
+    "action": {
+      "create": "+ Nouvel anniversaire",
+      "edit": "Modifier",
+      "editLabel": "Modifier {{name}}",
+      "delete": "Supprimer",
+      "deleteLabel": "Supprimer {{name}}"
+    },
+    "form": {
+      "nameLabel": "Nom",
+      "monthDayLabel": "Date",
+      "monthLabel": "Mois",
+      "monthPlaceholder": "Choisir un mois",
+      "dayLabel": "Jour",
+      "typeLabel": "Type",
+      "typeBirthday": "Anniversaire",
+      "typeAnniversary": "Anniversaire de mariage",
+      "birthYearLabel": "Année de naissance (facultatif)",
+      "noteLabel": "Note (facultatif)"
+    },
+    "create": {
+      "title": "Nouvel anniversaire",
+      "submit": "Ajouter"
+    },
+    "edit": {
+      "title": "Modifier l’anniversaire",
+      "submit": "Enregistrer"
+    },
+    "error": {
+      "nameRequired": "Veuillez saisir un nom.",
+      "nameTooLong": "Gardez le nom sous 80 caractères.",
+      "monthDayInvalid": "Veuillez choisir un mois et un jour valides.",
+      "birthYearInvalid": "Veuillez saisir une année de naissance valide.",
+      "generic": "Une erreur est survenue. Veuillez réessayer."
+    },
+    "toast": {
+      "created": "Anniversaire ajouté.",
+      "updated": "Anniversaire mis à jour.",
+      "deleted": "Anniversaire supprimé.",
+      "generic": "Une erreur est survenue. Veuillez réessayer."
+    },
+    "dashboard": {
+      "heading": "Anniversaires à venir",
+      "viewAll": "Voir tous les anniversaires",
+      "loading": "Chargement des anniversaires à venir…",
+      "empty": "Aucun anniversaire dans les 60 prochains jours.",
+      "today": "Aujourd’hui",
+      "tomorrow": "Demain",
+      "daysUntil_one": "dans {{count}} jour",
+      "daysUntil_other": "dans {{count}} jours",
+      "turning": "fête ses {{age}} ans",
+      "anniversary": "Anniversaire de mariage"
     }
   },
 

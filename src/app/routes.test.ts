@@ -23,6 +23,7 @@ describe('route metadata', () => {
       'board',
       'chores',
       'tasks',
+      'birthdays',
       'family',
       'add_chore',
       'add_event',

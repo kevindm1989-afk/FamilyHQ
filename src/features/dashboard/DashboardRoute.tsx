@@ -23,6 +23,7 @@ import { useMyChores } from '../chores/useMyChores';
 import { useFamilyEvents } from '../calendar/useFamilyEvents';
 import { useFamilyPosts } from '../board/useFamilyPosts';
 import { useFamilyTodos } from '../tasks/useFamilyTodos';
+import { useFamilyBirthdays } from '../birthdays/useFamilyBirthdays';
 import { DashboardScreen } from './DashboardScreen';
 import { OnboardingTour } from '../onboarding/OnboardingTour';
 import { hasSeenTour, markTourSeen } from '../onboarding/tourStorage';
@@ -65,6 +66,7 @@ function MemberDashboardRoute(): ReactElement {
   // family can CRUD any todo). Dashboard widget filters/prioritises in
   // selectTopOpenTodos — no new query is needed.
   const todosFeed = useFamilyTodos(familyId);
+  const birthdaysFeed = useFamilyBirthdays(familyId);
 
   if (!currentUser || !familyId) {
     return <Placeholder title="Dashboard" />;
@@ -75,7 +77,8 @@ function MemberDashboardRoute(): ReactElement {
     void ledgerFeed.refresh();
     void eventsFeed.refresh();
     void postsFeed.refresh();
-    // useFamilyTodos has no `refresh` — its onSnapshot already auto-refreshes.
+    // useFamilyTodos + useFamilyBirthdays have no `refresh` — onSnapshot
+    // auto-refreshes them.
   };
 
   return (
@@ -98,6 +101,11 @@ function MemberDashboardRoute(): ReactElement {
         error: choresFeed.error,
       }}
       todos={{ items: todosFeed.todos, loading: todosFeed.loading, error: todosFeed.error }}
+      birthdays={{
+        items: birthdaysFeed.birthdays,
+        loading: birthdaysFeed.loading,
+        error: birthdaysFeed.error,
+      }}
       approvals={{ items: [], loading: false, error: null }}
       events={{ items: eventsFeed.events, loading: eventsFeed.loading, error: eventsFeed.error }}
       posts={{ items: postsFeed.posts, loading: postsFeed.loading, error: postsFeed.error }}
@@ -113,6 +121,7 @@ function ParentDashboardRoute(): ReactElement {
   const choresFeed = useFamilyChores(familyId);
   const eventsFeed = useFamilyEvents(familyId);
   const postsFeed = useFamilyPosts(familyId);
+  const birthdaysFeed = useFamilyBirthdays(familyId);
 
   if (!currentUser || !familyId) {
     return <Placeholder title="Dashboard" />;
@@ -136,6 +145,11 @@ function ParentDashboardRoute(): ReactElement {
       earnings={{ items: [], loading: false, error: null }}
       myChores={{ items: [], loading: false, error: null }}
       todos={{ items: [], loading: false, error: null }}
+      birthdays={{
+        items: birthdaysFeed.birthdays,
+        loading: birthdaysFeed.loading,
+        error: birthdaysFeed.error,
+      }}
       approvals={{
         items: choresFeed.chores,
         loading: choresFeed.loading,

@@ -49,6 +49,7 @@ describe('a11y — DashboardScreen', () => {
           mkChore({ id: 'c2', title: 'Walk dog', status: 'complete', dollarValue: 800 }),
         ])}
         todos={settled([])}
+        birthdays={settled([])}
         approvals={settled([])}
         events={settled([
           mkEvent({ id: 'e1', title: 'Soccer practice', tag: 'sports' }),
@@ -76,6 +77,7 @@ describe('a11y — DashboardScreen', () => {
         earnings={settled([])}
         myChores={settled([])}
         todos={settled([])}
+        birthdays={settled([])}
         approvals={settled([
           mkChore({
             id: 'c-approval-1',

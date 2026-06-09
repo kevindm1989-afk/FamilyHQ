@@ -18,6 +18,7 @@ export type ScreenId =
   | 'allowance'
   | 'family'
   | 'goals'
+  | 'birthdays'
   | 'accessibility'
   | 'privacy'
   | 'terms'
@@ -62,6 +63,10 @@ export const ROUTES: Record<ScreenId, RouteMeta> = {
   // own goals; parents see the family roll-up. Non-modal — has its own
   // dedicated screen reached from the dashboard widgets.
   goals: { id: 'goals', path: '/goals', isModal: false, parentOnly: false },
+  // Birthdays + anniversaries — CRUD list. Reachable from the Account
+  // screen ("Manage birthdays"). Open to any active same-family member
+  // per firestore.rules.
+  birthdays: { id: 'birthdays', path: '/birthdays', isModal: false, parentOnly: false },
   // Accessibility statement (AODA launch-gate item). Reachable from both
   // signed-out (login footer) and signed-in (Account screen) — see
   // App.tsx + AppShell.tsx. NOT parent-only and NOT modal.
