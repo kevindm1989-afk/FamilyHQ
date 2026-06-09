@@ -6,6 +6,12 @@ package-lock.json
 design-tokens.json
 *.md
 
+# Functions workspace build output (tsc emits to functions/lib/; gitignored
+# but a freshly-built local tree leaves the files around for prettier to
+# pick up). The source under functions/src/ IS prettier-checked.
+functions/lib/
+functions/node_modules/
+
 # Design handoff artifacts (authored by the designer; not app source — do not reformat).
 design/
 
