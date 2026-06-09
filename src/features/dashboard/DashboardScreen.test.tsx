@@ -26,6 +26,7 @@ import type { PostWithId } from '../board/boardService';
 import type { TransactionWithId } from '../allowance/allowanceService';
 import type { TodoWithId } from '../tasks/todosService';
 import type { BirthdayWithId } from '../birthdays/birthdaysService';
+import type { WishlistItemWithId } from '../wishlist/wishlistService';
 import { MONEY_INVALID_INDICATOR } from '../chores/choresParentService';
 import { DashboardScreen, type DashboardScreenProps, type SectionFeed } from './DashboardScreen';
 
@@ -136,6 +137,7 @@ function baseProps(over: Partial<DashboardScreenProps> = {}): DashboardScreenPro
     todos: settled<TodoWithId>([]),
     birthdays: settled<BirthdayWithId>([]),
     approvals: settled<ChoreWithId>([]),
+    wishlistApprovals: settled<WishlistItemWithId>([]),
     events: settled<EventWithId>([]),
     posts: settled<PostWithId>([]),
     ...over,
@@ -395,6 +397,102 @@ describe('DashboardScreen — PARENT layout', () => {
     parentProps();
     expect(screen.queryByText(/current balance/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('region', { name: /my chores/i })).not.toBeInTheDocument();
+  });
+
+  // ===== Allowance / wishlist approvals widget =====
+  function mkWish(
+    over: Partial<WishlistItemWithId> & { id: string },
+  ): WishlistItemWithId {
+    return {
+      familyId: 'fam-A',
+      ownerUid: 'uid-member-a',
+      title: 'Wish',
+      costCents: 3000,
+      status: 'wishing',
+      createdAt: 1000,
+      ...over,
+    };
+  }
+
+  it('renders ONLY the requested wishlist items in the allowance-requests widget', () => {
+    parentProps({
+      wishlistApprovals: settled([
+        mkWish({ id: 'w1', title: 'Switch', status: 'requested', costCents: 30000 }),
+        mkWish({ id: 'w2', title: 'Lego', status: 'requested', costCents: 5000, ownerUid: 'uid-child-b' }),
+        // wishing / redeemed / denied must NOT appear in the queue.
+        mkWish({ id: 'w3', title: 'Pending wish', status: 'wishing' }),
+        mkWish({ id: 'w4', title: 'Already bought', status: 'redeemed' }),
+      ]),
+    });
+    const allowance = section(/allowance requests/i);
+    expect(within(allowance).getByText('Switch')).toBeInTheDocument();
+    expect(within(allowance).getByText('Lego')).toBeInTheDocument();
+    expect(within(allowance).queryByText('Pending wish')).not.toBeInTheDocument();
+    expect(within(allowance).queryByText('Already bought')).not.toBeInTheDocument();
+  });
+
+  it('shows a count + total $ of pending requests', () => {
+    parentProps({
+      wishlistApprovals: settled([
+        mkWish({ id: 'w1', status: 'requested', costCents: 30000 }),
+        mkWish({ id: 'w2', status: 'requested', costCents: 5000 }),
+      ]),
+    });
+    const allowance = section(/allowance requests/i);
+    // 30000 + 5000 = 35000 cents = $350.00
+    expect(within(allowance).getByText(/2 requests.*\$350\.00/)).toBeInTheDocument();
+  });
+
+  it('renders a friendly empty state when no wishlist requests are pending', () => {
+    parentProps({ wishlistApprovals: settled([mkWish({ id: 'w1', status: 'wishing' })]) });
+    const allowance = section(/allowance requests/i);
+    expect(within(allowance).getByText(/no allowance requests waiting/i)).toBeInTheDocument();
+  });
+
+  it('caps the visible queue at 3 items', () => {
+    parentProps({
+      wishlistApprovals: settled([
+        mkWish({ id: 'w1', title: 'A', status: 'requested', costCents: 100 }),
+        mkWish({ id: 'w2', title: 'B', status: 'requested', costCents: 100 }),
+        mkWish({ id: 'w3', title: 'C', status: 'requested', costCents: 100 }),
+        mkWish({ id: 'w4', title: 'D', status: 'requested', costCents: 100 }),
+      ]),
+    });
+    const allowance = section(/allowance requests/i);
+    expect(within(allowance).getAllByRole('listitem').length).toBe(3);
+  });
+
+  it('shows the owner member name on each request row', () => {
+    parentProps({
+      wishlistApprovals: settled([
+        mkWish({ id: 'w1', title: 'Switch', status: 'requested', ownerUid: 'uid-member-a' }),
+        mkWish({ id: 'w2', title: 'Lego', status: 'requested', ownerUid: 'uid-child-b' }),
+      ]),
+    });
+    const allowance = section(/allowance requests/i);
+    expect(within(allowance).getByText(/maya rivera/i)).toBeInTheDocument();
+    expect(within(allowance).getByText(/ben rivera/i)).toBeInTheDocument();
+  });
+
+  it('gates a malformed costCents (NaN) with the invalid indicator, never "$0.00"', () => {
+    parentProps({
+      wishlistApprovals: settled([
+        mkWish({ id: 'w1', title: 'Broken', status: 'requested', costCents: Number.NaN }),
+      ]),
+    });
+    const allowance = section(/allowance requests/i);
+    const row = within(allowance).getByRole('listitem');
+    expect(row).not.toHaveTextContent('$0.00');
+    expect(row).toHaveTextContent(MONEY_INVALID_INDICATOR);
+  });
+
+  it('"View all" navigates to the wishlist screen', () => {
+    const props = parentProps({
+      wishlistApprovals: settled([mkWish({ id: 'w1', status: 'requested' })]),
+    });
+    const allowance = section(/allowance requests/i);
+    fireEvent.click(within(allowance).getByRole('button', { name: /open wishlist/i }));
+    expect(props.onNavigate).toHaveBeenCalledWith('wishlist');
   });
 
   it('still renders upcoming events and recent posts for a parent', () => {

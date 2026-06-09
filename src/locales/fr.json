@@ -115,6 +115,15 @@
         "pendingCount_one": "{{count}} en attente d’approbation",
         "pendingCount_other": "{{count}} en attente d’approbation"
       },
+      "wishlistApprovals": {
+        "heading": "Demandes d’allocation",
+        "viewAll": "Ouvrir la liste de souhaits",
+        "loading": "Chargement des demandes d’allocation…",
+        "empty": "Aucune demande d’allocation en attente.",
+        "pendingTotal_one": "{{count}} demande — {{amount}}",
+        "pendingTotal_other": "{{count}} demandes — {{amount}}",
+        "costPrefix": "Coût"
+      },
       "events": {
         "heading": "Événements à venir",
         "viewAll": "Voir tous les événements",

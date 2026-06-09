@@ -24,6 +24,7 @@ import { useFamilyEvents } from '../calendar/useFamilyEvents';
 import { useFamilyPosts } from '../board/useFamilyPosts';
 import { useFamilyTodos } from '../tasks/useFamilyTodos';
 import { useFamilyBirthdays } from '../birthdays/useFamilyBirthdays';
+import { useFamilyWishlistItems } from '../wishlist/useFamilyWishlistItems';
 import { DashboardScreen } from './DashboardScreen';
 import { OnboardingTour } from '../onboarding/OnboardingTour';
 import { hasSeenTour, markTourSeen } from '../onboarding/tourStorage';
@@ -107,6 +108,7 @@ function MemberDashboardRoute(): ReactElement {
         error: birthdaysFeed.error,
       }}
       approvals={{ items: [], loading: false, error: null }}
+      wishlistApprovals={{ items: [], loading: false, error: null }}
       events={{ items: eventsFeed.events, loading: eventsFeed.loading, error: eventsFeed.error }}
       posts={{ items: postsFeed.posts, loading: postsFeed.loading, error: postsFeed.error }}
     />
@@ -122,6 +124,10 @@ function ParentDashboardRoute(): ReactElement {
   const eventsFeed = useFamilyEvents(familyId);
   const postsFeed = useFamilyPosts(familyId);
   const birthdaysFeed = useFamilyBirthdays(familyId);
+  // Wishlist redemption queue — same family-wide feed the /wishlist screen
+  // uses. The dashboard widget derives `pendingRedemptions` purely on the
+  // client (no extra round-trip).
+  const wishlistFeed = useFamilyWishlistItems(familyId);
 
   if (!currentUser || !familyId) {
     return <Placeholder title="Dashboard" />;
@@ -154,6 +160,11 @@ function ParentDashboardRoute(): ReactElement {
         items: choresFeed.chores,
         loading: choresFeed.loading,
         error: choresFeed.error,
+      }}
+      wishlistApprovals={{
+        items: wishlistFeed.items,
+        loading: wishlistFeed.loading,
+        error: wishlistFeed.error,
       }}
       events={{ items: eventsFeed.events, loading: eventsFeed.loading, error: eventsFeed.error }}
       posts={{ items: postsFeed.posts, loading: postsFeed.loading, error: postsFeed.error }}

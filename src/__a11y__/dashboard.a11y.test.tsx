@@ -51,6 +51,7 @@ describe('a11y — DashboardScreen', () => {
         todos={settled([])}
         birthdays={settled([])}
         approvals={settled([])}
+        wishlistApprovals={settled([])}
         events={settled([
           mkEvent({ id: 'e1', title: 'Soccer practice', tag: 'sports' }),
           mkEvent({ id: 'e2', title: 'School play', tag: 'school' }),
@@ -87,6 +88,7 @@ describe('a11y — DashboardScreen', () => {
             assignedTo: member.id,
           }),
         ])}
+        wishlistApprovals={settled([])}
         events={settled([mkEvent({ id: 'e1', title: 'Soccer practice', tag: 'sports' })])}
         posts={settled([mkPost({ id: 'p1', content: 'Family movie night tonight!' })])}
       />,
