@@ -72,6 +72,7 @@
     "signOut": "Sign out",
     "signOutError": "We could not fully sign you out. Please try again.",
     "manageFamily": "Manage family",
+    "manageBirthdays": "Manage birthdays",
     "resourcesLabel": "Site resources",
     "accessibilityLink": "Accessibility statement & feedback"
   },
@@ -205,6 +206,69 @@
     "toast": {
       "deleted": "Event deleted.",
       "generic": "Something went wrong. Please try again."
+    }
+  },
+
+  "birthdays": {
+    "title": "Birthdays",
+    "loading": "Loading birthdays…",
+    "empty": "No birthdays yet — tap the + button to add the first one.",
+    "listLabel": "Family birthdays",
+    "dayBadge": "Day {{day}}",
+    "badge": {
+      "anniversary": "Anniversary"
+    },
+    "action": {
+      "create": "+ New birthday",
+      "edit": "Edit",
+      "editLabel": "Edit {{name}}",
+      "delete": "Delete",
+      "deleteLabel": "Delete {{name}}"
+    },
+    "form": {
+      "nameLabel": "Name",
+      "monthDayLabel": "Date",
+      "monthLabel": "Month",
+      "monthPlaceholder": "Choose a month",
+      "dayLabel": "Day",
+      "typeLabel": "Type",
+      "typeBirthday": "Birthday",
+      "typeAnniversary": "Anniversary",
+      "birthYearLabel": "Birth year (optional)",
+      "noteLabel": "Note (optional)"
+    },
+    "create": {
+      "title": "New birthday",
+      "submit": "Add birthday"
+    },
+    "edit": {
+      "title": "Edit birthday",
+      "submit": "Save changes"
+    },
+    "error": {
+      "nameRequired": "Please enter a name.",
+      "nameTooLong": "Keep the name under 80 characters.",
+      "monthDayInvalid": "Please pick a valid month and day.",
+      "birthYearInvalid": "Please enter a valid birth year.",
+      "generic": "Something went wrong. Please try again."
+    },
+    "toast": {
+      "created": "Birthday added.",
+      "updated": "Birthday updated.",
+      "deleted": "Birthday removed.",
+      "generic": "Something went wrong. Please try again."
+    },
+    "dashboard": {
+      "heading": "Upcoming birthdays",
+      "viewAll": "View all birthdays",
+      "loading": "Loading upcoming birthdays…",
+      "empty": "No birthdays in the next 60 days.",
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "daysUntil_one": "in {{count}} day",
+      "daysUntil_other": "in {{count}} days",
+      "turning": "turning {{age}}",
+      "anniversary": "Anniversary"
     }
   },
 

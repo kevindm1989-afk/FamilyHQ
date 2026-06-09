@@ -25,6 +25,7 @@ import type { EventWithId } from '../calendar/calendarService';
 import type { PostWithId } from '../board/boardService';
 import type { TransactionWithId } from '../allowance/allowanceService';
 import type { TodoWithId } from '../tasks/todosService';
+import type { BirthdayWithId } from '../birthdays/birthdaysService';
 import { MONEY_INVALID_INDICATOR } from '../chores/choresParentService';
 import { DashboardScreen, type DashboardScreenProps, type SectionFeed } from './DashboardScreen';
 
@@ -133,6 +134,7 @@ function baseProps(over: Partial<DashboardScreenProps> = {}): DashboardScreenPro
     earnings: settled<TransactionWithId>([]),
     myChores: settled<ChoreWithId>([]),
     todos: settled<TodoWithId>([]),
+    birthdays: settled<BirthdayWithId>([]),
     approvals: settled<ChoreWithId>([]),
     events: settled<EventWithId>([]),
     posts: settled<PostWithId>([]),
