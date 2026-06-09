@@ -73,6 +73,7 @@
     "signOutError": "We could not fully sign you out. Please try again.",
     "manageFamily": "Manage family",
     "manageBirthdays": "Manage birthdays",
+    "shoppingList": "Shopping list",
     "resourcesLabel": "Site resources",
     "accessibilityLink": "Accessibility statement & feedback"
   },
@@ -206,6 +207,60 @@
     "toast": {
       "deleted": "Event deleted.",
       "generic": "Something went wrong. Please try again."
+    }
+  },
+
+  "shopping": {
+    "title": "Shopping list",
+    "loading": "Loading the shopping list…",
+    "unknownMember": "A family member",
+    "addedBy": "Added by {{name}}",
+    "checkedBy": "Checked by {{name}} {{when}}",
+    "section": {
+      "open": "Open",
+      "openEmpty": "Nothing on the list yet — add the first item above.",
+      "checked": "Recently checked"
+    },
+    "add": {
+      "label": "Add an item",
+      "submit": "Add"
+    },
+    "form": {
+      "quantityLabel": "Quantity (optional)",
+      "categoryLabel": "Category (optional)"
+    },
+    "edit": {
+      "title": "Edit item",
+      "submit": "Save changes"
+    },
+    "action": {
+      "checkLabel": "Check off {{name}}",
+      "uncheckLabel": "Uncheck {{name}}",
+      "edit": "Edit",
+      "editLabel": "Edit {{name}}",
+      "delete": "Delete",
+      "deleteLabel": "Delete {{name}}",
+      "clearChecked": "Clear checked"
+    },
+    "error": {
+      "nameRequired": "Please enter an item name.",
+      "nameTooLong": "Keep the item name under 200 characters.",
+      "generic": "Something went wrong. Please try again."
+    },
+    "toast": {
+      "added": "Added.",
+      "updated": "Updated.",
+      "deleted": "Removed.",
+      "cleared": "Checked items cleared.",
+      "generic": "Something went wrong. Please try again."
+    },
+    "dashboard": {
+      "heading": "Shopping list",
+      "viewAll": "View all items",
+      "loading": "Loading shopping list…",
+      "empty": "Nothing on the shopping list.",
+      "countLabel_one": "{{count}} item open",
+      "countLabel_other": "{{count}} items open"
     }
   },
 

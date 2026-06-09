@@ -19,6 +19,7 @@ export type ScreenId =
   | 'family'
   | 'goals'
   | 'birthdays'
+  | 'shopping'
   | 'accessibility'
   | 'privacy'
   | 'terms'
@@ -67,6 +68,9 @@ export const ROUTES: Record<ScreenId, RouteMeta> = {
   // screen ("Manage birthdays"). Open to any active same-family member
   // per firestore.rules.
   birthdays: { id: 'birthdays', path: '/birthdays', isModal: false, parentOnly: false },
+  // Shared family shopping list — open to any active same-family member per
+  // firestore.rules. Reachable from Account → "Shopping list".
+  shopping: { id: 'shopping', path: '/shopping', isModal: false, parentOnly: false },
   // Accessibility statement (AODA launch-gate item). Reachable from both
   // signed-out (login footer) and signed-in (Account screen) — see
   // App.tsx + AppShell.tsx. NOT parent-only and NOT modal.
