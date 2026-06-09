@@ -21,6 +21,7 @@ export type ScreenId =
   | 'birthdays'
   | 'shopping'
   | 'wishlist'
+  | 'notifications'
   | 'accessibility'
   | 'privacy'
   | 'terms'
@@ -78,6 +79,15 @@ export const ROUTES: Record<ScreenId, RouteMeta> = {
   // a reason. firestore.rules is the authority — every state transition
   // is enforced server-side. Reachable from Account → "Wishlist".
   wishlist: { id: 'wishlist', path: '/wishlist', isModal: false, parentOnly: false },
+  // Notification preferences (PR B — push notifications). Reachable from
+  // Account → "Notifications". Open to any active same-family member —
+  // every member has their own per-subject preferences doc and device list.
+  notifications: {
+    id: 'notifications',
+    path: '/account/notifications',
+    isModal: false,
+    parentOnly: false,
+  },
   // Accessibility statement (AODA launch-gate item). Reachable from both
   // signed-out (login footer) and signed-in (Account screen) — see
   // App.tsx + AppShell.tsx. NOT parent-only and NOT modal.

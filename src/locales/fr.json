@@ -75,6 +75,7 @@
     "manageBirthdays": "Gérer les anniversaires",
     "shoppingList": "Liste d’épicerie",
     "wishlist": "Liste de souhaits",
+    "notifications": "Notifications",
     "resourcesLabel": "Ressources du site",
     "accessibilityLink": "Déclaration d’accessibilité et commentaires"
   },
@@ -890,6 +891,31 @@
     "expiresIn_one": "Expire dans {{count}} jour",
     "expiresIn_other": "Expire dans {{count}} jours",
     "expired": "Expirée"
+  },
+
+  "notifications": {
+    "title": "Notifications",
+    "iosHint": "Ajoutez à l’écran d’accueil pour recevoir les notifications sur iPhone ou iPad.",
+    "categoriesLegend": "Types de notifications",
+    "master": {
+      "label": "Notifications push",
+      "on": "Activé",
+      "off": "Désactivé"
+    },
+    "category": {
+      "choreApprovalsNeeded": "Approbations de tâches à faire",
+      "wishlistApprovalsNeeded": "Approbations de souhaits à faire",
+      "myChoreResolved": "Mises à jour de mes tâches",
+      "myWishlistResolved": "Mises à jour de mes souhaits",
+      "familyBoardPosts": "Messages du babillard familial",
+      "familyTodos": "Listes à faire de la famille"
+    },
+    "devices": {
+      "heading": "Appareils",
+      "empty": "Aucun appareil enregistré pour les notifications.",
+      "listLabel": "Appareils enregistrés pour recevoir les notifications push",
+      "signOut": "Déconnecter cet appareil"
+    }
   },
 
   "errorBoundary": {

@@ -9,8 +9,8 @@
     {
       "name": "main entry (login bundle)",
       "pattern": "^index-[^.-]+\\.js$",
-      "maxGzipBytes": 101000,
-      "note": "What an unauthed visitor downloads on cold load. Was 211 KB before #19's code splits; now ~97 KB after the wishlist feature's i18n keys (Feature 4 — allowance debit + wishlist redemption) landed in the inlined locale bundle. Budget at ~101 KB caps further regression — bump on intentional growth."
+      "maxGzipBytes": 103000,
+      "note": "What an unauthed visitor downloads on cold load. Was 211 KB before #19's code splits; now ~99 KB after the push-notifications PR B i18n keys (notifications preferences screen — master toggle, 6 category toggles, devices list, iOS-without-PWA copy, EN + FR) landed in the inlined locale bundle. Budget at ~103 KB caps further regression — bump on intentional growth."
     },
     {
       "name": "AuthedApp shell",

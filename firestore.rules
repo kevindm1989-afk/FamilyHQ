@@ -354,6 +354,39 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // --- userPrivate/{uid}/fcmTokens/{tokenHash} (PR B — push notifications) -
+    //
+    // Per-device FCM registration tokens (one doc per device). The doc id is
+    // a SHA-256(token).slice(0,24) hex digest so the path itself is not a
+    // secret; the full FCM token IS stored in the body so the server can
+    // send to it. Body shape: {token, userAgent, createdAt, lastSeenAt}.
+    //
+    // Authority model (threat-model §A.10 + pushback #1):
+    //   - READ: ONLY the subject (active). NOT the same-family parent
+    //     (tokens are credentials, not "just" email — P7 extended). NOT a
+    //     peer member. NOT cross-family. NOT unauthenticated. Reads are
+    //     NOT App-Check-gated (the subject's stale browser must still be
+    //     able to read its own tokens without minting a fresh attestation).
+    //   - WRITE (create/update/delete): subject + active + App Check
+    //     (`request.app_check_token != null`). M32 / pushback #1 — the
+    //     attacker case is a stolen session token without App Check; the
+    //     literal expression `request.app_check_token != null` IS the
+    //     belt-and-suspenders the threat-modeler demanded.
+    //
+    // The per-user 20-token cap is enforced CLIENT-SIDE (rules cannot
+    // natively count an arbitrary subcollection). See
+    // src/features/notifications/notificationsService.ts (B-T11) and the
+    // marker test in test/rules/fcmTokens.test.ts (B-T8).
+    match /userPrivate/{userId}/fcmTokens/{tokenHash} {
+      allow get, list: if request.auth != null
+        && request.auth.uid == userId
+        && isActive();
+      allow create, update, delete: if request.auth != null
+        && request.auth.uid == userId
+        && isActive()
+        && request.app_check_token != null;
+    }
+
     // --- families ----------------------------------------------------------
     //
     // create: founding bootstrap only — self as createdBy (property 3 anchor).
