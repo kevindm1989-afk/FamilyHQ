@@ -73,6 +73,7 @@
     "signOutError": "Nous n’avons pas pu vous déconnecter complètement. Veuillez réessayer.",
     "manageFamily": "Gérer la famille",
     "manageBirthdays": "Gérer les anniversaires",
+    "shoppingList": "Liste d’épicerie",
     "resourcesLabel": "Ressources du site",
     "accessibilityLink": "Déclaration d’accessibilité et commentaires"
   },
@@ -206,6 +207,60 @@
     "toast": {
       "deleted": "Événement supprimé.",
       "generic": "Une erreur est survenue. Veuillez réessayer."
+    }
+  },
+
+  "shopping": {
+    "title": "Liste d’épicerie",
+    "loading": "Chargement de la liste…",
+    "unknownMember": "Un membre de la famille",
+    "addedBy": "Ajouté par {{name}}",
+    "checkedBy": "Coché par {{name}} {{when}}",
+    "section": {
+      "open": "À acheter",
+      "openEmpty": "Rien sur la liste — ajoutez le premier article ci-dessus.",
+      "checked": "Cochés récemment"
+    },
+    "add": {
+      "label": "Ajouter un article",
+      "submit": "Ajouter"
+    },
+    "form": {
+      "quantityLabel": "Quantité (facultatif)",
+      "categoryLabel": "Catégorie (facultatif)"
+    },
+    "edit": {
+      "title": "Modifier l’article",
+      "submit": "Enregistrer"
+    },
+    "action": {
+      "checkLabel": "Cocher {{name}}",
+      "uncheckLabel": "Décocher {{name}}",
+      "edit": "Modifier",
+      "editLabel": "Modifier {{name}}",
+      "delete": "Supprimer",
+      "deleteLabel": "Supprimer {{name}}",
+      "clearChecked": "Vider les cochés"
+    },
+    "error": {
+      "nameRequired": "Veuillez saisir un nom d’article.",
+      "nameTooLong": "Gardez le nom sous 200 caractères.",
+      "generic": "Une erreur est survenue. Veuillez réessayer."
+    },
+    "toast": {
+      "added": "Ajouté.",
+      "updated": "Mis à jour.",
+      "deleted": "Supprimé.",
+      "cleared": "Articles cochés supprimés.",
+      "generic": "Une erreur est survenue. Veuillez réessayer."
+    },
+    "dashboard": {
+      "heading": "Liste d’épicerie",
+      "viewAll": "Voir toute la liste",
+      "loading": "Chargement de la liste…",
+      "empty": "Rien sur la liste d’épicerie.",
+      "countLabel_one": "{{count}} article à acheter",
+      "countLabel_other": "{{count}} articles à acheter"
     }
   },
 

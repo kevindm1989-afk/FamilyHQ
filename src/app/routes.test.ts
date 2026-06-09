@@ -24,6 +24,7 @@ describe('route metadata', () => {
       'chores',
       'tasks',
       'birthdays',
+      'shopping',
       'family',
       'add_chore',
       'add_event',
