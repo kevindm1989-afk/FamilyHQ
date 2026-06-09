@@ -272,6 +272,36 @@ export interface ChecklistInstance {
 export type SavingsGoalStatus = 'active' | 'completed' | 'archived';
 
 /**
+ * `shoppingItems/{itemId}` — shared family shopping list.
+ *
+ * One doc per item (flat collection, familyId-scoped). Per-item docs vs a
+ * single list-of-items doc: per-item docs let a checkbox toggle write only
+ * the one row, instead of round-tripping the whole list on every change
+ * (and let everyone in the family see only the deltas in their listener).
+ *
+ * Authority: ANY active same-family caller has full CRUD. `addedBy` is
+ * recorded for audit but does not restrict edits — anyone in the family
+ * can check off, edit, or delete any item.
+ */
+export interface ShoppingItem {
+  familyId: string;
+  /** UID of the family member who added it. Set ONCE at create. */
+  addedBy: string;
+  /** Item name — "Milk", "Whole-grain bread". Trimmed, 1-200 chars. */
+  name: string;
+  /** Optional quantity/size hint — "2 gallons", "1 dozen", "x3". Trimmed. */
+  quantity?: string;
+  /** Optional bucket for UI grouping. Open string so we can add new ones. */
+  category?: string;
+  isChecked: boolean;
+  /** Epoch ms when isChecked flipped true. Cleared on un-check. */
+  checkedAt?: number;
+  /** UID of whoever checked it. Cleared on un-check. */
+  checkedBy?: string;
+  createdAt: number;
+}
+
+/**
  * `birthdays/{birthdayId}` — family birthdays + anniversaries surfaced on the
  * dashboard as a "days until" widget.
  *
