@@ -50,6 +50,8 @@ export interface CalendarScreenProps {
     description: string;
     date: string;
     tag: EventTag;
+    recurrenceFrequency?: 'none' | 'weekly' | 'biweekly' | 'monthly';
+    recurrenceCount?: number;
   }) => Promise<void>;
   /**
    * Parent-only update path. Receives the eventId + the edited fields. Date is
@@ -526,6 +528,11 @@ function Agenda(props: AgendaProps): ReactElement {
                   </time>
                 )}
                 <span className="flex-1 text-body font-semibold text-ink">{event.title}</span>
+                {event.recurrenceGroupId !== undefined && (
+                  <Badge tone="info" size="sm">
+                    {t('calendar.recurringBadge')}
+                  </Badge>
+                )}
                 {/* Category is conveyed as TEXT, never colour alone (WCAG 1.4.1). */}
                 <Badge tone={event.tag}>{tagLabel[event.tag]}</Badge>
                 {canManage && (
