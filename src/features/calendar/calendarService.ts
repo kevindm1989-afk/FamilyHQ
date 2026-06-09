@@ -318,6 +318,61 @@ export async function updateEvent(
   }
 }
 
+/**
+ * Update every sibling in a recurrence series at once (title/description/tag).
+ * `date` is INTENTIONALLY NOT part of this operation: each occurrence's date
+ * is the whole point of materialising siblings (ADR-0012), so a series-wide
+ * date rewrite would defeat the model. Use `updateEvent(...)` for a single
+ * occurrence's date.
+ *
+ * When `fromDate` is provided, only siblings whose `date >= fromDate` are
+ * touched ("this and all future" — pass the edited event's own date). When
+ * absent the whole series is updated.
+ *
+ * Mirrors `deleteEventSeries`'s safety stance: the query is filtered by both
+ * `familyId` (rule scope) and `recurrenceGroupId` so a parent never reaches
+ * across families even if the UI passed a wrong groupId. Empty-title input
+ * is rejected before any write. Failures map to EVENT_GENERIC_ERROR.
+ */
+export async function updateEventSeries(
+  deps: { db: Firestore },
+  familyId: string,
+  recurrenceGroupId: string,
+  patch: { title: string; description: string; tag: EventTag },
+  fromDate?: string,
+): Promise<void> {
+  const title = patch.title.trim();
+  if (title.length === 0) {
+    throw new EventActionError();
+  }
+  try {
+    const snap = await getDocs(
+      query(
+        collection(deps.db, EVENTS_COLLECTION),
+        where('familyId', '==', familyId),
+        where('recurrenceGroupId', '==', recurrenceGroupId),
+      ),
+    );
+    const batch = writeBatch(deps.db);
+    let touched = 0;
+    snap.forEach((d) => {
+      const data = d.data() as { date?: unknown };
+      if (fromDate === undefined || (typeof data.date === 'string' && data.date >= fromDate)) {
+        batch.update(d.ref, {
+          title,
+          description: patch.description,
+          tag: patch.tag,
+        });
+        touched += 1;
+      }
+    });
+    if (touched > 0) await batch.commit();
+  } catch (err) {
+    if (err instanceof EventActionError) throw err;
+    throw new EventActionError();
+  }
+}
+
 /** Delete an `events` doc by id. Maps failures to EVENT_GENERIC_ERROR. */
 export async function deleteEvent(deps: { db: Firestore }, eventId: string): Promise<void> {
   try {
