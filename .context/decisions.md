@@ -596,3 +596,51 @@ owner-only (the running user). DELETE is owner OR same-family parent
 
 Cross-references: ADR-0002 (rules-as-authorization-boundary; this is a
 new concrete pattern under that umbrella).
+
+## ADR-0012 — Recurring events: spawn-on-create-N siblings sharing `recurrenceGroupId`
+
+**Status:** Accepted (Feature 3, PRs #93/#94)
+**Date:** 2026-06-09
+**Decider(s):** orchestrator (proposed); user (approved at PR gate)
+
+**Context:** "Recurring calendar events" was on the v1 list. Two
+architectural shapes were on the table:
+  - **Virtual instances:** persist ONE source event + recurrence
+    rule; expand to occurrences at read time in the client.
+  - **Materialized siblings:** at create time, spawn N concrete
+    `events/{id}` docs (one per occurrence), tied together by a
+    shared `recurrenceGroupId`.
+
+**Decision:** Materialized siblings, capped at 26 occurrences
+(`RECURRENCE_MAX` in `calendarService.ts`, mirrored as
+`recurrenceCount <= 26` in `firestore.rules`). One `writeBatch`
+spawns the whole series.
+
+**Rationale:**
+  - The one-doc-per-item pattern (see `patterns.md`) is the
+    project's default — edits, deletes, and per-item rule
+    predicates work the same as a one-off event.
+  - No client-side expansion code path means the calendar +
+    dashboard widgets reuse the existing event hooks unchanged —
+    a recurring instance IS an event.
+  - Cap-at-26 = ~6 months weekly / 2 years monthly. Beyond that,
+    "make a new series" is the better UX anyway.
+  - Avoids the "rules can't reliably gate a virtual-instance
+    write" trap: every materialized instance has a `familyId` the
+    rule layer can scope.
+
+**Reversibility:** Medium. Adding virtual instances later would
+require migrating existing materialized series (or letting them
+coexist). 26-doc series are cheap to delete and re-spawn during
+a transition.
+
+**Consequences:** (+) reuses the existing event read/write/rule
+machinery; per-instance edits are trivial. (-) up to 26x write
+fanout at create time; "edit the whole series" is N writes; a
+26-instance series consumes 26 doc-reads on the agenda view (still
+trivial at family scale). Series delete uses a
+`recurrenceGroupId` + `familyId` filter so cross-tenant deletes
+are impossible.
+
+Cross-references: ADR-0001 (top-level collections), patterns.md
+(one-doc-per-item).

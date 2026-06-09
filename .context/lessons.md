@@ -21,6 +21,39 @@ Append newest on top. Be specific — vague lessons don't prevent anything.
 
 ## Entries
 
+## 2026-06-09 — Widening a discriminated union beats splitting collections; defer the field rename, document the alias
+
+**Symptom:** The wishlist redemption feature needed to add a
+"spending" row to the existing `transactions` collection (until
+then, only chore-approval "earning" rows). Two options surfaced:
+(a) split into `earnings` + `spending` collections, or (b) widen
+`TransactionType` from `'earning'` to `'earning' | 'spending'`
+and reuse the same doc shape. We chose (b). A second sub-choice
+was whether to rename the now-misleading `choreId` / `choreTitle`
+fields (they hold a `wishlistItemId` / `wishlistTitle` on a
+spending row) to `sourceId` / `sourceLabel` immediately.
+**Root cause (the seam):** renaming a REQUIRED field on a
+collection with live readers (dashboard widget, allowance history,
+multiple selectors) is a coordinated rename across types, the
+firestore.rules predicate `txnCreateHardened`, every consumer, AND
+existing in-cache documents. The widening alone is non-breaking;
+the rename is breaking.
+**Fix:** Widened the union (`src/lib/types.ts:21`); reused
+`choreId` / `choreTitle` as "source identity + display label" with
+a documenting doc-comment on the `Transaction` interface
+(`types.ts:159-188`); flagged the rename as a follow-up; left
+existing 'earning' readers untouched. Wishlist approve writes
+`choreId: itemId, choreTitle: item.title, type: 'spending'`
+(`wishlistService.ts:273-282`).
+**Prevention:** When extending a discriminated union over an
+existing live collection, prefer widening + a documented alias
+to splitting + migrating. Capture the deferred rename as an
+explicit follow-up in the same PR's doc-comment so the next agent
+doesn't think the field name is precise. The rename itself is
+its own PR (one atomic touch across types, rules, readers,
+fixtures) — never bundled with the feature that exposed the
+mismatch.
+
 ## 2026-06-08 — Deploy steps that mix tier-gated services with always-on services create a billing-plan trap
 
 **Symptom:** The Spark-tier project's deploy started failing on every
