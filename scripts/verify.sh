@@ -180,6 +180,12 @@ if [ "$has_node" = true ]; then
   elif [ -f "package-lock.json" ]; then
     run_gate "npm-audit"   npm audit --audit-level=high
   fi
+  # M40 — extend the audit gate to the Functions workspace (Cloud Functions
+  # 2nd gen runtime deps are billable code; CVEs there carry the same risk
+  # as the SPA). Separate gate so the workspace boundary is visible in CI.
+  if [ -f "functions/package-lock.json" ]; then
+    run_gate "npm-audit-functions" npm --prefix functions audit --omit=dev --audit-level=high
+  fi
 fi
 
 [ "$has_python" = true ] && run_gate "pip-audit" pip-audit

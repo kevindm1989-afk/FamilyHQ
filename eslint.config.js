@@ -8,7 +8,21 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: ['dist', 'dev-dist', 'coverage', 'node_modules'],
+    // `functions/lib/` is the tsc build output for the Cloud Functions
+    // workspace — generated, never committed (`functions/.gitignore`
+    // excludes it). Re-linting transpiled JS produces no-undef noise
+    // (`Buffer`, `process`) since the browser-globals baseline applies.
+    // `functions/node_modules` is the per-workspace install. The
+    // Functions-workspace source itself is opted into node globals
+    // further down in this config.
+    ignores: [
+      'dist',
+      'dev-dist',
+      'coverage',
+      'node_modules',
+      'functions/lib',
+      'functions/node_modules',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -37,6 +51,20 @@ export default tseslint.config(
   {
     // Test + node-tooling files: allow node globals.
     files: ['test/**/*.{ts,tsx}', '**/*.{test,spec}.{ts,tsx}', '*.config.{ts,js}'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  {
+    // Cloud Functions workspace source — runs on Node 20 in
+    // `northamerica-northeast1`, NOT in the browser. Needs node globals
+    // (`Buffer`, `process`) and the Functions runtime context. The
+    // workspace also typechecks via `cd functions && npx tsc --noEmit`
+    // before deploy (deploy.yml's deploy-functions job builds the
+    // workspace and runs its own vitest before pushing).
+    files: ['functions/src/**/*.ts'],
     languageOptions: {
       globals: {
         ...globals.node,

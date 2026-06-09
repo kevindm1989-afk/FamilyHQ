@@ -49,6 +49,11 @@ on:
         required: false
         default: false
         type: boolean
+      deploy_functions:
+        description: 'Also deploy Cloud Functions (billingKillSwitch). Defaults OFF — Functions are flag-gated separately from hosting + Firestore rules per PR #84 lesson; a routine rules-or-hosting deploy must never accidentally ship a Functions revision.'
+        required: false
+        default: false
+        type: boolean
 
 # One deploy per environment at a time. cancel-in-progress: false because
 # killing a deploy mid-flight risks a half-published Hosting release.
@@ -315,6 +320,116 @@ jobs:
           curl -sSI "$URL" | grep -qi 'x-frame-options: DENY'
           curl -sSI "$URL" | grep -qi 'strict-transport-security'
           echo "::notice::Production deploy verified at $URL"
+
+  # ---------------------------------------------------------------------------
+  # FUNCTIONS — flag-gated, separate job (PR #84 lesson + push-notifications
+  # design §12 A4).
+  #
+  # The Functions deploy MUST be its own --only step, NEVER bundled with
+  # firestore:rules / firestore:indexes / storage:rules in a single --only
+  # list. Functions require the Blaze (pay-as-you-go) billing plan; bundling
+  # them with always-on Spark services means a Spark-project deploy fails
+  # the entire --only flag and Firestore rules don't ship. PR #84 was the
+  # incident that locked that rule in; this job is the structural fix.
+  #
+  # Gated by the `deploy_functions` workflow_dispatch input (default false)
+  # so a routine hosting+rules deploy can never accidentally ship a
+  # Functions revision. The operator opts in explicitly.
+  #
+  # Runs AFTER the existing rules+hosting job for the chosen environment;
+  # `needs: [staging, production]` + the `if:` guard handle either path
+  # (only one of staging/production actually runs per dispatch, the other
+  # is skipped — `result != 'failure'` lets the dependency pass on a
+  # skipped job).
+  #
+  # In PR A, the --only list is EXACTLY `functions:billingKillSwitch`.
+  # Adding another function in a later PR means adding it (comma-separated)
+  # to the same --only list in the same PR — never to the rules step.
+  # ---------------------------------------------------------------------------
+  deploy-functions:
+    name: Deploy Cloud Functions (flag-gated)
+    runs-on: ubuntu-latest
+    needs: [staging, production]
+    if: ${{ inputs.deploy_functions == true && always() && needs.staging.result != 'failure' && needs.staging.result != 'cancelled' && needs.production.result != 'failure' && needs.production.result != 'cancelled' }}
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pre-flight — check secrets + .firebaserc
+        run: |
+          if [ -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
+            echo "::error::FIREBASE_SERVICE_ACCOUNT secret is not set."
+            exit 1
+          fi
+          PROJECT=$(jq -r '.projects.default' .firebaserc)
+          if [ "$PROJECT" = "family-hq-placeholder" ] || [ -z "$PROJECT" ]; then
+            echo "::error::.firebaserc still points at the placeholder ($PROJECT)."
+            exit 1
+          fi
+          echo "Pre-flight OK — preparing to deploy functions on: $PROJECT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install root dependencies (firebase-tools)
+        run: npm ci
+
+      - name: Install functions workspace dependencies
+        run: npm --prefix functions ci
+
+      - name: Build functions
+        run: npm --prefix functions run build
+
+      - name: Run functions unit tests
+        run: npm --prefix functions test --silent
+
+      - name: Run root-side functions integration tests
+        # These are the gates that prove the runbook + deploy.yml + entry
+        # point + AST hygiene are intact (A-T6..A-T10 + entry-point gate).
+        # A future PR that mangles the runbook or re-folds the deploy
+        # --only list would slip past the root `npm test` invocation in
+        # some CI configurations; running them HERE makes the deploy job
+        # itself the gate. Second-opinion review concern #5.
+        run: npx vitest run test/functions/
+
+      - name: Audit functions workspace for high-severity CVEs (M40)
+        run: npm --prefix functions audit --omit=dev --audit-level=high
+
+      - name: Deploy functions:billingKillSwitch
+        # EXACT --only list — `functions:billingKillSwitch` and NOTHING ELSE
+        # in PR A. Adding another function later means appending to this
+        # same --only list in the same PR; NEVER mix functions: with
+        # firestore: or storage: or hosting in any single --only flag.
+        #
+        # The kill-switch SA must already be provisioned per
+        # docs/runbooks/billing-killswitch.md before this step runs.
+        # GOOGLE_APPLICATION_CREDENTIALS uses the same SA-JSON pattern as
+        # the rules deploy above; firebase-tools picks it up automatically.
+        #
+        # `env:` block (not inline `${{...}}`) passes secrets through as
+        # environment variables — required by semgrep's
+        # yaml.github-actions.security.run-shell-injection rule. Without
+        # `env:`, secrets get textually interpolated into the shell script
+        # and a malicious secret containing shell-meaningful characters
+        # could execute arbitrary code in the runner.
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          PROJECT_ID: ${{ inputs.environment == 'production' && secrets.FIREBASE_PROJECT_ID || (secrets.FIREBASE_PROJECT_ID_STAGING || secrets.FIREBASE_PROJECT_ID) }}
+        run: |
+          SA_PATH="$(mktemp /tmp/sa-XXXXXX.json)"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$SA_PATH"
+          chmod 600 "$SA_PATH"
+          GOOGLE_APPLICATION_CREDENTIALS="$SA_PATH" \
+            npx firebase deploy \
+              --only functions:billingKillSwitch \
+              --project "$PROJECT_ID" \
+              --non-interactive
+          rm -f "$SA_PATH"
 
   # ---------------------------------------------------------------------------
   # Auto-rollback hook for a failing production deploy.
