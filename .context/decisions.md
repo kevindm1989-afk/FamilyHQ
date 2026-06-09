@@ -25,6 +25,253 @@ pointing to the new one. The history is the value.
 
 ---
 
+## ADR-0014 — Push notifications: HTTPS-callable trigger (rejected Firestore trigger)
+
+**Status:** Proposed (depends on ADR-0013 acceptance)
+**Date:** 2026-06-09
+**Decider(s):** architect (proposed); user (approval pending)
+
+**Context:** With ADR-0013 committing us to Cloud Functions + FCM, the next
+question is how those functions are invoked. The two real candidates are:
+(A) Firestore-triggered functions watching `chores`/`wishlistItems` writes for
+the relevant status transitions, or (B) HTTPS-callable functions invoked by
+the client immediately after it completes the same `runTransaction` that
+performed the state change (`approveChore` and the forthcoming wishlist
+equivalents).
+
+**Decision drivers:** correctness (no double-send, no missed send), cost,
+simplicity of the trust boundary, fit with the existing approval transaction
+shape (ADR-0004), debuggability.
+
+**Options considered:**
+- **A — Firestore-triggered function.** Pro: the doc is the source of truth;
+  fires even if the client crashed or the browser was closed; no client→
+  Function trust round-trip. Con: 2nd-gen Firestore triggers can retry on
+  transient errors and we'd have to engineer idempotency at the trigger
+  level (a `lastNotifiedAt` field per doc, or a dedupe key per attempt — non-
+  trivial); the function fires from the same project but bypasses rules, so
+  the cross-tenant defense must be re-implemented inside the trigger; debug
+  loop is slower (must mutate Firestore to test).
+- **B — HTTPS-callable, fired by the client after `runTransaction` resolves**
+  (chosen). The approval `runTransaction` (ADR-0004) is the single, ordered,
+  idempotent point where status flips to `approved` — exactly one client
+  successfully resolves it; that one client then fires one callable. No
+  retry/duplicate concerns at the trigger; the callable still re-derives
+  trust server-side (same shape as the invite Function, M11/M12) so a
+  malicious client can't fire arbitrary notifies. Con: if the client
+  resolves the tx then loses connectivity before the callable returns, the
+  notification doesn't fire — that case is acceptable (the recipient sees
+  the state on next app open; push is non-essential).
+
+**Decision:** Option B. HTTPS callable, invoked from the same client function
+that resolved the state-change transaction. The callable independently
+re-verifies caller identity + family + the source doc's state before sending.
+
+**Rationale:** Best fit with existing transactional approval shape; no
+double-fire risk; cheaper (one invocation per real event, not one per retry);
+trust boundary identical to the existing invite Function (ADR-0003); simpler
+to test in CI.
+
+**Reversibility:** **Medium.** A future shift to Firestore triggers (e.g.
+if push-without-client-running becomes important — server-driven digests,
+scheduled reminders) is a per-event swap; nothing about the data model or
+token storage changes.
+
+**Consequences:** (+) one fire per event, no dedupe needed, fast to ship,
+trust pattern reused. (-) if the client never gets to invoke the callable
+(crash between tx commit and callable return), push silently doesn't fire —
+accepted because push is non-essential and the in-app inbox carries the same
+information.
+
+**Compliance check:** No new subprocessor introduced by this decision (FCM
+is covered in ADR-0013). The cross-tenant guarantee (recipient and source
+doc must share the caller's `familyId`) lives inside the callable —
+threat-modeler must pin the test cases.
+
+---
+
+## ADR-0013 — Push notifications: Blaze + Cloud Functions + FCM
+
+**Status:** Proposed (HUMAN GATE — supersedes ADR-0010; activates Blaze;
+introduces new trust boundaries TB5/TB6; introduces cross-border push
+transport)
+**Date:** 2026-06-09
+**Decider(s):** architect (proposed); user (approval pending)
+**Supersedes:** ADR-0010 ("Stay on Firebase Spark; tier-gated features ship
+dormant"). A memory PR must add the `Superseded by: ADR-0013` header to
+ADR-0010. (Note: ADR-0010 is not present in this file as of 2026-06-09; the
+memory PR may need to draft the original ADR-0010 entry alongside the
+supersession header — user to confirm.)
+
+**Context:** The Family HQ product has accumulated four event categories
+(chore approval-needed, chore approved, wishlist approval-needed, wishlist
+resolved) whose value is highly time-sensitive — a parent who learns about a
+chore submission an hour later cannot reinforce the moment. The dormant
+feature-gate strategy of ADR-0010 traded responsiveness for cost ($0/mo on
+Spark, no Cloud Functions). With the user's decision to enable Blaze under a
+$5/mo budget cap and the corresponding kill-switch infrastructure live, push
+notifications become viable.
+
+**Decision drivers:**
+- Real-time delivery for ~20 events/family/day, sub-3s p95 to lock screen.
+- Hard $5/mo budget cap; the design must fit inside Cloud Functions 2nd-gen
+  free tier at MVP and 10x scale.
+- PIPEDA / Quebec Law 25 / Children's-data rules (`.context/constraints.md`):
+  no PI on a lock screen by default.
+- Canadian data residency for compute and storage.
+- Reversibility of the push provider is hard (re-prompts every device); the
+  trigger model is the soft choice (ADR-0014).
+- Lesson from PR #84 (`lessons.md`): a multi-service `--only` deploy flag
+  must NOT couple billing-gated Functions to always-on rules/hosting.
+
+**Options considered:**
+- **A — Stay on Spark; in-app inbox only.** Pro: zero cost, zero new
+  subprocessors, current ADR-0010 stance. Con: misses the actual product
+  need (real-time parental awareness of kid actions and vice versa); the
+  rest of the v1 push event list (chore awaiting approval, allowance
+  approval, wishlist resolution) is exactly the set users open the app to
+  check, so the in-app inbox is too lagging. Rejected.
+- **B — OneSignal / a third-party push platform.** Pro: rich segmentation,
+  cross-platform abstractions. Con: introduces a new subprocessor that
+  would receive notification payloads and device tokens (PI flag);
+  duplicates capability we already get free with Firebase; an extra DPA
+  and human-gate hoop for no measurable benefit at our scale. Rejected.
+- **C — FCM Web Push via Firebase Admin SDK in Cloud Functions, region
+  northamerica-northeast1, vague-body-by-default, $5/mo budget cap with a
+  mandatory kill-switch deployed in the same PR as the first chargeable
+  function** (chosen).
+
+**Decision:** Option C. Specifically:
+
+1. **Compute:** Cloud Functions (2nd gen), Node 20 runtime, region
+   `northamerica-northeast1` (Montreal — Canadian residency for compute
+   and logs). Min-instances = 0 (cold-start ~2-4s is acceptable; push is
+   non-essential).
+2. **Trigger model:** HTTPS callable from the client AFTER the relevant
+   `runTransaction` resolves. Full rationale in ADR-0014.
+3. **Device token storage:** `userPrivate/{uid}/fcmTokens/{tokenHash}`
+   subcollection (one doc per device). NOT on the family-readable `users`
+   doc (children's clients would see adult tokens — same logic as
+   ADR-0008). Token-doc rules: read/list/create/update/delete only by the
+   subject; cross-family and cross-user access denied; tested in the
+   emulator.
+4. **`notificationPreferences`** lives on `userPrivate/{uid}` (not `users`)
+   with a master `pushEnabled` + per-category booleans + a future
+   `showDetails` (false at v1, per-device opt-in at v1.1).
+5. **v1 events (7 callable-triggered):**
+   (1) chore submitted (kid → parents),
+   (2) chore approved (parent → kid),
+   (3) wishlist requested (kid → parents),
+   (4) wishlist resolved approved-or-denied (parent → kid),
+   (5) new board post (author → all other family members),
+   (6) new to-do created (creator → all other family members),
+   (7) to-do completed (completer → all other family members — closes the
+   loop for whoever asked for the to-do).
+   **Fast-follow in PR F:** event reminders (today/tomorrow) and
+   birthday-in-N-days. Both need a scheduled-function trigger model + Cloud
+   Scheduler — a different deployment shape. Separate ADR.
+   **Dropped:** shopping-list adds (~20 per grocery trip would train users
+   to mute the app; the list is a glanceable surface anyway).
+6. **Notification body:** vague-by-default constants in
+   `functions/src/notificationBodies.ts`. No child name, no chore title, no
+   wishlist title, no money amount, no post content, no to-do title. A CI
+   test asserts no template substitution in any body string and no forbidden
+   substring.
+7. **Deploy pipeline:** a NEW `deploy-functions` job in `deploy.yml`,
+   flag-gated (`workflow_dispatch` input `deploy_functions: false` by
+   default), separated from `firestore:rules,firestore:indexes,storage:rules`
+   per the PR #84 lesson. The `--only` list for the kill-switch deploy and
+   subsequent function deploys is explicit and ordered (kill-switch first).
+8. **Budget kill-switch (NON-NEGOTIABLE):** a Pub/Sub-triggered Function
+   (`billingKillSwitch`) listens to the existing `billing-budget-alerts`
+   topic and on threshold breach calls
+   `cloudbilling.projects.updateBillingInfo({billingAccountName:''})` to
+   detach billing. Must deploy in the SAME PR as the first chargeable
+   Function and BEFORE any chargeable function runs in production.
+   IAM: the 2nd-gen functions default service account is granted
+   `roles/billing.projectManager` on the billing account (NOT
+   project-level owner).
+9. **VAPID key:** the already-generated public key
+   `BLG9wihx9...912WrEA` is loaded by the client as
+   `VITE_FCM_VAPID_PUBLIC_KEY` at build time. The server uses the Admin
+   SDK and does not handle VAPID directly.
+10. **Permission UX:** never prompt on page load. Prompt contextually after
+    the user just performed an action whose follow-up they'd benefit from
+    hearing about (e.g. just approved a chore → toast: "Get a heads-up
+    when there's another to approve" → "Turn on" / "Not now" / "Remind me
+    later"). iOS-without-PWA-install is acknowledged: detect and show a
+    one-time "Add to Home Screen" hint; do not engineer around it.
+11. **Subprocessors:** Google FCM (existing) handles push payloads; Apple
+    APNs / Mozilla autopush / Google Android FCM transport handles
+    OS-level delivery. Vague-body design keeps no PI in those transports
+    by default. Cross-border human gate (CB3 = FCM, CB4 = Apple/Mozilla
+    transports) is flagged.
+
+**Rationale:** FCM is the existing Google capability and adds no new
+subprocessor at the platform layer; Canadian region keeps compute and logs
+in Canada; the vague-body rule keeps PI off the lock screen by construction
+(not by review discipline) so a copy-paste mistake can't leak a child's
+name; the budget kill-switch makes the $5/mo a hard ceiling rather than an
+aspirational one; the deploy-split lesson from PR #84 is honored; the
+trigger model reuses existing transactional shape (ADR-0004) and the
+existing server-side trust pattern (ADR-0003 / M11+M12).
+
+**Reversibility:**
+- Push provider: **Hard.** Switching away from FCM means re-prompting every
+  device for permission and re-registering tokens.
+- Region: **Hard.** Per-function permanent; a region move = re-deploy under
+  a new name + token churn.
+- Token storage shape: **Medium.** Single per-user migration.
+- Trigger model (callable vs Firestore-trigger): **Medium.** Per-event swap;
+  no data model change. See ADR-0014.
+- Notification body strings: **Easy.** Constants file.
+- Budget cap value: **Easy.** Console + kill-switch behavior unchanged.
+
+**Consequences:**
+- (+) Real-time push for the 7 v1 events; in-product responsiveness step
+  change.
+- (+) Cost stays at $0 forecast at MVP and 10x; $5/mo enforced by
+  kill-switch as a hard ceiling.
+- (+) PI never lands on a lock screen by construction (vague-body
+  constants + CI assertion).
+- (+) Trust pattern reused from invite Function — well-understood by the
+  team.
+- (-) Activates Blaze, which is operationally hard to walk back once
+  families depend on notifications.
+- (-) Introduces two new trust boundaries (TB5 Function↔FCM, TB6
+  FCM↔device push services) and two cross-border transfers (CB3 FCM,
+  CB4 APNs/Mozilla) that the threat-modeler must enumerate and the user
+  must approve.
+- (-) iOS-without-PWA users get a degraded experience; explicitly
+  accepted as a platform limitation.
+- (-) The chore-photo Storage flow (already shipped dormant) becomes live
+  as a side effect of Blaze going live. **This is noted and intentional;
+  no Storage activation is bundled into the push-notifications PRs.** Any
+  product-facing chore-photo activation work (UI copy, parent review
+  flow) is a separate feature PR.
+
+**Compliance check:**
+- PIPEDA Principle 4 (minimization) honored — vague body, no PI in
+  payload by default. PIPEDA Principle 3 (consent) — user explicitly
+  grants permission via OS prompt AND the in-app preferences toggle.
+- Children's-data rule (no behavioural tracking, no marketing) honored —
+  transactional only, payload PI-free, no third-party analytics SDK.
+- Tenant isolation (#1 risk in `constraints.md`) preserved — every
+  callable re-derives `familyId` from the caller's `users` doc and
+  asserts source-doc and recipient `familyId` match; tokens are
+  per-subject under `userPrivate` rules that already deny cross-family
+  reads.
+- Cross-border transfers CB3 (FCM) and CB4 (Apple/Mozilla push
+  transports) are **human-gate** items per
+  `constraints.md` §Third-parties. Vague-body design is the safeguard at
+  CB4; FCM is an existing Firebase subprocessor.
+- Budget cap + kill-switch make the cost ceiling enforceable, not
+  aspirational.
+- Security-critical (cross-tenant defense in the callables + the
+  kill-switch IAM): no autonomous merge for PR A and PR C.
+
+---
+
 ## ADR-0001 — Multi-tenant data model: top-level collections, `familyId` on every doc
 
 **Status:** Proposed (awaiting human gate — touches tenant model)
