@@ -74,6 +74,7 @@
     "manageFamily": "Gérer la famille",
     "manageBirthdays": "Gérer les anniversaires",
     "shoppingList": "Liste d’épicerie",
+    "wishlist": "Liste de souhaits",
     "resourcesLabel": "Ressources du site",
     "accessibilityLink": "Déclaration d’accessibilité et commentaires"
   },
@@ -262,6 +263,92 @@
       "empty": "Rien sur la liste d’épicerie.",
       "countLabel_one": "{{count}} article à acheter",
       "countLabel_other": "{{count}} articles à acheter"
+    }
+  },
+
+  "wishlist": {
+    "title": "Liste de souhaits",
+    "loading": "Chargement de la liste de souhaits…",
+    "empty": "Aucun souhait — touchez le bouton + pour en ajouter un.",
+    "unknownMember": "Un membre de la famille",
+    "amountUnavailable": "Montant indisponible",
+    "balanceUnavailable": "Solde indisponible",
+    "balanceUnavailableFor": "Solde de {{name}} indisponible",
+    "balanceLabel": "Solde de {{name}} : {{amount}}",
+    "currentBalance": "Solde actuel",
+    "currentBalanceLabel": "Solde actuel : {{amount}}",
+    "memberBalancesLabel": "Soldes des membres",
+    "ownedBy": "Pour {{name}}",
+    "costLabel": "Coût : {{amount}}",
+    "deniedReasonPrefix": "Refusé :",
+    "status": {
+      "wishing": "À souhaiter",
+      "requested": "Demandé",
+      "redeemed": "Acheté",
+      "denied": "Refusé"
+    },
+    "queue": {
+      "heading_one": "{{count}} demande à examiner",
+      "heading_other": "{{count}} demandes à examiner",
+      "listLabel": "Demandes en attente d’approbation",
+      "totalRequested": "Total demandé : {{amount}}"
+    },
+    "yours": {
+      "heading": "Vos souhaits",
+      "headingForParent": "Souhaits de la famille",
+      "listLabel": "Articles de la liste de souhaits"
+    },
+    "redeemed": {
+      "heading": "Récemment achetés",
+      "listLabel": "Articles achetés"
+    },
+    "action": {
+      "create": "+ Nouveau souhait",
+      "edit": "Modifier",
+      "editLabel": "Modifier {{title}}",
+      "delete": "Retirer",
+      "deleteLabel": "Retirer {{title}}",
+      "request": "Demander",
+      "requestLabel": "Demander à acheter {{title}}",
+      "cancel": "Annuler la demande",
+      "cancelLabel": "Annuler la demande pour {{title}}",
+      "tryAgain": "Réessayer",
+      "tryAgainLabel": "Redemander {{title}}"
+    },
+    "approve": "Approuver",
+    "approveLabel": "Approuver {{title}} pour {{owner}} ({{amount}})",
+    "deny": "Refuser",
+    "denyReasonPrompt": "Pourquoi refuser ?",
+    "denyReasonRequired": "Ajoutez une courte raison avant de refuser.",
+    "denyConfirm": "Refuser",
+    "denyConfirmLabel": "Refuser {{title}} pour {{owner}}",
+    "create": {
+      "title": "Nouveau souhait",
+      "submit": "Ajouter le souhait"
+    },
+    "edit": {
+      "title": "Modifier le souhait",
+      "submit": "Enregistrer"
+    },
+    "form": {
+      "titleLabel": "Que veux-tu ?",
+      "costLabel": "Coût (en dollars)"
+    },
+    "error": {
+      "titleRequired": "Veuillez nommer le souhait.",
+      "titleTooLong": "Gardez le nom du souhait sous 120 caractères.",
+      "costInvalid": "Veuillez entrer un montant positif.",
+      "generic": "Une erreur est survenue. Veuillez réessayer."
+    },
+    "toast": {
+      "created": "Souhait ajouté.",
+      "updated": "Souhait mis à jour.",
+      "deleted": "Souhait retiré.",
+      "requested": "Demande envoyée — en attente d’un parent.",
+      "cancelled": "Demande annulée.",
+      "approved": "Approuvé — solde mis à jour.",
+      "denied": "Refusé — vous pouvez réessayer.",
+      "generic": "Une erreur est survenue. Veuillez réessayer."
     }
   },
 
@@ -538,7 +625,9 @@
     "empty": "Aucune allocation pour l’instant — les gains apparaîtront ici.",
     "loadError": "Impossible de charger l’historique d’allocation. Veuillez réessayer.",
     "rowSentence": "Gagné {{amount}} pour {{chore}} le {{date}}",
-    "earnedOn": "Gagné"
+    "rowSentenceSpent": "Dépensé {{amount}} pour {{chore}} le {{date}}",
+    "earnedOn": "Gagné",
+    "spentOn": "Dépensé"
   },
 
   "family": {

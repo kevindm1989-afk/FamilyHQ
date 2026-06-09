@@ -36,6 +36,7 @@ const SavingsGoalsRoute = lazy(() => import('../features/savings/SavingsGoalsRou
 const TasksRoute = lazy(() => import('../features/tasks/TasksRoute'));
 const BirthdaysRoute = lazy(() => import('../features/birthdays/BirthdaysRoute'));
 const ShoppingListRoute = lazy(() => import('../features/shopping/ShoppingListRoute'));
+const WishlistRoute = lazy(() => import('../features/wishlist/WishlistRoute'));
 
 import { DashboardRouteSkeleton } from '../features/dashboard/DashboardRouteSkeleton';
 import { CalendarRouteSkeleton } from '../features/calendar/CalendarRouteSkeleton';
@@ -47,6 +48,7 @@ import { SavingsGoalsRouteSkeleton } from '../features/savings/SavingsGoalsRoute
 import { TasksRouteSkeleton } from '../features/tasks/TasksRouteSkeleton';
 import { BirthdaysRouteSkeleton } from '../features/birthdays/BirthdaysRouteSkeleton';
 import { ShoppingListRouteSkeleton } from '../features/shopping/ShoppingListRouteSkeleton';
+import { WishlistRouteSkeleton } from '../features/wishlist/WishlistRouteSkeleton';
 
 /**
  * Wraps a lazy Route in its own Suspense + the matching skeleton. One-liner
@@ -153,6 +155,10 @@ export function AppShell(): ReactElement {
           <Route
             path={ROUTES.shopping.path}
             element={L(<ShoppingListRoute />, <ShoppingListRouteSkeleton />)}
+          />
+          <Route
+            path={ROUTES.wishlist.path}
+            element={L(<WishlistRoute />, <WishlistRouteSkeleton />)}
           />
           <Route
             path={ROUTES.accessibility.path}
@@ -277,6 +283,10 @@ function AccountScreen(): ReactElement {
       {/* Shared family shopping list — open to any active same-family member. */}
       <Button variant="soft" onClick={() => navigate(ROUTES.shopping.path)}>
         {t('account.shoppingList')}
+      </Button>
+      {/* Wishlist + redemption queue. Members curate, parents approve. */}
+      <Button variant="soft" onClick={() => navigate(ROUTES.wishlist.path)}>
+        {t('account.wishlist')}
       </Button>
       <Button variant="danger" loading={signingOut} onClick={handleSignOut}>
         {t('account.signOut')}

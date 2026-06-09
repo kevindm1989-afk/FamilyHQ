@@ -9,8 +9,8 @@
     {
       "name": "main entry (login bundle)",
       "pattern": "^index-[^.-]+\\.js$",
-      "maxGzipBytes": 99000,
-      "note": "What an unauthed visitor downloads on cold load. Was 211 KB before #19's code splits; now ~94 KB after PR #C's i18n keys for routines landed in the inlined locale bundle. Budget at ~99 KB caps further regression — bump on intentional growth."
+      "maxGzipBytes": 101000,
+      "note": "What an unauthed visitor downloads on cold load. Was 211 KB before #19's code splits; now ~97 KB after the wishlist feature's i18n keys (Feature 4 — allowance debit + wishlist redemption) landed in the inlined locale bundle. Budget at ~101 KB caps further regression — bump on intentional growth."
     },
     {
       "name": "AuthedApp shell",
