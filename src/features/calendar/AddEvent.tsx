@@ -39,6 +39,16 @@ export interface AddEventValue {
   /** ISO datetime string carrying the chosen day (and any time-of-day). */
   date: string;
   tag: EventTag;
+  /**
+   * Recurrence (Recurring calendar events feature). Both optional.
+   *  - `recurrenceFrequency` — when 'weekly' | 'biweekly' | 'monthly', the
+   *    service spawns `recurrenceCount` siblings. Absent / 'none' = one-off.
+   *  - `recurrenceCount` — 2-26. Required when frequency is set.
+   * Edit mode hides the recurrence picker — the rules layer makes these
+   * fields write-once anyway, so the UI stays consistent.
+   */
+  recurrenceFrequency?: 'none' | 'weekly' | 'biweekly' | 'monthly';
+  recurrenceCount?: number;
 }
 
 export interface AddEventProps {
@@ -131,6 +141,13 @@ export function AddEvent(props: AddEventProps): ReactElement {
   const [description, setDescription] = useState(initialValue?.description ?? '');
   const [tag, setTag] = useState<EventTag>(initialValue?.tag ?? 'family');
   const [dayChoice, setDayChoice] = useState<DayChoice>('today');
+  // Recurrence is hidden in edit mode (write-once at rule level). In create
+  // mode default to 'none' (one-off); flipping to weekly/biweekly/monthly
+  // surfaces the count picker.
+  const [recurrenceFrequency, setRecurrenceFrequency] = useState<
+    'none' | 'weekly' | 'biweekly' | 'monthly'
+  >('none');
+  const [recurrenceCount, setRecurrenceCount] = useState<number>(4);
   const [submitting, setSubmitting] = useState(false);
   // Becomes true after a submit attempt with an empty title (or a create error),
   // surfacing the field as aria-invalid with associated error text (Finding E).
@@ -192,6 +209,13 @@ export function AddEvent(props: AddEventProps): ReactElement {
       description,
       date: editMode ? initialValue.date : resolveDay(dayChoice, today),
       tag,
+      // Only attach recurrence in CREATE mode; ignore in edit.
+      ...(!editMode && recurrenceFrequency !== 'none'
+        ? {
+            recurrenceFrequency,
+            recurrenceCount: Math.min(Math.max(2, recurrenceCount), 26),
+          }
+        : {}),
     };
     const action = editMode && onUpdate ? onUpdate(value) : onCreate(value);
     void action
@@ -338,6 +362,60 @@ export function AddEvent(props: AddEventProps): ReactElement {
             </div>
           )}
         </fieldset>
+
+        {!editMode && (
+          <fieldset className="flex flex-col gap-6">
+            <legend className="text-label font-semibold text-ink-2">Repeats</legend>
+            <div className="flex flex-wrap gap-8">
+              {(
+                [
+                  { value: 'none', label: 'One time' },
+                  { value: 'weekly', label: 'Weekly' },
+                  { value: 'biweekly', label: 'Biweekly' },
+                  { value: 'monthly', label: 'Monthly' },
+                ] as const
+              ).map(({ value, label }) => {
+                const selected = recurrenceFrequency === value;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setRecurrenceFrequency(value)}
+                    className={`inline-flex min-h-tap items-center justify-center rounded-control border px-16 text-body font-semibold transition-colors duration-cardPress ease-out focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none ${
+                      selected
+                        ? 'border-brand bg-brand-light text-brand'
+                        : 'border-surface-line bg-surface-card text-ink-2 hover:bg-surface-line2'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            {recurrenceFrequency !== 'none' && (
+              <div className="flex flex-col gap-4">
+                <label htmlFor="recurrence-count" className="text-meta text-ink-mute">
+                  Number of occurrences (2–26)
+                </label>
+                <input
+                  id="recurrence-count"
+                  type="number"
+                  min={2}
+                  max={26}
+                  value={recurrenceCount}
+                  onChange={(e) => {
+                    const parsed = Number.parseInt(e.target.value, 10);
+                    if (Number.isFinite(parsed)) {
+                      setRecurrenceCount(Math.min(Math.max(2, parsed), 26));
+                    }
+                  }}
+                  className="min-h-tap w-32 rounded-control border border-surface-line bg-surface-card px-12 text-body text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+                />
+              </div>
+            )}
+          </fieldset>
+        )}
 
         <fieldset className="flex flex-col gap-6">
           <legend id={categoryLegendId} className="text-label font-semibold text-ink-2">

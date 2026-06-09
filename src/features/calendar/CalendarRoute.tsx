@@ -51,12 +51,25 @@ export default function CalendarRoute(): ReactElement {
     description: string;
     date: string;
     tag: EventTag;
+    recurrenceFrequency?: 'none' | 'weekly' | 'biweekly' | 'monthly';
+    recurrenceCount?: number;
   }): Promise<void> => {
     const { db } = await import('../../firebase/config');
     const input: CreateEventInput = {
-      ...value,
+      title: value.title,
+      description: value.description,
+      date: value.date,
+      tag: value.tag,
       familyId,
       createdBy: viewer.uid,
+      ...(value.recurrenceFrequency !== undefined && value.recurrenceFrequency !== 'none'
+        ? {
+            recurrenceFrequency: value.recurrenceFrequency,
+            ...(value.recurrenceCount !== undefined
+              ? { recurrenceCount: value.recurrenceCount }
+              : {}),
+          }
+        : {}),
     };
     await createEvent({ db }, input);
   };
