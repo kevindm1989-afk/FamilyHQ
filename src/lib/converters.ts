@@ -13,6 +13,7 @@ import type {
   SnapshotOptions,
 } from 'firebase/firestore';
 import type {
+  Birthday,
   ChecklistInstance,
   ChecklistTemplate,
   Chore,
@@ -66,6 +67,8 @@ export const checklistTemplateConverter: FirestoreDataConverter<ChecklistTemplat
 
 export const checklistInstanceConverter: FirestoreDataConverter<ChecklistInstance> =
   makeConverter<ChecklistInstance>();
+
+export const birthdayConverter: FirestoreDataConverter<Birthday> = makeConverter<Birthday>();
 
 /**
  * Converter for `userPrivate/{uid}` (privacy finding 2). Shapes the adult email

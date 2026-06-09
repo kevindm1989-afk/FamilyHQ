@@ -271,6 +271,46 @@ export interface ChecklistInstance {
 
 export type SavingsGoalStatus = 'active' | 'completed' | 'archived';
 
+/**
+ * `birthdays/{birthdayId}` — family birthdays + anniversaries surfaced on the
+ * dashboard as a "days until" widget.
+ *
+ * Authority model: ANY active same-family caller can create / read / update /
+ * delete a Birthday (same model as Todos). `createdBy` is recorded for audit
+ * but does not restrict edits.
+ *
+ * Date model: `monthDay` is `"MM-DD"` (e.g. `"06-15"` — June 15) so the
+ * widget's "N days until the next occurrence" math works without a known
+ * birth year, and avoids the "0 days old" edge. `birthYear` is OPTIONAL —
+ * when set, the UI can render a "turning N" badge on the day; when absent
+ * the widget just says "Maya's birthday".
+ *
+ * `type` distinguishes birthdays from anniversaries so the widget can label
+ * them differently ("🎂 Maya" vs "💞 Mom + Dad"). Both share the same
+ * recurrence shape so they live in one collection.
+ */
+export type BirthdayType = 'birthday' | 'anniversary';
+
+export interface Birthday {
+  familyId: string;
+  /** UID of the family member who added it. Set ONCE at create. */
+  createdBy: string;
+  /** Display name — "Maya", "Grandma Helen", "Mom + Dad". Trimmed. */
+  name: string;
+  /**
+   * Recurrence date as `"MM-DD"` (zero-padded). Year is omitted so the widget
+   * computes "days until next occurrence" without surprise. Use birthYear
+   * (optional) for the "turning N" affordance.
+   */
+  monthDay: string;
+  /** Optional year-of-birth when known. Drives the "turning N" badge. */
+  birthYear?: number;
+  /** Free-form note (gift hints, relationship). Trimmed. */
+  note?: string;
+  type: BirthdayType;
+  createdAt: number;
+}
+
 export interface SavingsGoal {
   familyId: string;
   /** uid of the SUBJECT (the member whose goal this is). Set ONCE at create. */

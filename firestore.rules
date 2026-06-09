@@ -893,6 +893,52 @@ service cloud.firestore {
                     && (isInstanceOwner() || isParent());
     }
 
+    // --- birthdays (family birthdays + anniversaries) -----------------------
+    // Authority: ANY active same-family caller has full CRUD (same model as
+    // todos). `createdBy` is recorded for audit but does not restrict edits.
+    // familyId + createdBy + createdAt are immutable on update.
+    //
+    // Date model: `monthDay` is "MM-DD" (no year — "days until next" math).
+    // `birthYear` is OPTIONAL (drives the "turning N" badge when set).
+    // `type` is in ['birthday', 'anniversary'].
+    match /birthdays/{birthdayId} {
+      function birthdayCreateOk() {
+        return isActive()
+          && incomingSameFamily()
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 80
+          && request.resource.data.monthDay is string
+          && request.resource.data.monthDay.matches('^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$')
+          && request.resource.data.type in ['birthday', 'anniversary']
+          && request.resource.data.keys().hasAll(
+               ['familyId', 'createdBy', 'name', 'monthDay', 'type', 'createdAt'])
+          && request.resource.data.keys().hasOnly(
+               ['familyId', 'createdBy', 'name', 'monthDay', 'birthYear',
+                'note', 'type', 'createdAt']);
+      }
+      function birthdayUpdateOk() {
+        return isActive()
+          && sameFamily(resource)
+          && incomingSameFamily()
+          && immutable('familyId')
+          && immutable('createdBy')
+          && immutable('createdAt')
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 80
+          && request.resource.data.monthDay is string
+          && request.resource.data.monthDay.matches('^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$')
+          && request.resource.data.type in ['birthday', 'anniversary'];
+      }
+      allow get: if isActive() && sameFamily(resource);
+      allow list: if isActive() && sameFamily(resource);
+      allow create: if birthdayCreateOk();
+      allow update: if birthdayUpdateOk();
+      allow delete: if isActive() && sameFamily(resource);
+    }
+
     // --- default deny ------------------------------------------------------
     match /{document=**} {
       allow read, write: if false;
