@@ -115,6 +115,15 @@
         "pendingCount_one": "{{count}} awaiting approval",
         "pendingCount_other": "{{count}} awaiting approval"
       },
+      "wishlistApprovals": {
+        "heading": "Allowance requests",
+        "viewAll": "Open wishlist",
+        "loading": "Loading allowance requests…",
+        "empty": "No allowance requests waiting.",
+        "pendingTotal_one": "{{count}} request — {{amount}}",
+        "pendingTotal_other": "{{count}} requests — {{amount}}",
+        "costPrefix": "Cost"
+      },
       "events": {
         "heading": "Upcoming events",
         "viewAll": "View all events",

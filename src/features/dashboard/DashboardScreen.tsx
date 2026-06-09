@@ -43,6 +43,11 @@ import {
 } from '../chores/choresParentService';
 import { relativeTime } from '../board/relativeTime';
 import {
+  pendingRedemptions,
+  totalRequestedCents,
+  type WishlistItemWithId,
+} from '../wishlist/wishlistService';
+import {
   bucketUpcomingEvents,
   dashboardChoreStreaks,
   dashboardWeeklyDigest,
@@ -92,6 +97,13 @@ export interface DashboardScreenProps {
   todos: SectionFeed<TodoWithId>; // member (Task Management — family-wide open todos)
   birthdays: SectionFeed<BirthdayWithId>; // both — upcoming birthdays/anniversaries
   approvals: SectionFeed<ChoreWithId>; // parent (the full family-chore feed)
+  /**
+   * Parent-only: pending wishlist redemption requests across the family.
+   * Used to surface a dedicated "Approve allowance request" widget so the
+   * parent doesn't have to open /wishlist to see whether anything is
+   * waiting. Pure read; the inline "View all" links to the full screen.
+   */
+  wishlistApprovals: SectionFeed<WishlistItemWithId>;
   events: SectionFeed<EventWithId>; // both
   posts: SectionFeed<PostWithId>; // both
 }
@@ -372,7 +384,7 @@ function MemberSections(props: DashboardScreenProps): ReactElement {
 
 function ParentSections(props: DashboardScreenProps): ReactElement {
   const { t } = useTranslation();
-  const { approvals, members, events, nowMs, onNavigate } = props;
+  const { approvals, wishlistApprovals, members, events, nowMs, onNavigate } = props;
   const unavailable = t('common.unavailable');
   const fallbackName = t('dashboard.fallbackMemberName');
 
@@ -380,6 +392,12 @@ function ParentSections(props: DashboardScreenProps): ReactElement {
 
   const queue = approvalQueue(approvals.items);
   const pending = pendingApprovalCount(approvals.items);
+
+  // Wishlist redemption queue — pure derivation off the family wishlist feed.
+  // Sums shown so the parent sees how much money would leave the family if
+  // they approved every pending request.
+  const wishQueue = pendingRedemptions(wishlistApprovals.items);
+  const wishTotalCents = totalRequestedCents(wishlistApprovals.items);
 
   // Weekly digest — derived purely from feeds the parent dashboard already
   // subscribes to, so no extra Firestore listener and no extra round-trip.
@@ -426,6 +444,44 @@ function ParentSections(props: DashboardScreenProps): ReactElement {
                   )}
                 >
                   {gatedMoney(chore.dollarValue)}
+                </span>
+              </ListRow>
+            ))
+          }
+        />
+      </SectionShell>
+      <SectionShell
+        heading={t('dashboard.section.wishlistApprovals.heading')}
+        viewAllLabel={t('dashboard.section.wishlistApprovals.viewAll')}
+        onViewAll={() => onNavigate('wishlist')}
+      >
+        {!wishlistApprovals.loading && wishlistApprovals.error === null && wishQueue.length > 0 && (
+          <p className="text-meta text-ink-mute">
+            {t('dashboard.section.wishlistApprovals.pendingTotal', {
+              count: wishQueue.length,
+              amount: gatedMoney(wishTotalCents),
+            })}
+          </p>
+        )}
+        <SectionBody
+          feed={wishlistApprovals}
+          loadingLabel={t('dashboard.section.wishlistApprovals.loading')}
+          emptyMessage={t('dashboard.section.wishlistApprovals.empty')}
+          isEmpty={() => wishQueue.length === 0}
+          renderItems={() =>
+            wishQueue.slice(0, SECTION_CAP).map((item) => (
+              <ListRow key={item.id}>
+                <span className="flex-1 text-body font-semibold text-ink">{item.title}</span>
+                <span className="text-meta text-ink-mute">{nameFor(item.ownerUid)}</span>
+                <span
+                  className="text-meta font-semibold text-ink-mute"
+                  aria-label={moneyLabel(
+                    t('dashboard.section.wishlistApprovals.costPrefix'),
+                    item.costCents,
+                    unavailable,
+                  )}
+                >
+                  {gatedMoney(item.costCents)}
                 </span>
               </ListRow>
             ))
