@@ -233,11 +233,14 @@ function TransactionRow(props: { txn: TransactionWithId; locale: string }): Reac
   const amount = isValidMoneyCents(txn.amount) ? formatMoney(txn.amount) : MONEY_INVALID_INDICATOR;
   const iso = localDayKey(txn.createdAt);
   const friendly = friendlyDay(txn.createdAt, locale);
+  const isSpending = txn.type === 'spending';
   // A2: the row's coherent sentence is exposed as REAL text inside the listitem
   // (an sr-only span), with the decorative/visual spans aria-hidden — rather than
   // an aria-label on a non-semantic <div> (which some assistive tech drop). The
   // sentence degrades for an invalid amount (uses the indicator, never "$NaN").
-  const rowSentence = t('allowance.rowSentence', {
+  // A spending row reads "Spent $X for <wish> on <date>"; an earning row reads
+  // "Earned $X for <chore> on <date>".
+  const rowSentence = t(isSpending ? 'allowance.rowSentenceSpent' : 'allowance.rowSentence', {
     amount,
     chore: txn.choreTitle,
     date: friendly,
@@ -245,17 +248,21 @@ function TransactionRow(props: { txn: TransactionWithId; locale: string }): Reac
   // Split the leading currency symbol off the VISIBLE amount so the matchable
   // contiguous "$X.XX" exists in exactly ONE place — the sr-only sentence (A2) —
   // avoiding a duplicate getByText match against the visible credit. The visible
-  // amount still reads "$X.XX" to a sighted user.
+  // amount still reads "$X.XX" to a sighted user. A spending row prefixes the
+  // visible amount with a minus sign so the direction is conveyed as TEXT
+  // (color is never the sole signal — WCAG 1.4.1).
   const amountSymbol = amount.startsWith('$') ? '$' : '';
   const amountDigits = amount.startsWith('$') ? amount.slice(1) : amount;
+  const amountSign = isSpending && amount.startsWith('$') ? '−' : '';
+  const amountColor = isSpending ? 'text-status-danger-text' : 'text-status-ok-text';
 
   return (
     <div className="flex flex-col gap-8 rounded-control border border-surface-line bg-surface-card px-14 py-12">
       <span className="sr-only">{rowSentence}</span>
       <div className="flex items-start gap-12" aria-hidden="true">
         <span className="flex-1 text-body font-semibold text-ink">{txn.choreTitle}</span>
-        {/* Positive credit — the amount earned for this chore. */}
-        <span className="text-body font-bold text-status-ok-text">
+        <span className={`text-body font-bold ${amountColor}`}>
+          {amountSign}
           <span>{amountSymbol}</span>
           {amountDigits}
         </span>
@@ -265,7 +272,7 @@ function TransactionRow(props: { txn: TransactionWithId; locale: string }): Reac
         aria-hidden="true"
       >
         <span className="inline-flex items-center gap-4">
-          {t('allowance.earnedOn')}
+          {isSpending ? t('allowance.spentOn') : t('allowance.earnedOn')}
           <time dateTime={iso}>{friendly}</time>
         </span>
       </div>

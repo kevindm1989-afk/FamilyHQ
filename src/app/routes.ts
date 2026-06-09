@@ -20,6 +20,7 @@ export type ScreenId =
   | 'goals'
   | 'birthdays'
   | 'shopping'
+  | 'wishlist'
   | 'accessibility'
   | 'privacy'
   | 'terms'
@@ -71,6 +72,12 @@ export const ROUTES: Record<ScreenId, RouteMeta> = {
   // Shared family shopping list — open to any active same-family member per
   // firestore.rules. Reachable from Account → "Shopping list".
   shopping: { id: 'shopping', path: '/shopping', isModal: false, parentOnly: false },
+  // Allowance debit + wishlist redemption. Member curates their list and
+  // submits a request; a same-family parent approves (which atomically
+  // debits the balance and writes a 'spending' ledger row) or denies with
+  // a reason. firestore.rules is the authority — every state transition
+  // is enforced server-side. Reachable from Account → "Wishlist".
+  wishlist: { id: 'wishlist', path: '/wishlist', isModal: false, parentOnly: false },
   // Accessibility statement (AODA launch-gate item). Reachable from both
   // signed-out (login footer) and signed-in (Account screen) — see
   // App.tsx + AppShell.tsx. NOT parent-only and NOT modal.

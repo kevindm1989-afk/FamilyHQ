@@ -864,6 +864,109 @@ describe('AllowanceHistoryScreen — A2: row exposes a robust accessible name (n
   });
 });
 
+describe('AllowanceHistoryScreen — spending rows (Feature 4 — wishlist redemption)', () => {
+  it('renders a "Spent ... on ..." sentence (sr-only) for a spending transaction', () => {
+    renderScreen({
+      feed: {
+        transactions: [
+          mkTxn({
+            id: 't1',
+            type: 'spending',
+            choreTitle: 'Nintendo Switch',
+            amount: 30000,
+          }),
+        ],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    expect(screen.getByText(/Spent \$300\.00 on Nintendo Switch on/i)).toBeInTheDocument();
+  });
+
+  it('renders the spending amount with a leading minus sign (text — not color alone)', () => {
+    renderScreen({
+      feed: {
+        transactions: [
+          mkTxn({
+            id: 't1',
+            type: 'spending',
+            choreTitle: 'Lego set',
+            amount: 5000,
+          }),
+        ],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    // The visible row includes a leading minus sign so direction is conveyed as text.
+    const row = screen.getByText('Lego set').closest('div') as HTMLElement;
+    expect(row.textContent).toMatch(/−\$50\.00/);
+  });
+
+  it('keeps the original "Earned ... for ..." sentence (sr-only) for an earning transaction', () => {
+    renderScreen({
+      feed: {
+        transactions: [
+          mkTxn({
+            id: 't1',
+            type: 'earning',
+            choreTitle: 'Vacuum',
+            amount: 200,
+          }),
+        ],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    expect(screen.getByText(/Earned \$2\.00 for Vacuum on/i)).toBeInTheDocument();
+  });
+
+  it('groups an earning and a spending row in the SAME day group when they fall on the same day', () => {
+    renderScreen({
+      feed: {
+        transactions: [
+          mkTxn({ id: 't1', type: 'earning', choreTitle: 'Vacuum', amount: 200, createdAt: DAY_TODAY }),
+          mkTxn({
+            id: 't2',
+            type: 'spending',
+            choreTitle: 'Pizza',
+            amount: 1500,
+            createdAt: DAY_TODAY + 1000,
+          }),
+        ],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    expect(screen.getByText(/Earned \$2\.00 for Vacuum/i)).toBeInTheDocument();
+    expect(screen.getByText(/Spent \$15\.00 on Pizza/i)).toBeInTheDocument();
+  });
+
+  it('does not echo a raw provider token in the spending row (PII / privacy guard holds)', () => {
+    renderScreen({
+      feed: {
+        transactions: [
+          mkTxn({
+            id: 't1',
+            type: 'spending',
+            choreTitle: 'Movie ticket',
+            amount: 1200,
+          }),
+        ],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    const text = document.body.textContent ?? '';
+    expect(text).not.toMatch(/permission-denied|firestore|firebase/i);
+  });
+});
+
 describe('AllowanceHistoryScreen — A3: picker wrapper is a labelled group', () => {
   it('the picker wrapper exposes a labelled group role (role="group" or fieldset), not a roleless div', () => {
     renderScreen({

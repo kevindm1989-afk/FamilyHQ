@@ -74,6 +74,7 @@
     "manageFamily": "Manage family",
     "manageBirthdays": "Manage birthdays",
     "shoppingList": "Shopping list",
+    "wishlist": "Wishlist",
     "resourcesLabel": "Site resources",
     "accessibilityLink": "Accessibility statement & feedback"
   },
@@ -262,6 +263,92 @@
       "empty": "Nothing on the shopping list.",
       "countLabel_one": "{{count}} item open",
       "countLabel_other": "{{count}} items open"
+    }
+  },
+
+  "wishlist": {
+    "title": "Wishlist",
+    "loading": "Loading the wishlist…",
+    "empty": "No wishes yet — tap the + button to add the first one.",
+    "unknownMember": "A family member",
+    "amountUnavailable": "Amount unavailable",
+    "balanceUnavailable": "Balance unavailable",
+    "balanceUnavailableFor": "{{name}} balance unavailable",
+    "balanceLabel": "{{name}} balance {{amount}}",
+    "currentBalance": "Current balance",
+    "currentBalanceLabel": "Current balance {{amount}}",
+    "memberBalancesLabel": "Member balances",
+    "ownedBy": "For {{name}}",
+    "costLabel": "Cost {{amount}}",
+    "deniedReasonPrefix": "Sent back:",
+    "status": {
+      "wishing": "Wishing",
+      "requested": "Requested",
+      "redeemed": "Redeemed",
+      "denied": "Sent back"
+    },
+    "queue": {
+      "heading_one": "{{count}} redemption to review",
+      "heading_other": "{{count}} redemptions to review",
+      "listLabel": "Wishlist requests awaiting approval",
+      "totalRequested": "Total requested: {{amount}}"
+    },
+    "yours": {
+      "heading": "Your wishlist",
+      "headingForParent": "Family wishlist",
+      "listLabel": "Wishlist items"
+    },
+    "redeemed": {
+      "heading": "Recently redeemed",
+      "listLabel": "Redeemed items"
+    },
+    "action": {
+      "create": "+ New wish",
+      "edit": "Edit",
+      "editLabel": "Edit {{title}}",
+      "delete": "Remove",
+      "deleteLabel": "Remove {{title}}",
+      "request": "Request",
+      "requestLabel": "Request to buy {{title}}",
+      "cancel": "Cancel request",
+      "cancelLabel": "Cancel request for {{title}}",
+      "tryAgain": "Try again",
+      "tryAgainLabel": "Try requesting {{title}} again"
+    },
+    "approve": "Approve",
+    "approveLabel": "Approve {{title}} for {{owner}} ({{amount}})",
+    "deny": "Send back",
+    "denyReasonPrompt": "Why are you sending it back?",
+    "denyReasonRequired": "Please add a short reason before sending it back.",
+    "denyConfirm": "Send back",
+    "denyConfirmLabel": "Send back {{title}} for {{owner}}",
+    "create": {
+      "title": "New wish",
+      "submit": "Add wish"
+    },
+    "edit": {
+      "title": "Edit wish",
+      "submit": "Save changes"
+    },
+    "form": {
+      "titleLabel": "What do you want?",
+      "costLabel": "Cost (in dollars)"
+    },
+    "error": {
+      "titleRequired": "Please give the wish a name.",
+      "titleTooLong": "Keep the wish name under 120 characters.",
+      "costInvalid": "Please enter a positive amount.",
+      "generic": "Something went wrong. Please try again."
+    },
+    "toast": {
+      "created": "Wish added.",
+      "updated": "Wish updated.",
+      "deleted": "Wish removed.",
+      "requested": "Request sent — waiting on a parent.",
+      "cancelled": "Request cancelled.",
+      "approved": "Approved — allowance updated.",
+      "denied": "Sent back to try again.",
+      "generic": "Something went wrong. Please try again."
     }
   },
 
@@ -538,7 +625,9 @@
     "empty": "No allowance yet — earnings will show up here.",
     "loadError": "We could not load the allowance history. Please try again.",
     "rowSentence": "Earned {{amount}} for {{chore}} on {{date}}",
-    "earnedOn": "Earned"
+    "rowSentenceSpent": "Spent {{amount}} on {{chore}} on {{date}}",
+    "earnedOn": "Earned",
+    "spentOn": "Spent"
   },
 
   "family": {
