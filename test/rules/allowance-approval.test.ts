@@ -435,7 +435,10 @@ describe('transactions: shape-lock, type/amount validation, append-only, scoped 
     );
   });
 
-  it('a transaction with type != "earning" is denied', async () => {
+  it('a transaction with type outside the union ["earning", "spending"] is denied', async () => {
+    // The rule now accepts `type in ['earning','spending']` (Allowance debit
+    // + wishlist redemption feature widened the union). Any other value is
+    // still rejected at the authorization boundary.
     const db = env.authenticatedContext(UID.parentA).firestore();
     const { doc, setDoc } = await import('firebase/firestore');
     await assertFails(
@@ -444,7 +447,7 @@ describe('transactions: shape-lock, type/amount validation, append-only, scoped 
         choreId: CHORE_A,
         choreTitle: 'Take out trash',
         amount: 3,
-        type: 'spending', // not the allowed 'earning'
+        type: 'transfer', // not in the allowed union
         familyId: FAMILY_A,
         createdAt: Date.now(),
       }),
