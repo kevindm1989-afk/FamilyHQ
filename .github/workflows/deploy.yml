@@ -388,6 +388,18 @@ jobs:
       - name: Run functions unit tests
         run: npm --prefix functions test --silent
 
+      - name: Run root-side functions integration tests
+        # These are the gates that prove the runbook + deploy.yml + entry
+        # point + AST hygiene are intact (A-T6..A-T10 + entry-point gate).
+        # A future PR that mangles the runbook or re-folds the deploy
+        # --only list would slip past the root `npm test` invocation in
+        # some CI configurations; running them HERE makes the deploy job
+        # itself the gate. Second-opinion review concern #5.
+        run: npx vitest run test/functions/
+
+      - name: Audit functions workspace for high-severity CVEs (M40)
+        run: npm --prefix functions audit --omit=dev --audit-level=high
+
       - name: Deploy functions:billingKillSwitch
         # EXACT --only list — `functions:billingKillSwitch` and NOTHING ELSE
         # in PR A. Adding another function later means appending to this
@@ -398,11 +410,20 @@ jobs:
         # docs/runbooks/billing-killswitch.md before this step runs.
         # GOOGLE_APPLICATION_CREDENTIALS uses the same SA-JSON pattern as
         # the rules deploy above; firebase-tools picks it up automatically.
+        #
+        # `env:` block (not inline `${{...}}`) passes secrets through as
+        # environment variables — required by semgrep's
+        # yaml.github-actions.security.run-shell-injection rule. Without
+        # `env:`, secrets get textually interpolated into the shell script
+        # and a malicious secret containing shell-meaningful characters
+        # could execute arbitrary code in the runner.
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          PROJECT_ID: ${{ inputs.environment == 'production' && secrets.FIREBASE_PROJECT_ID || (secrets.FIREBASE_PROJECT_ID_STAGING || secrets.FIREBASE_PROJECT_ID) }}
         run: |
           SA_PATH="$(mktemp /tmp/sa-XXXXXX.json)"
-          printf '%s' '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > "$SA_PATH"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$SA_PATH"
           chmod 600 "$SA_PATH"
-          PROJECT_ID="${{ inputs.environment == 'production' && secrets.FIREBASE_PROJECT_ID || (secrets.FIREBASE_PROJECT_ID_STAGING || secrets.FIREBASE_PROJECT_ID) }}"
           GOOGLE_APPLICATION_CREDENTIALS="$SA_PATH" \
             npx firebase deploy \
               --only functions:billingKillSwitch \

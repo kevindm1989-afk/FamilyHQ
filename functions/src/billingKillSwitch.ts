@@ -13,12 +13,18 @@
  * (Montreal — Canadian residency, ADR-0013).
  *
  * Threat-model coverage:
- *   - M42 — threshold + idempotency unit tests (`functions/test/billingKillSwitch.test.ts`).
+ *   - M42 — strict `costAmount > budgetAmount` threshold + idempotency unit
+ *     tests (`functions/test/billingKillSwitch.test.ts`). Cloud Billing's
+ *     100% threshold fan-out fires at `costAmount === budgetAmount`; treating
+ *     equality as breach would self-DoS on the very first 100% alert. Strict
+ *     `>` matches threat-model M42 + ADR-0013 §12 A2 + A-T3.
+ *   - M33b — function pins `serviceAccount` so the kill-switch SA is the
+ *     deployed runtime identity. Without this, `firebase deploy` would bind
+ *     the function to the default 2nd-gen runtime SA which the runbook
+ *     explicitly forbids from carrying any `roles/billing.*`.
  *   - M38 — `firebase-functions/logger` only; no `console.*` (AST gate in
- *     `test/functions/no-console-ast.test.ts`).
- *   - T-KS.2 — strict `costAmount >= budgetAmount` comparison (the user-facing
- *     PR A scope wins over the older `>` phrasing — safer side: detach AT the
- *     cap, not a penny over).
+ *     `test/functions/no-console-ast.test.ts`); below-threshold info log so
+ *     50/90% fan-out alerts confirm the function is alive between breaches.
  *   - T-KS.3 — structured log payload carries no PII (billing metadata only).
  *   - On any error from the billing API we log a generic message + structured
  *     payload; we NEVER pass the raw error object through to the logger because
@@ -40,6 +46,13 @@ import { google, cloudbilling_v1 } from 'googleapis';
 const PROJECT_NAME = 'projects/familyhq-68638';
 const TOPIC = 'billing-budget-alerts';
 const REGION = 'northamerica-northeast1';
+// M33b: pin the runtime SA in the function declaration so `firebase deploy`
+// always binds the function to the dedicated kill-switch SA (not the default
+// 2nd-gen runtime SA, which the runbook forbids from holding any
+// `roles/billing.*`). Operator can override at deploy time via the
+// KILL_SWITCH_SA env var if the SA email differs from the documented one.
+const KILL_SWITCH_SA =
+  process.env.KILL_SWITCH_SA ?? 'kill-switch@familyhq-68638.iam.gserviceaccount.com';
 
 /**
  * Shape of a Cloud Billing budget-alert message after base64 + JSON decode.
@@ -112,6 +125,11 @@ export const billingKillSwitch = onMessagePublished(
   {
     topic: TOPIC,
     region: REGION,
+    // M33b: dedicated kill-switch SA — see KILL_SWITCH_SA constant above.
+    // The literal in source is the structural enforcement; the runbook
+    // verification step is a redundant operator check, not the primary
+    // control.
+    serviceAccount: KILL_SWITCH_SA,
     // Pub/Sub-triggered functions auto-retry on throw; we never throw, so
     // retry: false is a defensive belt — even if a future bug throws, we
     // don't want to amplify a runaway-cost scenario with re-invocations.
@@ -137,15 +155,25 @@ export const billingKillSwitch = onMessagePublished(
 
     const { budgetAmount, costAmount } = payload;
 
-    // Below the cap — no action. The 50% / 90% fan-out alerts are expected
-    // to hit this branch on every billing period.
-    if (costAmount < budgetAmount) {
+    // At or below the cap — no action. The 50% / 90% / 100% Cloud Billing
+    // fan-out alerts are expected to hit this branch every billing period.
+    // The 100% alert fires at `costAmount === budgetAmount`, so STRICT
+    // greater-than is the only safe comparison (M42); equality is not a
+    // breach. We log info here so operators get a live-heartbeat for the
+    // function on every fan-out alert — without it the function appears
+    // dead between real breaches (second-opinion review #3).
+    if (costAmount <= budgetAmount) {
+      logger.info('billingKillSwitch: budget alert below threshold — no action', {
+        action: 'below_threshold',
+        projectName: PROJECT_NAME,
+        budgetAmount,
+        costAmount,
+      });
       return;
     }
 
-    // At or above the cap — detach billing. PR A scope says `>=` (safer:
-    // detach AT the cap, not a penny over). Note this contradicts the older
-    // threat-model phrasing of strict `>`; the user-facing PR A scope wins.
+    // Above the cap — detach billing. Strict `>` only (M42 / A-T3); see
+    // the below-threshold branch above for the rationale.
     let cloudbilling: cloudbilling_v1.Cloudbilling;
     try {
       cloudbilling = makeCloudBillingClient();

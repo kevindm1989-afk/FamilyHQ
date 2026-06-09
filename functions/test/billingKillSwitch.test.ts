@@ -211,7 +211,7 @@ describe('A-T1: billingKillSwitch is bound to topic billing-budget-alerts in nor
 // A-T2 — threshold breach triggers detach with the exact body shape
 // ---------------------------------------------------------------------------
 
-describe('A-T2: costAmount >= budgetAmount calls updateBillingInfo with billingAccountName: ""', () => {
+describe('A-T2: costAmount > budgetAmount calls updateBillingInfo with billingAccountName: ""', () => {
   it('calls updateBillingInfo exactly once when costAmount > budgetAmount', async () => {
     await invokeHandlerWith(
       budgetEvent({
@@ -251,13 +251,12 @@ describe('A-T2: costAmount >= budgetAmount calls updateBillingInfo with billingA
     expect(arg.requestBody?.billingAccountName).toBe('');
   });
 
-  it('fires when costAmount equals budgetAmount (>= threshold per A2 spec — the brief says >=)', async () => {
-    // NOTE TO IMPLEMENTER: design §12 PR A2 says "asserts costAmount >
-    // budgetAmount" but the user-facing scope says "costAmount >=
-    // budgetAmount" AND threat-model A-T3 says strict greater-than. The
-    // user-facing PR A scope wins (it is the most recent, explicit, and the
-    // safer side: detach at the cap, not a penny over). See the FLAGGED
-    // section in the test-writer report.
+  it('does NOT fire when costAmount equals budgetAmount (strict > per M42 / A-T3)', async () => {
+    // Per security-reviewer Finding 1 + second-opinion concern #4: the
+    // strict `>` semantics are pinned by threat-model M42 and ADR-0013 §12
+    // A2. Cloud Billing's 100% threshold fan-out fires at
+    // `costAmount === budgetAmount`; treating equality as a breach would
+    // self-DoS on every billing period's first 100% alert.
     await invokeHandlerWith(
       budgetEvent({
         budgetAmount: 5.0,
@@ -265,7 +264,7 @@ describe('A-T2: costAmount >= budgetAmount calls updateBillingInfo with billingA
         currencyCode: 'CAD',
       }),
     );
-    expect(updateBillingInfoMock).toHaveBeenCalledTimes(1);
+    expect(updateBillingInfoMock).not.toHaveBeenCalled();
   });
 
   it('logs a structured info entry for the detach action (no console.*)', async () => {
@@ -281,6 +280,64 @@ describe('A-T2: costAmount >= budgetAmount calls updateBillingInfo with billingA
     // the action + the cost/budget pair (threat-model §A.5 M38 allow-list).
     // We don't pin the exact field set here — that's PR E's job — but a
     // logger.info call MUST exist so the operator can find the action.
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A-T2b — structural enforcement of the kill-switch service-account binding
+// (security-reviewer Finding 2 / second-opinion concern #2 / M33b)
+// ---------------------------------------------------------------------------
+
+describe('A-T2b: trigger options pin the dedicated kill-switch service account (M33b)', () => {
+  it('declares serviceAccount on the onMessagePublished trigger options', async () => {
+    await loadModule();
+    expect(captured.options).toBeDefined();
+    const sa = (captured.options as { serviceAccount?: unknown } | undefined)?.serviceAccount;
+    // The literal value is the documented kill-switch SA (env-var-overridable
+    // for ops flexibility), but the test cares about PRESENCE + a non-empty
+    // string — if this is missing, `firebase deploy` would bind the function
+    // to the default runtime SA, which the runbook explicitly forbids from
+    // holding any `roles/billing.*` permission.
+    expect(typeof sa).toBe('string');
+    expect(sa).toMatch(/^kill-switch@.+\.iam\.gserviceaccount\.com$/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A-T3b — below-threshold info log so the operator can confirm liveness
+// (second-opinion concern #3)
+// ---------------------------------------------------------------------------
+
+describe('A-T3b: below-threshold fan-out alerts emit a structured info log (liveness signal)', () => {
+  it('logs `below_threshold` info when costAmount < budgetAmount (e.g. 50% / 90% alert)', async () => {
+    await invokeHandlerWith(
+      budgetEvent({
+        budgetAmount: 5.0,
+        costAmount: 2.5,
+        currencyCode: 'CAD',
+        alertThresholdExceeded: 0.5,
+      }),
+    );
+    expect(loggerInfoMock).toHaveBeenCalled();
+    // Match the structured action label exactly; the second-opinion review
+    // pinned this string so an operator can find liveness signals by grep.
+    const lastCall = loggerInfoMock.mock.calls.at(-1);
+    expect(lastCall?.[1]).toMatchObject({
+      action: 'below_threshold',
+    });
+  });
+
+  it('logs `below_threshold` info even when costAmount EQUALS budgetAmount (the 100% alert that is NOT a breach under strict >)', async () => {
+    await invokeHandlerWith(
+      budgetEvent({
+        budgetAmount: 5.0,
+        costAmount: 5.0,
+        currencyCode: 'CAD',
+        alertThresholdExceeded: 1.0,
+      }),
+    );
+    expect(loggerInfoMock).toHaveBeenCalled();
+    expect(updateBillingInfoMock).not.toHaveBeenCalled();
   });
 });
 

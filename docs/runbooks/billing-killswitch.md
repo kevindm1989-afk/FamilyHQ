@@ -213,16 +213,52 @@ Expected output: **empty**. The kill-switch SA should not have
 
 ---
 
+## 3.5 Pub/Sub topic publisher restriction (M41)
+
+The `billing-budget-alerts` Pub/Sub topic MUST only accept publishes from
+the Google-managed Cloud Billing notifications service account. Without
+this restriction, anyone with `roles/pubsub.publisher` on the project
+could publish a forged budget-alert message and trip the kill-switch (the
+T-KS.1 attack — denial-of-service against your own project's billing
+state).
+
+**Audit command (no other principal should hold `roles/pubsub.publisher` on the topic):**
+
+```bash
+gcloud pubsub topics get-iam-policy billing-budget-alerts \
+  --project={PROJECT_ID} \
+  --flatten="bindings[].members" \
+  --filter="bindings.role:roles/pubsub.publisher" \
+  --format="value(bindings.members)"
+```
+
+Expected output: **exactly one member**, the Google-managed billing
+notifier — `serviceAccount:cloud-billing-notifications@system.gserviceaccount.com`.
+If any other principal appears, remove it:
+
+```bash
+gcloud pubsub topics remove-iam-policy-binding billing-budget-alerts \
+  --project={PROJECT_ID} \
+  --member={OFFENDING_MEMBER} \
+  --role=roles/pubsub.publisher
+```
+
+---
+
 ## 4. Wire the function to the kill-switch SA at deploy time
 
-When deploying the function via `.github/workflows/deploy.yml`'s
-`deploy-functions` step (workflow_dispatch with `deploy_functions: true`),
-configure the function's runtime identity to `{KILL_SWITCH_SA}` via the
-Google Cloud Console (Cloud Run service → Edit → Security → Service
-account). This is a one-time per-project setup; subsequent deploys reuse
-the configured identity.
+The function source code pins `serviceAccount: '{KILL_SWITCH_SA}'` in the
+`onMessagePublished` trigger options (see `functions/src/billingKillSwitch.ts`
+constant `KILL_SWITCH_SA`). This is the **structural enforcement** of
+M33b — `firebase deploy` reads the literal and binds the Cloud Run
+service to that SA on every deploy. There is no Console-click step.
 
-Confirm via:
+If the literal SA email in the source does not match the SA you created
+in §1.1 (e.g. you used a different naming convention), override at deploy
+time via the `KILL_SWITCH_SA` env var on the `deploy-functions` step in
+`.github/workflows/deploy.yml`.
+
+**Verification (REQUIRED before A5 staging fire — FAIL CLOSED):**
 
 ```bash
 gcloud run services describe billingkillswitch \
@@ -231,14 +267,33 @@ gcloud run services describe billingkillswitch \
   --format="value(spec.template.spec.serviceAccountName)"
 ```
 
-Expected: `{KILL_SWITCH_SA}`. If it prints anything else (especially the
-default `{RUNTIME_SA}`), STOP — the function is running with the wrong
-identity and the M33b separation is broken. Re-bind in the Console and
-re-verify.
+Expected: `{KILL_SWITCH_SA}` exactly.
+
+**If the output is ANYTHING ELSE (especially `{RUNTIME_SA}` or the
+default Compute Engine SA):**
+
+1. **STOP.** Do NOT proceed to §5 staging fire.
+2. **DO NOT enable `deploy_functions: true` in production** — the
+   kill-switch will silently 403 on every `updateBillingInfo` call and
+   billing will keep climbing past the cap.
+3. Check that the source literal `KILL_SWITCH_SA` (or the env-var
+   override) matches the SA email you created in §1.1.
+4. Re-deploy. If the binding still doesn't take, escalate — this is a
+   structural failure of M33b.
+
+This step is the gate for §5. Do not proceed until the audit command
+returns `{KILL_SWITCH_SA}` exactly.
 
 ---
 
 ## 5. Manual end-to-end verification (M43, quarterly)
+
+**Prerequisite:** §4 verification has passed (the deployed Cloud Run
+service is bound to `{KILL_SWITCH_SA}`, not the default runtime SA). If
+§4 has not passed, §5 will succeed accidentally (the function might run
+under a SA that ALSO happens to have billing rights through some other
+binding the operator forgot about) and give false confidence. **Do not
+proceed to §5 until §4 returned `{KILL_SWITCH_SA}` exactly.**
 
 Quarterly, publish a synthetic budget-alert message to the staging
 project's `billing-budget-alerts` topic to confirm the kill-switch still
