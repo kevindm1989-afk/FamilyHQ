@@ -15,7 +15,7 @@ export type Role = 'parent' | 'member';
 export type Theme = 'light' | 'dark';
 
 export type ChoreStatus = 'pending' | 'complete' | 'approved' | 'rejected';
-export type RecurrenceFrequency = 'none' | 'weekly' | 'biweekly';
+export type RecurrenceFrequency = 'none' | 'weekly' | 'biweekly' | 'monthly';
 export type EventTag = 'school' | 'sports' | 'family' | 'work';
 export type PostTone = 'family' | 'amber';
 export type TransactionType = 'earning';
@@ -83,6 +83,26 @@ export interface FamilyEvent {
   familyId: string;
   createdBy: string;
   createdAt: number;
+  /**
+   * Recurring-events fields (PR — Recurring calendar events).
+   *
+   * The recurrence model is **spawn-on-create-N**: when a parent picks
+   * "weekly for 12 weeks" in AddEvent, the service creates 12 separate
+   * events docs upfront — each one a real `events/{id}` with the date
+   * offset by week N, all three docs sharing a `recurrenceGroupId`. This
+   * lets the existing calendar query keep working unchanged and makes
+   * "delete this occurrence" trivial. The cost is N rows of storage for
+   * an N-occurrence series — bounded at 26 so the worst case is small.
+   *
+   * All three fields are OPTIONAL so existing one-off events (created
+   * before this feature) keep their original 7-field shape without a
+   * migration.
+   */
+  recurrenceFrequency?: RecurrenceFrequency;
+  /** Total occurrences in the series. 1-26. Stored on every sibling. */
+  recurrenceCount?: number;
+  /** Shared UUID linking siblings. Absent for one-off events. */
+  recurrenceGroupId?: string;
 }
 
 export interface Post {

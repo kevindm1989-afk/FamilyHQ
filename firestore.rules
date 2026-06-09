@@ -375,6 +375,24 @@ service cloud.firestore {
         return request.resource.data.date is string
           && request.resource.data.date.matches('^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*');
       }
+      // Recurrence add-ons (Recurring calendar events feature). All three
+      // fields are OPTIONAL: a one-off event is the existing 7-field shape;
+      // a recurring sibling adds frequency + count + groupId. When ANY of
+      // the three is present, they must all be valid; absence of any one
+      // is accepted (an old one-off event keeps working).
+      function eventRecurrenceValid() {
+        return (!('recurrenceFrequency' in request.resource.data)
+                || request.resource.data.recurrenceFrequency in
+                   ['none', 'weekly', 'biweekly', 'monthly'])
+          && (!('recurrenceCount' in request.resource.data)
+              || (request.resource.data.recurrenceCount is int
+                  && request.resource.data.recurrenceCount >= 1
+                  && request.resource.data.recurrenceCount <= 26))
+          && (!('recurrenceGroupId' in request.resource.data)
+              || (request.resource.data.recurrenceGroupId is string
+                  && request.resource.data.recurrenceGroupId.size() > 0
+                  && request.resource.data.recurrenceGroupId.size() <= 64));
+      }
 
       allow get: if isActive() && sameFamily(resource);
       allow list: if listScopedToOwnFamily();
@@ -384,12 +402,14 @@ service cloud.firestore {
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.keys().hasOnly(
              ['title', 'description', 'date', 'tag',
-              'familyId', 'createdBy', 'createdAt'])
+              'familyId', 'createdBy', 'createdAt',
+              'recurrenceFrequency', 'recurrenceCount', 'recurrenceGroupId'])
         && request.resource.data.keys().hasAll(
              ['title', 'description', 'date', 'tag',
               'familyId', 'createdBy', 'createdAt'])
         && eventTagValid()
-        && eventDateValid();
+        && eventDateValid()
+        && eventRecurrenceValid();
       // update: ONLY the content fields (title/description/date/tag) are
       // editable; identity (createdBy/createdAt) and tenant (familyId) are
       // IMMUTABLE — mirrors the create-time identity binding (createdBy ==
