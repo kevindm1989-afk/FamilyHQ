@@ -110,18 +110,30 @@ describe('M28: parent update of a member doc — name, isActive, or a non-negati
     );
   });
 
-  it('M28/ADR-0004: same-family parent CANNOT DECREASE a member allowanceBalance (new < old denied)', async () => {
-    // Raise the balance to 25 first (with rules disabled), then a parent write
-    // to 10 is a decrease — parentAllowanceCredit requires new >= old, so deny.
+  it('M28/Allowance-debit: same-family parent CAN decrease a member allowanceBalance (wishlist redemption path)', async () => {
+    // ADR-0004 originally allowed only increments (`parentAllowanceCredit`).
+    // The Allowance-debit + wishlist redemption feature added a parallel
+    // `parentAllowanceDebit` predicate that permits a same-family parent
+    // to lower a member's balance, with the floor pinned by
+    // `isValidMoneyInt` (>= 0). Raising the balance to 25 first then
+    // debiting to 10 is the redemption-approval path: allowed.
     await env.withSecurityRulesDisabled(async (ctx) => {
       const { doc, updateDoc } = await import('firebase/firestore');
       await updateDoc(doc(ctx.firestore(), 'users', UID.memberA), { allowanceBalance: 25 });
     });
     const db = env.authenticatedContext(UID.parentA).firestore();
     const { doc, updateDoc } = await import('firebase/firestore');
-    await assertFails(
-      updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 10 }),
-    );
+    await assertSucceeds(updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: 10 }));
+  });
+
+  it('M28/Allowance-debit: parent CANNOT decrease to a NEGATIVE balance (rule floor)', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const { doc, updateDoc } = await import('firebase/firestore');
+      await updateDoc(doc(ctx.firestore(), 'users', UID.memberA), { allowanceBalance: 25 });
+    });
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(updateDoc(doc(db, 'users', UID.memberA), { allowanceBalance: -1 }));
   });
 
   it('M28/ADR-0004: a member CANNOT write their OWN allowanceBalance (self-credit denied)', async () => {

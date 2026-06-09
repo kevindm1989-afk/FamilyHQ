@@ -18,7 +18,8 @@ export type ChoreStatus = 'pending' | 'complete' | 'approved' | 'rejected';
 export type RecurrenceFrequency = 'none' | 'weekly' | 'biweekly' | 'monthly';
 export type EventTag = 'school' | 'sports' | 'family' | 'work';
 export type PostTone = 'family' | 'amber';
-export type TransactionType = 'earning';
+export type TransactionType = 'earning' | 'spending';
+export type WishlistStatus = 'wishing' | 'requested' | 'redeemed' | 'denied';
 export type InviteStatus = 'pending' | 'accepted';
 
 /** `families/{familyId}` — replaces the spec's settings/family singleton. */
@@ -155,20 +156,71 @@ export interface Chore {
   recurrenceFrequency: RecurrenceFrequency;
 }
 
-/** Append-only ledger (ADR-0004). */
+/**
+ * Append-only ledger (ADR-0004).
+ *
+ * The collection holds two row shapes that share the same required keys:
+ *  - `type: 'earning'` — chore-driven credit. `choreId` + `choreTitle`
+ *    point at the approved chore.
+ *  - `type: 'spending'` — wishlist-driven debit. `choreId` + `choreTitle`
+ *    are reused as generic "source identity + display label" — they hold
+ *    the `wishlistItemId` and `wishlistTitle`. The field names are
+ *    historical; renaming them to `sourceId` + `sourceLabel` is a
+ *    follow-up. `amount` stays a positive integer-cents value (the SIGN
+ *    is implied by `type`).
+ */
 export interface Transaction {
   uid: string;
+  /** Source identity — chore id for earnings, wishlist-item id for spending. */
   choreId: string;
+  /** Source display label — chore title for earnings, wishlist title for spending. */
   choreTitle: string;
   /**
-   * INTEGER CENTS — equals the approved chore's `dollarValue` (whole cents,
-   * `>= 0`, `<= MONEY_MAX_CENTS`). Money is cents everywhere; format only for
+   * INTEGER CENTS (positive). For 'earning' this is the chore reward; for
+   * 'spending' this is the absolute cost the parent debited. `>= 0`,
+   * `<= MONEY_MAX_CENTS`. Money is cents everywhere; format only for
    * display.
    */
   amount: number;
   type: TransactionType;
   familyId: string;
   createdAt: number;
+}
+
+/**
+ * `wishlistItems/{itemId}` — things a member wants to spend their allowance
+ * on. Member CRUDs their own; a same-family parent reads any (for the
+ * approval queue) and can flip status to 'redeemed' (with an atomic balance
+ * debit + ledger entry) or 'denied' (no balance change).
+ *
+ * Status state machine:
+ *   wishing  → requested  (owner taps "Request to buy")
+ *   requested → wishing   (owner cancels; or parent denies → 'denied')
+ *   requested → redeemed  (parent approves; balance debited atomically)
+ *   requested → denied    (parent denies with a reason)
+ */
+export interface WishlistItem {
+  familyId: string;
+  /** UID of the family member the item is FOR. Set ONCE at create. */
+  ownerUid: string;
+  /** Display title — "Nintendo Switch", "Movie ticket". Trimmed. */
+  title: string;
+  /**
+   * INTEGER CENTS — the cost the kid wants to spend. `> 0` and
+   * `<= MONEY_MAX_CENTS`. Stored as cents (ADR-0009).
+   */
+  costCents: number;
+  status: WishlistStatus;
+  /** Optional link to a SavingsGoal whose currentAmount should also decrease
+   *  on redemption. Same family. */
+  savingsGoalId?: string;
+  /** Reason a parent rejected the redemption request. Cleared on next request. */
+  deniedReason?: string;
+  createdAt: number;
+  /** Epoch ms when status flipped to 'requested'. */
+  requestedAt?: number;
+  /** Epoch ms when status flipped to 'redeemed' or 'denied'. */
+  resolvedAt?: number;
 }
 
 /**

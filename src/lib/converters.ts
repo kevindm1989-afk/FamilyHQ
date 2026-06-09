@@ -27,6 +27,7 @@ import type {
   Transaction,
   User,
   UserPrivate,
+  WishlistItem,
 } from './types';
 
 function makeConverter<T extends DocumentData>(): FirestoreDataConverter<T> {
@@ -73,6 +74,9 @@ export const birthdayConverter: FirestoreDataConverter<Birthday> = makeConverter
 
 export const shoppingItemConverter: FirestoreDataConverter<ShoppingItem> =
   makeConverter<ShoppingItem>();
+
+export const wishlistItemConverter: FirestoreDataConverter<WishlistItem> =
+  makeConverter<WishlistItem>();
 
 /**
  * Converter for `userPrivate/{uid}` (privacy finding 2). Shapes the adult email

@@ -257,11 +257,31 @@ service cloud.firestore {
           && isValidMoneyInt(request.resource.data.allowanceBalance)
           && request.resource.data.allowanceBalance >= resource.data.allowanceBalance;
       }
+      // M28 — allowanceBalance write authority (DEBIT direction; Allowance
+      // debit + wishlist redemption feature). Mirrors `parentAllowanceCredit`
+      // but allows the balance to DECREASE — used by the wishlist-redemption
+      // transaction. Guards: parent + same-family active; affected keys is
+      // EXACTLY allowanceBalance; the new value is a valid money int (so
+      // >= 0 and <= MONEY_MAX_CENTS — the floor of 0 prevents an over-debit
+      // from going negative even if the client transaction is buggy); and
+      // the new value is STRICTLY LESS than the existing balance (a no-op
+      // re-assert is not a debit). Together with the credit predicate, the
+      // balance can only move in one of two well-defined directions per
+      // write — never sideways via a crafted same-value re-assert.
+      function parentAllowanceDebit() {
+        return isParent()
+          && sameFamily(resource)
+          && incomingSameFamily()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['allowanceBalance'])
+          && isValidMoneyInt(request.resource.data.allowanceBalance)
+          && request.resource.data.allowanceBalance < resource.data.allowanceBalance;
+      }
 
       allow get: if isActive() && sameFamily(resource);
       allow list: if listScopedToOwnFamily();
       allow create: if isFoundingBootstrap() || isInviteBootstrap();
-      allow update: if selfUpdateAllowed() || parentUpdateAllowed() || parentAllowanceCredit();
+      allow update: if selfUpdateAllowed() || parentUpdateAllowed()
+                    || parentAllowanceCredit() || parentAllowanceDebit();
       allow delete: if false;
     }
 
@@ -580,7 +600,14 @@ service cloud.firestore {
                ['uid', 'choreId', 'choreTitle', 'amount', 'type', 'familyId', 'createdAt'])
           && request.resource.data.keys().hasAll(
                ['uid', 'choreId', 'choreTitle', 'amount', 'type', 'familyId', 'createdAt'])
-          && request.resource.data.type == 'earning'
+          // Two ledger row types are accepted (Allowance debit + wishlist
+          // redemption feature). Both share the same 7-field shape; for
+          // 'spending' rows the service writes the wishlistItemId into
+          // `choreId` and the wishlistTitle into `choreTitle` (the field
+          // names are historical — rename to sourceId/sourceLabel is a
+          // follow-up). Amount stays a positive int for both — the SIGN
+          // is implied by `type`.
+          && request.resource.data.type in ['earning', 'spending']
           && isValidMoneyInt(request.resource.data.amount)
           && txnUidIsSameFamilyUser();
       }
@@ -995,6 +1022,95 @@ service cloud.firestore {
       allow create: if shoppingCreateOk();
       allow update: if shoppingUpdateOk();
       allow delete: if isActive() && sameFamily(resource);
+    }
+
+    // --- wishlistItems (Allowance debit + wishlist redemption feature) -----
+    // A member can CRUD their own items (status: wishing | requested). A
+    // same-family parent reads any item (for the approval queue) and can
+    // resolve a 'requested' item to 'redeemed' (atomically with a balance
+    // debit + ledger entry, written by the wishlistService transaction) or
+    // 'denied'.
+    //
+    // Status state machine:
+    //   wishing  ↔ requested  (owner toggles via Request / Cancel)
+    //   requested → redeemed  (parent approves; balance + ledger write
+    //                          happens in the same client transaction —
+    //                          this rule only validates the wishlist doc
+    //                          part of that transaction)
+    //   requested → denied    (parent rejects with a reason)
+    //
+    // familyId / ownerUid / createdAt are immutable on update.
+    match /wishlistItems/{itemId} {
+      function isWishlistOwner() {
+        return resource.data.ownerUid == request.auth.uid;
+      }
+      function wishlistCreateOk() {
+        return isActive()
+          && incomingSameFamily()
+          && request.resource.data.ownerUid == request.auth.uid
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 120
+          && isValidMoneyInt(request.resource.data.costCents)
+          && request.resource.data.costCents > 0
+          && request.resource.data.status == 'wishing'
+          && request.resource.data.keys().hasAll(
+               ['familyId', 'ownerUid', 'title', 'costCents', 'status', 'createdAt'])
+          && request.resource.data.keys().hasOnly(
+               ['familyId', 'ownerUid', 'title', 'costCents', 'status',
+                'savingsGoalId', 'deniedReason', 'createdAt', 'requestedAt',
+                'resolvedAt']);
+      }
+      // Status transitions (server-enforced state machine):
+      //  - The OWNER can flip status between 'wishing' and 'requested'. They
+      //    cannot flip to 'redeemed' or 'denied' (parent-only).
+      //  - A PARENT can flip 'requested' → 'redeemed' or 'denied'. They
+      //    cannot flip back to 'wishing' or 'requested' (that would replay
+      //    a redemption).
+      // Other field edits (title, costCents, savingsGoalId) are owner-only
+      // and only while status == 'wishing' (you can't edit the cost of a
+      // request that's already in front of a parent).
+      function wishlistUpdateOk() {
+        return isActive()
+          && sameFamily(resource)
+          && incomingSameFamily()
+          && immutable('familyId')
+          && immutable('ownerUid')
+          && immutable('createdAt')
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 120
+          && isValidMoneyInt(request.resource.data.costCents)
+          && request.resource.data.costCents > 0
+          && (
+            // Owner branch: edit content while wishing, OR toggle status
+            // between wishing ↔ requested (the rest of the body unchanged).
+            (isWishlistOwner()
+              && (
+                (resource.data.status == 'wishing'
+                  && request.resource.data.status in ['wishing', 'requested'])
+                || (resource.data.status == 'requested'
+                    && request.resource.data.status == 'wishing')
+              )
+            )
+            // Parent branch: resolve a 'requested' item to redeemed/denied.
+            // The balance debit + ledger entry are validated by their own
+            // collections' rules (parentAllowanceDebit + txnCreateHardened);
+            // here we only police the wishlist doc.
+            || (isParent()
+                && resource.data.status == 'requested'
+                && request.resource.data.status in ['redeemed', 'denied'])
+          );
+      }
+      allow get: if isActive() && sameFamily(resource);
+      allow list: if isActive() && sameFamily(resource);
+      allow create: if wishlistCreateOk();
+      allow update: if wishlistUpdateOk();
+      // DELETE — the owner can delete their OWN item (any status); a parent
+      // can delete any same-family item (cleanup of stale wishes). Members
+      // can't delete other members' items.
+      allow delete: if isActive() && sameFamily(resource)
+                    && (isWishlistOwner() || isParent());
     }
 
     // --- default deny ------------------------------------------------------
