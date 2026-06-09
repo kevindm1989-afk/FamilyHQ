@@ -621,7 +621,8 @@
     "markDoneLabel": "Marquer comme terminé : {{title}}",
     "recurrence": {
       "weekly": "Hebdomadaire",
-      "biweekly": "Aux deux semaines"
+      "biweekly": "Aux deux semaines",
+      "monthly": "Mensuel"
     },
     "memberBalancesLabel": "Soldes des membres",
     "awaitingApprovalLabel": "En attente d’approbation",

@@ -116,6 +116,11 @@ const RECURRENCE_I18N_KEY: Record<RecurrenceFrequency, string | null> = {
   none: null,
   weekly: 'chores.recurrence.weekly',
   biweekly: 'chores.recurrence.biweekly',
+  // monthly is unused on the chores surface today (the AddChore picker
+  // only offers weekly/biweekly), but the RecurrenceFrequency union was
+  // widened for the Recurring calendar events feature. Keep the map
+  // exhaustive — a future "monthly chore" toggle just needs i18n copy.
+  monthly: 'chores.recurrence.monthly',
 };
 
 function formatMoney(value: number): string {

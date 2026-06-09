@@ -621,7 +621,8 @@
     "markDoneLabel": "Mark done: {{title}}",
     "recurrence": {
       "weekly": "Weekly",
-      "biweekly": "Biweekly"
+      "biweekly": "Biweekly",
+      "monthly": "Monthly"
     },
     "memberBalancesLabel": "Member balances",
     "awaitingApprovalLabel": "Awaiting approval",

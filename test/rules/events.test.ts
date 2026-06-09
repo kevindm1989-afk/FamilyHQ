@@ -398,3 +398,83 @@ describe('events DELETE — PARENT-ONLY, own family (Task 13 tightening)', () =>
     await assertFails(deleteDoc(doc(db, 'events', EVENT_A)));
   });
 });
+
+describe('events CREATE — recurrence add-on fields (Recurring calendar events)', () => {
+  it('a PARENT CAN create an event with recurrenceFrequency + recurrenceCount + recurrenceGroupId', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertSucceeds(
+      setDoc(
+        doc(db, 'events', 'recurring-ok'),
+        eventDoc({
+          recurrenceFrequency: 'weekly',
+          recurrenceCount: 4,
+          recurrenceGroupId: 'g-abc',
+        }),
+      ),
+    );
+  });
+
+  it('a PARENT CAN still create a one-off event WITHOUT any recurrence fields (backward-compatible)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertSucceeds(setDoc(doc(db, 'events', 'one-off-still-ok'), eventDoc()));
+  });
+
+  it('CANNOT create with a recurrenceFrequency outside the enum', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(
+        doc(db, 'events', 'bad-frequency'),
+        eventDoc({ recurrenceFrequency: 'yearly', recurrenceCount: 4, recurrenceGroupId: 'g' }),
+      ),
+    );
+  });
+
+  it('CANNOT create with recurrenceCount > 26 (rule cap)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(
+        doc(db, 'events', 'too-many'),
+        eventDoc({
+          recurrenceFrequency: 'weekly',
+          recurrenceCount: 27,
+          recurrenceGroupId: 'g',
+        }),
+      ),
+    );
+  });
+
+  it('CANNOT create with recurrenceCount < 1 (rule floor)', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(
+        doc(db, 'events', 'zero-count'),
+        eventDoc({
+          recurrenceFrequency: 'weekly',
+          recurrenceCount: 0,
+          recurrenceGroupId: 'g',
+        }),
+      ),
+    );
+  });
+
+  it('CANNOT create with a smuggled key alongside the recurrence fields', async () => {
+    const db = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, setDoc } = await import('firebase/firestore');
+    await assertFails(
+      setDoc(
+        doc(db, 'events', 'smuggled'),
+        eventDoc({
+          recurrenceFrequency: 'weekly',
+          recurrenceCount: 4,
+          recurrenceGroupId: 'g',
+          secret: 'pwned',
+        }),
+      ),
+    );
+  });
+});

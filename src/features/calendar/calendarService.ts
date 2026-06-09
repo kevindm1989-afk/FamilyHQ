@@ -27,11 +27,15 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
+  query,
   serverTimestamp,
   updateDoc,
+  where,
+  writeBatch,
   type Firestore,
 } from 'firebase/firestore';
-import type { EventTag, FamilyEvent, Role } from '../../lib/types';
+import type { EventTag, FamilyEvent, RecurrenceFrequency, Role } from '../../lib/types';
 
 /** An event enriched with its document id for list rendering + edit/delete. */
 export interface EventWithId extends FamilyEvent {
@@ -54,10 +58,22 @@ export class EventActionError extends Error {
 
 const EVENTS_COLLECTION = 'events';
 
+/** Max occurrences in a single recurring series. The rule layer enforces the
+ *  same cap (`recurrenceCount <= 26` in firestore.rules). 26 = ~6 months at
+ *  weekly, ~1 year at biweekly, ~2 years at monthly — a sensible upper bound
+ *  for a family calendar before it makes more sense to recreate the series. */
+export const RECURRENCE_MAX = 26;
+
 /**
  * Input to create an event. The caller passes only the content + its own
  * identity + family — never a forged familyId/createdBy. `date` is an ISO
  * datetime string (carries the time-of-day).
+ *
+ * Optional recurrence fields make a single create-call spawn N siblings:
+ *  - `recurrenceFrequency` — 'weekly' | 'biweekly' | 'monthly'
+ *  - `recurrenceCount` — 2-26 (1 = a single occurrence == one-off)
+ * When `recurrenceFrequency` is omitted or `'none'`, the service writes a
+ * single one-off event with no recurrence fields (legacy shape).
  */
 export interface CreateEventInput {
   title: string;
@@ -66,6 +82,8 @@ export interface CreateEventInput {
   tag: EventTag;
   familyId: string;
   createdBy: string;
+  recurrenceFrequency?: RecurrenceFrequency;
+  recurrenceCount?: number;
 }
 
 /** Fields an edit may change. familyId/createdBy/createdAt are NOT editable. */
@@ -88,18 +106,187 @@ export async function createEvent(deps: { db: Firestore }, input: CreateEventInp
     throw new EventActionError();
   }
 
+  const frequency = input.recurrenceFrequency;
+  const isRecurring =
+    frequency !== undefined &&
+    frequency !== 'none' &&
+    input.recurrenceCount !== undefined &&
+    input.recurrenceCount > 1;
+
+  // One-off path (the existing behavior — keeps the locked 7-field shape
+  // for events created without recurrence).
+  if (!isRecurring) {
+    try {
+      await addDoc(collection(deps.db, EVENTS_COLLECTION), {
+        title,
+        description: input.description,
+        date: input.date,
+        tag: input.tag,
+        familyId: input.familyId,
+        createdBy: input.createdBy,
+        createdAt: serverTimestamp(),
+      });
+    } catch {
+      throw new EventActionError();
+    }
+    return;
+  }
+
+  // Recurring path: spawn N siblings in a single batch.
+  const count = Math.min(Math.max(1, input.recurrenceCount!), RECURRENCE_MAX);
+  if (count <= 1) {
+    // Defensive: count of 1 collapses to one-off; recurse via the same path
+    // with the recurrence keys stripped (exactOptionalPropertyTypes-safe).
+    const { recurrenceFrequency: _rf, recurrenceCount: _rc, ...oneOffInput } = input;
+    void _rf;
+    void _rc;
+    return createEvent(deps, oneOffInput);
+  }
+  const groupId = newRecurrenceGroupId();
+  const dates = expandRecurrenceDates(input.date, frequency!, count);
+  if (dates === null) {
+    // Malformed source date — surface the same user-safe error.
+    throw new EventActionError();
+  }
+
   try {
-    await addDoc(collection(deps.db, EVENTS_COLLECTION), {
-      title,
-      description: input.description,
-      date: input.date,
-      tag: input.tag,
-      familyId: input.familyId,
-      createdBy: input.createdBy,
-      createdAt: serverTimestamp(),
-    });
+    const batch = writeBatch(deps.db);
+    const col = collection(deps.db, EVENTS_COLLECTION);
+    for (const date of dates) {
+      const ref = doc(col);
+      batch.set(ref, {
+        title,
+        description: input.description,
+        date,
+        tag: input.tag,
+        familyId: input.familyId,
+        createdBy: input.createdBy,
+        createdAt: serverTimestamp(),
+        recurrenceFrequency: frequency,
+        recurrenceCount: count,
+        recurrenceGroupId: groupId,
+      });
+    }
+    await batch.commit();
   } catch {
-    // Never surface a raw Firebase code / PII to the caller.
+    throw new EventActionError();
+  }
+}
+
+/**
+ * Generate N occurrence dates starting at `sourceDate` (ISO datetime,
+ * `YYYY-MM-DDThh:mm:ss...`) at the given frequency. Returns `null` on a
+ * malformed source date so the caller surfaces a user-safe error instead
+ * of throwing.
+ *
+ * Date arithmetic uses local-calendar `Date` math so a "weekly at 9am" event
+ * stays at 9am local across DST transitions (we add days, not 7×24h).
+ * Monthly is "same day-of-month next month"; when the source is Jan 31 and
+ * next month is Feb (no day 31), JS Date overflows to Mar 3 — we clamp to
+ * the last day of the target month instead so a "monthly on the 31st"
+ * series stays on the last day for short months.
+ */
+export function expandRecurrenceDates(
+  sourceDate: string,
+  frequency: RecurrenceFrequency,
+  count: number,
+): string[] | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(.*)$/.exec(sourceDate);
+  if (m === null) return null;
+  const [, y, mo, d, hh, mm, ss, rest] = m;
+  const year = Number.parseInt(y!, 10);
+  const month = Number.parseInt(mo!, 10);
+  const day = Number.parseInt(d!, 10);
+  const hour = Number.parseInt(hh!, 10);
+  const minute = Number.parseInt(mm!, 10);
+  const second = Number.parseInt(ss!, 10);
+  if (
+    !Number.isFinite(year) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(day) ||
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute) ||
+    !Number.isFinite(second)
+  ) {
+    return null;
+  }
+
+  const out: string[] = [sourceDate];
+  if (count <= 1) return out;
+
+  const stepDays = frequency === 'weekly' ? 7 : frequency === 'biweekly' ? 14 : 0;
+  const fmt = (dt: Date): string => {
+    const yy = String(dt.getFullYear()).padStart(4, '0');
+    const mmm = String(dt.getMonth() + 1).padStart(2, '0');
+    const dd = String(dt.getDate()).padStart(2, '0');
+    const HH = String(dt.getHours()).padStart(2, '0');
+    const MM = String(dt.getMinutes()).padStart(2, '0');
+    const SS = String(dt.getSeconds()).padStart(2, '0');
+    return `${yy}-${mmm}-${dd}T${HH}:${MM}:${SS}${rest ?? ''}`;
+  };
+
+  for (let i = 1; i < count; i++) {
+    if (frequency === 'monthly') {
+      const targetMonthIdx = month - 1 + i; // 0-based month + i
+      const targetYear = year + Math.floor(targetMonthIdx / 12);
+      const targetMonth = targetMonthIdx % 12; // 0-based
+      // Clamp day to the last day of the target month so "monthly on Jan 31"
+      // becomes Feb 28/29 + Mar 31 + Apr 30 …, not Mar 3 (the JS overflow).
+      const lastDayOfTarget = new Date(targetYear, targetMonth + 1, 0).getDate();
+      const targetDay = Math.min(day, lastDayOfTarget);
+      out.push(fmt(new Date(targetYear, targetMonth, targetDay, hour, minute, second)));
+    } else {
+      const dt = new Date(year, month - 1, day + stepDays * i, hour, minute, second);
+      out.push(fmt(dt));
+    }
+  }
+  return out;
+}
+
+/**
+ * Generate a recurrence-group id. Uses `crypto.randomUUID()` when available
+ * (every modern browser + Node 19+); falls back to a timestamp+random string
+ * for older test envs. Same pattern as the checklist-item ids.
+ */
+function newRecurrenceGroupId(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  return `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Delete every event in a recurrence series. When `fromDate` is provided,
+ * only siblings whose `date >= fromDate` are deleted ("this and all future");
+ * absent, the entire series is removed. The query is filtered by both
+ * `familyId` (rule scope) and `recurrenceGroupId` so a parent never deletes
+ * another family's series even if the UI passed a wrong groupId.
+ */
+export async function deleteEventSeries(
+  deps: { db: Firestore },
+  familyId: string,
+  recurrenceGroupId: string,
+  fromDate?: string,
+): Promise<void> {
+  try {
+    const snap = await getDocs(
+      query(
+        collection(deps.db, EVENTS_COLLECTION),
+        where('familyId', '==', familyId),
+        where('recurrenceGroupId', '==', recurrenceGroupId),
+      ),
+    );
+    const batch = writeBatch(deps.db);
+    let touched = 0;
+    snap.forEach((d) => {
+      const data = d.data() as { date?: unknown };
+      if (fromDate === undefined || (typeof data.date === 'string' && data.date >= fromDate)) {
+        batch.delete(d.ref);
+        touched += 1;
+      }
+    });
+    if (touched > 0) await batch.commit();
+  } catch {
     throw new EventActionError();
   }
 }
