@@ -22,6 +22,7 @@ import type {
   Invite,
   Post,
   SavingsGoal,
+  ShoppingItem,
   Todo,
   Transaction,
   User,
@@ -69,6 +70,9 @@ export const checklistInstanceConverter: FirestoreDataConverter<ChecklistInstanc
   makeConverter<ChecklistInstance>();
 
 export const birthdayConverter: FirestoreDataConverter<Birthday> = makeConverter<Birthday>();
+
+export const shoppingItemConverter: FirestoreDataConverter<ShoppingItem> =
+  makeConverter<ShoppingItem>();
 
 /**
  * Converter for `userPrivate/{uid}` (privacy finding 2). Shapes the adult email

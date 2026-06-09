@@ -939,6 +939,44 @@ service cloud.firestore {
       allow delete: if isActive() && sameFamily(resource);
     }
 
+    // --- shoppingItems (shared family shopping list) ------------------------
+    // Authority: ANY active same-family caller has full CRUD (per spec).
+    // addedBy is recorded for audit but does NOT restrict edits — anyone in
+    // the family can check off, edit, or delete any item. familyId + addedBy
+    // + createdAt are immutable on update.
+    match /shoppingItems/{itemId} {
+      function shoppingCreateOk() {
+        return isActive()
+          && incomingSameFamily()
+          && request.resource.data.addedBy == request.auth.uid
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 200
+          && request.resource.data.isChecked == false
+          && request.resource.data.keys().hasAll(
+               ['familyId', 'addedBy', 'name', 'isChecked', 'createdAt'])
+          && request.resource.data.keys().hasOnly(
+               ['familyId', 'addedBy', 'name', 'quantity', 'category',
+                'isChecked', 'checkedAt', 'checkedBy', 'createdAt']);
+      }
+      function shoppingUpdateOk() {
+        return isActive()
+          && sameFamily(resource)
+          && incomingSameFamily()
+          && immutable('familyId')
+          && immutable('addedBy')
+          && immutable('createdAt')
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 200;
+      }
+      allow get: if isActive() && sameFamily(resource);
+      allow list: if isActive() && sameFamily(resource);
+      allow create: if shoppingCreateOk();
+      allow update: if shoppingUpdateOk();
+      allow delete: if isActive() && sameFamily(resource);
+    }
+
     // --- default deny ------------------------------------------------------
     match /{document=**} {
       allow read, write: if false;
