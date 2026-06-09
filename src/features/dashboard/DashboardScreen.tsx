@@ -315,7 +315,7 @@ function MemberSections(props: DashboardScreenProps): ReactElement {
           renderItems={(items) =>
             selectRecent(items, SECTION_CAP).map((txn) => (
               <ListRow key={txn.id}>
-                <span className="flex-1 text-body font-semibold text-ink">{txn.choreTitle}</span>
+                <span className="flex-1 text-body font-semibold text-ink">{txn.sourceLabel}</span>
                 <time
                   dateTime={new Date(txn.createdAt).toISOString()}
                   className="text-meta text-ink-mute"

@@ -160,21 +160,24 @@ export interface Chore {
  * Append-only ledger (ADR-0004).
  *
  * The collection holds two row shapes that share the same required keys:
- *  - `type: 'earning'` — chore-driven credit. `choreId` + `choreTitle`
- *    point at the approved chore.
- *  - `type: 'spending'` — wishlist-driven debit. `choreId` + `choreTitle`
- *    are reused as generic "source identity + display label" — they hold
- *    the `wishlistItemId` and `wishlistTitle`. The field names are
- *    historical; renaming them to `sourceId` + `sourceLabel` is a
- *    follow-up. `amount` stays a positive integer-cents value (the SIGN
+ *  - `type: 'earning'` — chore-driven credit. `sourceId` + `sourceLabel`
+ *    point at the approved chore (chore id + chore title).
+ *  - `type: 'spending'` — wishlist-driven debit. `sourceId` + `sourceLabel`
+ *    point at the redeemed wishlist item (wishlist-item id + wishlist
+ *    title). `amount` is always a positive integer-cents value (the SIGN
  *    is implied by `type`).
+ *
+ * Note: these fields were originally named `choreId` / `choreTitle` when
+ * the ledger only held chore-earning rows. They were generalised to
+ * `sourceId` / `sourceLabel` as part of the wishlist-redemption follow-up
+ * once both row shapes shared the storage.
  */
 export interface Transaction {
   uid: string;
   /** Source identity — chore id for earnings, wishlist-item id for spending. */
-  choreId: string;
+  sourceId: string;
   /** Source display label — chore title for earnings, wishlist title for spending. */
-  choreTitle: string;
+  sourceLabel: string;
   /**
    * INTEGER CENTS (positive). For 'earning' this is the chore reward; for
    * 'spending' this is the absolute cost the parent debited. `>= 0`,

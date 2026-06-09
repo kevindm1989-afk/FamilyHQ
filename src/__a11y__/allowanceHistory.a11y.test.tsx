@@ -23,8 +23,8 @@ describe('a11y — AllowanceHistoryScreen', () => {
         members={[child]}
         feed={{
           transactions: [
-            mkTxn({ id: 'tx1', choreTitle: 'Sweep porch', amount: 425 }),
-            mkTxn({ id: 'tx2', choreTitle: 'Dishes', amount: 200 }),
+            mkTxn({ id: 'tx1', sourceLabel: 'Sweep porch', amount: 425 }),
+            mkTxn({ id: 'tx2', sourceLabel: 'Dishes', amount: 200 }),
           ],
           loading: false,
           error: null,
@@ -43,7 +43,7 @@ describe('a11y — AllowanceHistoryScreen', () => {
         selectedMember={{ uid: child.id, name: child.name, balanceCents: child.allowanceBalance }}
         members={[child, childB]}
         feed={{
-          transactions: [mkTxn({ id: 'tx1', choreTitle: 'Sweep porch', amount: 425 })],
+          transactions: [mkTxn({ id: 'tx1', sourceLabel: 'Sweep porch', amount: 425 })],
           loading: false,
           error: null,
           refresh: noopAsync,

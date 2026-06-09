@@ -76,7 +76,7 @@ export function useAllowanceHistory(
   const refreshToken = useRef(0);
   const dbRef = useRef<Firestore | null>(null);
   // Lesson 2026-05-28 #2: sign by id + every field the screen reads (here:
-  // choreTitle, amount, createdAt). An id-only signature would drop a
+  // sourceLabel, amount, createdAt). An id-only signature would drop a
   // ledger-row mutation on the same id (e.g. an admin amount correction) as
   // a redundant re-fire. The dedupe still short-circuits a true cache
   // re-emission. Reset per effect run so a uid/familyId change does not carry
@@ -111,7 +111,7 @@ export function useAllowanceHistory(
             const sig = docs
               .map((d) => {
                 const data = d.data() as Transaction & { createdAt: unknown };
-                return [d.id, data.choreTitle, String(data.amount), String(data.createdAt)].join(
+                return [d.id, data.sourceLabel, String(data.amount), String(data.createdAt)].join(
                   ':',
                 );
               })

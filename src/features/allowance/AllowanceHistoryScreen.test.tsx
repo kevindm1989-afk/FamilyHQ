@@ -12,7 +12,7 @@
  * State traceability (designer-defined states):
  *  - loading        -> Skeleton (role=status, aria-busy)
  *  - empty          -> friendly EmptyState ("No allowance yet"-style)
- *  - error          -> generic toast (no raw Firebase text / no PII choreTitle)
+ *  - error          -> generic toast (no raw Firebase text / no PII sourceLabel)
  *  - balance (top)   -> formatMoney(balanceCents); non-finite -> indicator
  *  - list           -> reverse-chron, grouped by day; row: title, amount, <time>
  *  - parent picker  -> toggle <button aria-pressed> per child (member mode: none)
@@ -48,8 +48,8 @@ const PARENT_VIEWER = { uid: 'uid-parent-a', name: 'Dana Rivera', role: 'parent'
 function mkTxn(over: Partial<TransactionWithId> & { id: string }): TransactionWithId {
   return {
     uid: 'uid-child-a',
-    choreId: 'chore-1',
-    choreTitle: 'Take out the trash',
+    sourceId: 'chore-1',
+    sourceLabel: 'Take out the trash',
     amount: 300,
     type: 'earning',
     familyId: 'fam-A',
@@ -171,9 +171,9 @@ describe('AllowanceHistoryScreen — transaction list (reverse-chron, grouped by
     return renderScreen({
       feed: {
         transactions: [
-          mkTxn({ id: 't-new', choreTitle: 'Mow the lawn', amount: 500, createdAt: DAY_TODAY }),
-          mkTxn({ id: 't-mid', choreTitle: 'Wash dishes', amount: 225, createdAt: DAY_YESTERDAY }),
-          mkTxn({ id: 't-old', choreTitle: 'Walk the dog', amount: 150, createdAt: DAY_TWO_AGO }),
+          mkTxn({ id: 't-new', sourceLabel: 'Mow the lawn', amount: 500, createdAt: DAY_TODAY }),
+          mkTxn({ id: 't-mid', sourceLabel: 'Wash dishes', amount: 225, createdAt: DAY_YESTERDAY }),
+          mkTxn({ id: 't-old', sourceLabel: 'Walk the dog', amount: 150, createdAt: DAY_TWO_AGO }),
         ],
         loading: false,
         error: null,
@@ -247,9 +247,9 @@ describe('AllowanceHistoryScreen — transaction list (reverse-chron, grouped by
     renderScreen({
       feed: {
         transactions: [
-          mkTxn({ id: 't1', choreTitle: 'Mow the lawn', amount: 500, createdAt: DAY_TODAY }),
-          mkTxn({ id: 't2', choreTitle: 'Wash dishes', amount: 225, createdAt: DAY_TODAY }),
-          mkTxn({ id: 't3', choreTitle: 'Walk the dog', amount: 150, createdAt: DAY_YESTERDAY }),
+          mkTxn({ id: 't1', sourceLabel: 'Mow the lawn', amount: 500, createdAt: DAY_TODAY }),
+          mkTxn({ id: 't2', sourceLabel: 'Wash dishes', amount: 225, createdAt: DAY_TODAY }),
+          mkTxn({ id: 't3', sourceLabel: 'Walk the dog', amount: 150, createdAt: DAY_YESTERDAY }),
         ],
         loading: false,
         error: null,
@@ -276,7 +276,7 @@ describe('AllowanceHistoryScreen — error state (generic, PII-free; A1: inline 
   // for a load error.
   const SAFE_ERROR = 'We could not load the allowance history. Please try again.';
 
-  it('shows the user-safe copy in the inline role="alert" (no raw Firebase text, no choreTitle PII)', async () => {
+  it('shows the user-safe copy in the inline role="alert" (no raw Firebase text, no sourceLabel PII)', async () => {
     renderScreen({
       feed: {
         transactions: [],
@@ -319,7 +319,7 @@ describe('AllowanceHistoryScreen — honesty (ADR-0004: balance and list are ind
       selectedMember: { uid: 'uid-child-a', name: 'Maya Rivera', balanceCents: 3850 },
       feed: {
         transactions: [
-          mkTxn({ id: 't1', choreTitle: 'Mow the lawn', amount: 500, createdAt: DAY_TODAY }),
+          mkTxn({ id: 't1', sourceLabel: 'Mow the lawn', amount: 500, createdAt: DAY_TODAY }),
         ],
         loading: false,
         error: null,
@@ -337,7 +337,7 @@ describe('AllowanceHistoryScreen — a11y', () => {
     renderScreen({
       feed: {
         transactions: [
-          mkTxn({ id: 't1', choreTitle: 'Mow the lawn', amount: 500, createdAt: DAY_TODAY }),
+          mkTxn({ id: 't1', sourceLabel: 'Mow the lawn', amount: 500, createdAt: DAY_TODAY }),
         ],
         loading: false,
         error: null,
@@ -360,7 +360,7 @@ describe('AllowanceHistoryScreen — a11y', () => {
     renderScreen({
       feed: {
         transactions: [
-          mkTxn({ id: 't1', choreTitle: 'Mow the lawn', amount: 500, createdAt: DAY_TODAY }),
+          mkTxn({ id: 't1', sourceLabel: 'Mow the lawn', amount: 500, createdAt: DAY_TODAY }),
         ],
         loading: false,
         error: null,
@@ -383,7 +383,7 @@ describe('AllowanceHistoryScreen — a11y', () => {
     renderScreen({
       feed: {
         transactions: [
-          mkTxn({ id: 't1', choreTitle: 'Mow the lawn', amount: 500, createdAt: DAY_TODAY }),
+          mkTxn({ id: 't1', sourceLabel: 'Mow the lawn', amount: 500, createdAt: DAY_TODAY }),
         ],
         loading: false,
         error: null,
@@ -409,7 +409,7 @@ describe('AllowanceHistoryScreen — MEMBER mode (own ledger, NO picker)', () =>
         mkMember({ id: 'uid-child-b', name: 'Ben Rivera' }),
       ],
       feed: {
-        transactions: [mkTxn({ id: 't1', choreTitle: 'Mow the lawn', amount: 500 })],
+        transactions: [mkTxn({ id: 't1', sourceLabel: 'Mow the lawn', amount: 500 })],
         loading: false,
         error: null,
         refresh: vi.fn(),
@@ -481,7 +481,7 @@ describe('AllowanceHistoryScreen — PARENT mode (member picker)', () => {
     renderParent({
       selectedMember: { uid: 'uid-child-a', name: 'Maya Rivera', balanceCents: 3850 },
       feed: {
-        transactions: [mkTxn({ id: 't1', choreTitle: 'Mow the lawn', amount: 500 })],
+        transactions: [mkTxn({ id: 't1', sourceLabel: 'Mow the lawn', amount: 500 })],
         loading: false,
         error: null,
         refresh: vi.fn(),
@@ -567,7 +567,7 @@ describe('AllowanceHistoryScreen — F2: no cross-child flash (rows must match t
           mkTxn({
             id: 't-a1',
             uid: 'uid-child-a',
-            choreTitle: 'Maya secret chore',
+            sourceLabel: 'Maya secret chore',
             amount: 777,
             createdAt: DAY_TODAY,
           }),
@@ -601,7 +601,7 @@ describe('AllowanceHistoryScreen — F2: no cross-child flash (rows must match t
           mkTxn({
             id: 't-b1',
             uid: 'uid-child-b',
-            choreTitle: 'Ben mows lawn',
+            sourceLabel: 'Ben mows lawn',
             amount: 425,
             createdAt: DAY_TODAY,
           }),
@@ -634,7 +634,7 @@ describe('AllowanceHistoryScreen — F3 (screen layer): a uid that matches no ro
           mkTxn({
             id: 't-gone',
             uid: 'uid-deactivated',
-            choreTitle: 'Deactivated kid chore',
+            sourceLabel: 'Deactivated kid chore',
             amount: 600,
             createdAt: DAY_TODAY,
           }),
@@ -678,7 +678,7 @@ describe('AllowanceHistoryScreen — F4: day grouping uses the viewer’s LOCAL 
         transactions: [
           mkTxn({
             id: 't-evening',
-            choreTitle: 'Evening dishes',
+            sourceLabel: 'Evening dishes',
             amount: 300,
             createdAt: LATE_EVENING_LOCAL,
           }),
@@ -705,13 +705,13 @@ describe('AllowanceHistoryScreen — F4: day grouping uses the viewer’s LOCAL 
         transactions: [
           mkTxn({
             id: 't-e1',
-            choreTitle: 'Evening dishes',
+            sourceLabel: 'Evening dishes',
             amount: 300,
             createdAt: LATE_EVENING_LOCAL,
           }),
           mkTxn({
             id: 't-e2',
-            choreTitle: 'Evening trash',
+            sourceLabel: 'Evening trash',
             amount: 200,
             createdAt: SAME_LOCAL_EVENING,
           }),
@@ -741,7 +741,7 @@ describe('AllowanceHistoryScreen — F4: day grouping uses the viewer’s LOCAL 
         transactions: [
           mkTxn({
             id: 't-evening',
-            choreTitle: 'Evening dishes',
+            sourceLabel: 'Evening dishes',
             amount: 300,
             createdAt: LATE_EVENING_LOCAL,
           }),
@@ -765,7 +765,7 @@ describe('AllowanceHistoryScreen — F5: row amount goes through the same validi
     return renderScreen({
       feed: {
         transactions: [
-          mkTxn({ id, choreTitle: 'Gate me', amount, createdAt: DAY_TODAY }),
+          mkTxn({ id, sourceLabel: 'Gate me', amount, createdAt: DAY_TODAY }),
         ],
         loading: false,
         error: null,
@@ -818,7 +818,7 @@ describe('AllowanceHistoryScreen — A2: row exposes a robust accessible name (n
     renderScreen({
       feed: {
         transactions: [
-          mkTxn({ id: 't1', choreTitle: 'Mow the lawn', amount: 500, createdAt: DAY_TODAY }),
+          mkTxn({ id: 't1', sourceLabel: 'Mow the lawn', amount: 500, createdAt: DAY_TODAY }),
         ],
         loading: false,
         error: null,
@@ -846,7 +846,7 @@ describe('AllowanceHistoryScreen — A2: row exposes a robust accessible name (n
     renderScreen({
       feed: {
         transactions: [
-          mkTxn({ id: 't1', choreTitle: 'Mow the lawn', amount: 500, createdAt: DAY_TODAY }),
+          mkTxn({ id: 't1', sourceLabel: 'Mow the lawn', amount: 500, createdAt: DAY_TODAY }),
         ],
         loading: false,
         error: null,
@@ -872,7 +872,7 @@ describe('AllowanceHistoryScreen — spending rows (Feature 4 — wishlist redem
           mkTxn({
             id: 't1',
             type: 'spending',
-            choreTitle: 'Nintendo Switch',
+            sourceLabel: 'Nintendo Switch',
             amount: 30000,
           }),
         ],
@@ -891,7 +891,7 @@ describe('AllowanceHistoryScreen — spending rows (Feature 4 — wishlist redem
           mkTxn({
             id: 't1',
             type: 'spending',
-            choreTitle: 'Lego set',
+            sourceLabel: 'Lego set',
             amount: 5000,
           }),
         ],
@@ -912,7 +912,7 @@ describe('AllowanceHistoryScreen — spending rows (Feature 4 — wishlist redem
           mkTxn({
             id: 't1',
             type: 'earning',
-            choreTitle: 'Vacuum',
+            sourceLabel: 'Vacuum',
             amount: 200,
           }),
         ],
@@ -928,11 +928,11 @@ describe('AllowanceHistoryScreen — spending rows (Feature 4 — wishlist redem
     renderScreen({
       feed: {
         transactions: [
-          mkTxn({ id: 't1', type: 'earning', choreTitle: 'Vacuum', amount: 200, createdAt: DAY_TODAY }),
+          mkTxn({ id: 't1', type: 'earning', sourceLabel: 'Vacuum', amount: 200, createdAt: DAY_TODAY }),
           mkTxn({
             id: 't2',
             type: 'spending',
-            choreTitle: 'Pizza',
+            sourceLabel: 'Pizza',
             amount: 1500,
             createdAt: DAY_TODAY + 1000,
           }),
@@ -953,7 +953,7 @@ describe('AllowanceHistoryScreen — spending rows (Feature 4 — wishlist redem
           mkTxn({
             id: 't1',
             type: 'spending',
-            choreTitle: 'Movie ticket',
+            sourceLabel: 'Movie ticket',
             amount: 1200,
           }),
         ],

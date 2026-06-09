@@ -9,7 +9,7 @@
  *   (1) re-reads the chore; ABORTS unless status=='complete' AND same family,
  *   (2) sets status='approved',
  *   (3) increment(users/{assignedTo}.allowanceBalance, dollarValue),
- *   (4) creates transactions/{id} = {uid, choreId, choreTitle, amount, type:
+ *   (4) creates transactions/{id} = {uid, sourceId, sourceLabel, amount, type:
  *       'earning', familyId, createdAt}.
  * Idempotency is the STATUS GUARD: a second approve re-reads status!='complete'
  * and aborts, so the balance is credited EXACTLY once and exactly one ledger
@@ -43,7 +43,7 @@ import { FAMILY_A, FAMILY_B, UID, getEnv, seedBaseline, teardownEnv } from './he
 let env: Awaited<ReturnType<typeof getEnv>>;
 
 // IMPORTANT: the baseline seed's chore-${FAMILY_A} ALREADY has a matching ledger
-// doc txn-${FAMILY_A} (same choreId), so approving it would make the
+// doc txn-${FAMILY_A} (same sourceId), so approving it would make the
 // "exactly one ledger doc" count ambiguous. We therefore approve a DEDICATED,
 // locally-seeded family-A chore (assigned to memberA, dollarValue 3) that has NO
 // pre-existing ledger doc, so the credit/ledger counts are unambiguous.
@@ -55,7 +55,7 @@ const CHORE_DOLLAR_VALUE = 300; // $3.00 in integer cents
 
 /** Seed the dedicated approval chore (family A, assignedTo memberA, pending,
  * dollarValue 300 cents = $3.00) with rules disabled. No ledger doc references
- * its choreId, so countTxnsForChore(CHORE_A) starts at 0. */
+ * its sourceId, so countTxnsForChore(CHORE_A) starts at 0. */
 async function seedApprovalChore(): Promise<void> {
   await env.withSecurityRulesDisabled(async (ctx) => {
     const { doc, setDoc } = await import('firebase/firestore');
@@ -97,15 +97,15 @@ async function readBalance(uid: string): Promise<number> {
   return bal;
 }
 
-/** Count ledger docs for a given choreId with rules disabled (ground truth for
- * the "exactly one transaction written" assertion). */
+/** Count ledger docs for a given chore (looked up by sourceId) with rules
+ * disabled (ground truth for the "exactly one transaction written" assertion). */
 async function countTxnsForChore(choreId: string): Promise<number> {
   let n = -1;
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     const { collection, getDocs, query, where } = await import('firebase/firestore');
     const snap = await getDocs(
-      query(collection(db, 'transactions'), where('choreId', '==', choreId)),
+      query(collection(db, 'transactions'), where('sourceId', '==', choreId)),
     );
     n = snap.size;
   });
@@ -142,8 +142,8 @@ async function runApproval(
     });
     tx.set(doc(collection(db, 'transactions'), txnId), {
       uid: chore.assignedTo,
-      choreId,
-      choreTitle: chore.title,
+      sourceId: choreId,
+      sourceLabel: chore.title,
       amount: chore.dollarValue,
       type: 'earning',
       familyId: chore.familyId,
@@ -336,8 +336,8 @@ describe('M27/M28 authority: a MEMBER cannot drive the approval credit path thro
     await assertFails(
       setDoc(doc(db, 'transactions', 'member-self-earning'), {
         uid: UID.memberA,
-        choreId: CHORE_A,
-        choreTitle: 'Take out trash',
+        sourceId: CHORE_A,
+        sourceLabel: 'Take out trash',
         amount: 100,
         type: 'earning',
         familyId: FAMILY_A,
@@ -392,8 +392,8 @@ describe('transactions: shape-lock, type/amount validation, append-only, scoped 
     await assertSucceeds(
       setDoc(doc(db, 'transactions', 'well-formed'), {
         uid: UID.memberA,
-        choreId: CHORE_A,
-        choreTitle: 'Take out trash',
+        sourceId: CHORE_A,
+        sourceLabel: 'Take out trash',
         amount: 3,
         type: 'earning',
         familyId: FAMILY_A,
@@ -408,8 +408,8 @@ describe('transactions: shape-lock, type/amount validation, append-only, scoped 
     await assertFails(
       setDoc(doc(db, 'transactions', 'extra-field'), {
         uid: UID.memberA,
-        choreId: CHORE_A,
-        choreTitle: 'Take out trash',
+        sourceId: CHORE_A,
+        sourceLabel: 'Take out trash',
         amount: 3,
         type: 'earning',
         familyId: FAMILY_A,
@@ -425,8 +425,8 @@ describe('transactions: shape-lock, type/amount validation, append-only, scoped 
     await assertFails(
       setDoc(doc(db, 'transactions', 'missing-field'), {
         uid: UID.memberA,
-        choreId: CHORE_A,
-        choreTitle: 'Take out trash',
+        sourceId: CHORE_A,
+        sourceLabel: 'Take out trash',
         amount: 3,
         // type missing
         familyId: FAMILY_A,
@@ -444,8 +444,8 @@ describe('transactions: shape-lock, type/amount validation, append-only, scoped 
     await assertFails(
       setDoc(doc(db, 'transactions', 'bad-type'), {
         uid: UID.memberA,
-        choreId: CHORE_A,
-        choreTitle: 'Take out trash',
+        sourceId: CHORE_A,
+        sourceLabel: 'Take out trash',
         amount: 3,
         type: 'transfer', // not in the allowed union
         familyId: FAMILY_A,
@@ -460,8 +460,8 @@ describe('transactions: shape-lock, type/amount validation, append-only, scoped 
     await assertFails(
       setDoc(doc(db, 'transactions', 'negative-amount'), {
         uid: UID.memberA,
-        choreId: CHORE_A,
-        choreTitle: 'Take out trash',
+        sourceId: CHORE_A,
+        sourceLabel: 'Take out trash',
         amount: -3,
         type: 'earning',
         familyId: FAMILY_A,
@@ -479,8 +479,8 @@ describe('transactions: shape-lock, type/amount validation, append-only, scoped 
     await assertFails(
       setDoc(doc(db, 'transactions', 'frac-amount'), {
         uid: UID.memberA,
-        choreId: CHORE_A,
-        choreTitle: 'Take out trash',
+        sourceId: CHORE_A,
+        sourceLabel: 'Take out trash',
         amount: 2.5,
         type: 'earning',
         familyId: FAMILY_A,
@@ -495,8 +495,8 @@ describe('transactions: shape-lock, type/amount validation, append-only, scoped 
     await assertFails(
       setDoc(doc(db, 'transactions', 'over-max-amount'), {
         uid: UID.memberA,
-        choreId: CHORE_A,
-        choreTitle: 'Take out trash',
+        sourceId: CHORE_A,
+        sourceLabel: 'Take out trash',
         amount: 100000001,
         type: 'earning',
         familyId: FAMILY_A,
@@ -511,8 +511,8 @@ describe('transactions: shape-lock, type/amount validation, append-only, scoped 
     await assertSucceeds(
       setDoc(doc(db, 'transactions', 'cents-amount'), {
         uid: UID.memberA,
-        choreId: CHORE_A,
-        choreTitle: 'Take out trash',
+        sourceId: CHORE_A,
+        sourceLabel: 'Take out trash',
         amount: 300,
         type: 'earning',
         familyId: FAMILY_A,
@@ -527,8 +527,8 @@ describe('transactions: shape-lock, type/amount validation, append-only, scoped 
     await assertFails(
       setDoc(doc(db, 'transactions', 'bad-uid'), {
         uid: UID.memberB, // a family-B member — not in parent A's family
-        choreId: CHORE_A,
-        choreTitle: 'Take out trash',
+        sourceId: CHORE_A,
+        sourceLabel: 'Take out trash',
         amount: 3,
         type: 'earning',
         familyId: FAMILY_A,
@@ -543,8 +543,8 @@ describe('transactions: shape-lock, type/amount validation, append-only, scoped 
     await assertFails(
       setDoc(doc(db, 'transactions', 'cross-family-txn'), {
         uid: UID.memberB,
-        choreId: CHORE_B,
-        choreTitle: 'Take out trash',
+        sourceId: CHORE_B,
+        sourceLabel: 'Take out trash',
         amount: 3,
         type: 'earning',
         familyId: FAMILY_B,
@@ -643,8 +643,8 @@ describe('transactions read scoping: subject member reads OWN, parent reads any 
       const { doc, setDoc } = await import('firebase/firestore');
       await setDoc(doc(ctx.firestore(), 'transactions', 'txn-deactivated-a'), {
         uid: UID.deactivatedA,
-        choreId: CHORE_A,
-        choreTitle: 'Take out trash',
+        sourceId: CHORE_A,
+        sourceLabel: 'Take out trash',
         amount: 3,
         type: 'earning',
         familyId: FAMILY_A,

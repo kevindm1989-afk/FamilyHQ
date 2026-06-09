@@ -87,8 +87,8 @@ export const mkPost = (over: Partial<PostWithId> & { id: string }): PostWithId =
 
 export const mkTxn = (over: Partial<TransactionWithId> & { id: string }): TransactionWithId => ({
   uid: 'uid-member-a',
-  choreId: 'chore-x',
-  choreTitle: `Earning ${over.id}`,
+  sourceId: 'chore-x',
+  sourceLabel: `Earning ${over.id}`,
   amount: 425,
   type: 'earning',
   familyId: 'fam-A',

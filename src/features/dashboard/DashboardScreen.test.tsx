@@ -102,8 +102,8 @@ function mkPost(over: Partial<PostWithId> & { id: string }): PostWithId {
 function mkTxn(over: Partial<TransactionWithId> & { id: string }): TransactionWithId {
   return {
     uid: 'uid-member-a',
-    choreId: 'chore-x',
-    choreTitle: `Earning ${over.id}`,
+    sourceId: 'chore-x',
+    sourceLabel: `Earning ${over.id}`,
     amount: 425, // $4.25 — distinct money surface
     type: 'earning',
     familyId: 'fam-A',
@@ -453,7 +453,7 @@ describe('DashboardScreen — single-error-channel (no toast spam, PII-safe inli
     expect(screen.queryAllByRole('alert')).toHaveLength(0);
   });
 
-  it('never leaks raw Firebase text or PII (choreTitle/child name) in a section error', () => {
+  it('never leaks raw Firebase text or PII (sourceLabel/child name) in a section error', () => {
     renderDash({
       role: 'parent',
       userName: parentUser.name,

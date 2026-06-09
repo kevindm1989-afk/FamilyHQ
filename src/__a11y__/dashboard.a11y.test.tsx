@@ -41,8 +41,8 @@ describe('a11y — DashboardScreen', () => {
         onNavigate={noop}
         onRefresh={noop}
         earnings={settled([
-          mkTxn({ id: 'tx1', choreTitle: 'Sweep porch', amount: 425 }),
-          mkTxn({ id: 'tx2', choreTitle: 'Dishes', amount: 200 }),
+          mkTxn({ id: 'tx1', sourceLabel: 'Sweep porch', amount: 425 }),
+          mkTxn({ id: 'tx2', sourceLabel: 'Dishes', amount: 200 }),
         ])}
         myChores={settled([
           mkChore({ id: 'c1', title: 'Take out trash', status: 'pending', dollarValue: 710 }),

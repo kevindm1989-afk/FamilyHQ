@@ -597,16 +597,15 @@ service cloud.firestore {
         return isParent()
           && incomingSameFamily()
           && request.resource.data.keys().hasOnly(
-               ['uid', 'choreId', 'choreTitle', 'amount', 'type', 'familyId', 'createdAt'])
+               ['uid', 'sourceId', 'sourceLabel', 'amount', 'type', 'familyId', 'createdAt'])
           && request.resource.data.keys().hasAll(
-               ['uid', 'choreId', 'choreTitle', 'amount', 'type', 'familyId', 'createdAt'])
+               ['uid', 'sourceId', 'sourceLabel', 'amount', 'type', 'familyId', 'createdAt'])
           // Two ledger row types are accepted (Allowance debit + wishlist
-          // redemption feature). Both share the same 7-field shape; for
-          // 'spending' rows the service writes the wishlistItemId into
-          // `choreId` and the wishlistTitle into `choreTitle` (the field
-          // names are historical — rename to sourceId/sourceLabel is a
-          // follow-up). Amount stays a positive int for both — the SIGN
-          // is implied by `type`.
+          // redemption feature). Both share the same 7-field shape: for
+          // 'earning' rows `sourceId`/`sourceLabel` hold the chore id +
+          // title; for 'spending' rows they hold the wishlist-item id +
+          // title. `amount` stays a positive int for both — the SIGN is
+          // implied by `type`.
           && request.resource.data.type in ['earning', 'spending']
           && isValidMoneyInt(request.resource.data.amount)
           && txnUidIsSameFamilyUser();

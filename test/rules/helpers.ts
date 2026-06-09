@@ -165,8 +165,8 @@ export async function seedBaseline(env: RulesTestEnvironment): Promise<void> {
       });
       await setDoc(doc(db, 'transactions', `txn-${fid}`), {
         uid: memberUid,
-        choreId: `chore-${fid}`,
-        choreTitle: 'Take out trash',
+        sourceId: `chore-${fid}`,
+        sourceLabel: 'Take out trash',
         amount: 3,
         type: 'earning',
         familyId: fid,

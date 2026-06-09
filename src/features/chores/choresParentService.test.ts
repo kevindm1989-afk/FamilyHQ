@@ -212,15 +212,15 @@ describe('approveChore — runs ONE transaction with the exact ADR-0004 writes',
     expect(txnSets, 'exactly one ledger doc is written').toHaveLength(1);
     const data = txnSets[0]!.data;
     expect(data.uid).toBe('uid-member-a');
-    expect(data.choreId).toBe('chore-1');
-    expect(data.choreTitle).toBe('Take out the trash');
+    expect(data.sourceId).toBe('chore-1');
+    expect(data.sourceLabel).toBe('Take out the trash');
     expect(data.amount).toBe(3);
     expect(data.type).toBe('earning');
     expect(data.familyId).toBe('fam-A');
     expect('createdAt' in data, 'the ledger doc carries createdAt').toBe(true);
     // No extra keys smuggled onto the ledger doc (shape lock).
     expect(Object.keys(data).sort()).toEqual(
-      ['amount', 'choreId', 'choreTitle', 'createdAt', 'familyId', 'type', 'uid'].sort(),
+      ['amount', 'createdAt', 'familyId', 'sourceId', 'sourceLabel', 'type', 'uid'].sort(),
     );
   });
 
