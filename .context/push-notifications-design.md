@@ -669,6 +669,10 @@ any code is written — at minimum covering:
 This gate is enforced by leaving the PR F section deliberately
 incomplete in this brief.
 
+**2026-06-11 update: the PR F design now lands in §14 below. The
+threat-modeler re-engagement gate above remains in force — no F-series
+implementation before the threat-modeler signs off on §14.**
+
 ---
 
 ## 13. Self-validation checklist
@@ -690,3 +694,341 @@ incomplete in this brief.
 - [x] No PI in lock-screen body, by construction (§1, §10, C3).
 - [x] ADR-0010 supersession is in the task list (M-OLD) and called out as a
       human gate (§10 item 6).
+
+---
+
+## 14. PR F — Scheduled push: event reminders + birthday alerts
+
+**Date:** 2026-06-11 · **Author:** architect · **Status:** design (MANDATORY
+threat-modeler gate before any F-series code — see §12 PR F gate).
+**Companion decision:** ADR-0016 (scheduled-trigger architecture; routed via
+memory PR).
+
+**User-locked scope (not relitigated here):** two kinds — event reminders and
+birthday alerts; both fire at 8am family-local time on the day of; one push
+per event/birthday; no advance notice, no digest.
+
+### 14.1 Trigger architecture (decision)
+
+**`onSchedule` v2 (`firebase-functions/v2/scheduler`), two functions, hourly
+cron `0 * * * *` pinned to UTC, region `northamerica-northeast1`.** Rejected
+the explicit Cloud Scheduler → Pub/Sub → `onMessagePublished` route. Full
+rationale in ADR-0016; the load-bearing points:
+
+- onSchedule's Cloud Scheduler job is **deploy-managed** (created/updated by
+  `firebase deploy`) and invokes the function over OIDC-authenticated HTTP.
+  There is **no Pub/Sub topic to IAM-audit** (no M41-analog publisher
+  surface); the audit shrinks to one negative assertion: the function's Cloud
+  Run service has **no public invoker** (`allUsers`/`allAuthenticatedUsers`
+  absent from `roles/run.invoker`). Explicit Scheduler+Pub/Sub adds a topic
+  (publisher IAM), a manually-created job (runbook drift), and an
+  attacker-influenceable message payload — three surfaces for zero benefit.
+- **Both handlers IGNORE the event payload entirely.** All inputs (time,
+  family set) are derived server-side from the clock and Firestore. Even a
+  forged invocation can only cause an on-schedule-equivalent sweep, which the
+  dedupe markers (§14.4) make a no-op.
+- Cost: Cloud Scheduler gives 3 free jobs/billing account. Two functions = 2
+  jobs. The 4th-and-later future scheduled job costs ~$0.10/mo — fine, but
+  noted as the precedent constraint.
+- Testability: the handler is a plain `async (event) => …` that ignores
+  `event`; unit tests call it directly with mocked Firestore/Messaging —
+  same mock surface as the existing callables minus the auth context.
+- **Relationship to ADR-0014:** not a reversal. ADR-0014 chose
+  client-callable because a user action's `runTransaction` is the natural
+  exactly-once point. Scheduled reminders have **no user action and no
+  running client at 8am** — exactly the case ADR-0014's reversibility note
+  anticipated ("server-driven digests, scheduled reminders"). Rule going
+  forward: **action-driven → callable (ADR-0014); time-driven → onSchedule
+  (ADR-0016).**
+
+Function names: **`notifyEventReminders`** and **`notifyBirthdays`** — the
+`notify` prefix is deliberate so the existing dashboard/metric filter
+(`resource.labels.service_name=~"^notify"`, `docs/runbooks/observability.md`)
+covers them with zero dashboard changes.
+
+### 14.2 Sweep cadence + timezone handling (decision)
+
+**Hourly sweep selecting families whose local hour is 8.** Per-family jobs
+rejected (job-count explosion past the 3-free tier); single fixed-timezone
+sweep rejected (wrong for any non-Eastern family, and the fix costs one
+field).
+
+- `families/{familyId}` gains an optional **`timezone`** field (IANA string,
+  e.g. `America/Toronto`). It does **not exist today** (`Family` =
+  `{familyName, createdBy, createdAt}`) — F1 adds it. Family-creation
+  bootstrap writes `'America/Toronto'`; **absent or invalid values fall back
+  to `America/Toronto` at sweep time** (no backfill migration needed).
+  Parent-editable under the existing parent-only `families` write rule; a
+  settings UI for it is **deferred** (F13, not in PR F).
+- Selection predicate: `localHourOf(now, family.timezone) === 8` via
+  `Intl.DateTimeFormat` (pure helper, tested under non-UTC `process.env.TZ`
+  per the 2026-05-28 lesson). Half-hour-offset zones (e.g. St. John's) fire
+  at 8:30 local — accepted. DST transitions occur at 2-3am, never 8am, so
+  "8am local" always exists exactly once per day.
+- The sweep **reads all `families` docs hourly** (no timezone index). MVP:
+  100 docs × 24 × 2 fns ≈ 4,800 reads/day; 10x: 48k/day — at the edge of the
+  50k/day free read quota. **Cliff:** at ~1,000+ families, add a
+  `tzHourBucket`-style indexed field and query instead of scan; noted, not
+  built (no premature genericness).
+- Day-of matching:
+  - **Events:** `events.date` is a family-local ISO datetime string, so the
+    family's local day matches on the string range
+    `date >= '<YYYY-MM-DD>T00:00:00' && date <= '<YYYY-MM-DD>T~'` scoped by
+    `familyId` — requires composite index `events(familyId asc, date asc)`
+    (F8). Events whose time-of-day is before 8am still get the 8am push
+    (after the fact) — accepted consequence of the locked "8am day-of" scope.
+  - **Birthdays:** equality query `familyId == fid && monthDay == 'MM-DD'`
+    (index merging; no composite). **Feb-29 policy:** in non-leap years the
+    Feb-28 sweep also matches `monthDay == '02-29'` (mirrors the
+    birthdaysService "celebrated Feb 28" comment). Pinned by test.
+  - **Scope note (decide-now, one-line veto):** the `birthdays` collection
+    also holds `type: 'anniversary'` docs. They fire under the same sweep
+    and the same category key (own body constant). Excluding them would
+    silently never alert on data users entered; including them costs nothing.
+
+### 14.3 Recipient selection + category keys (decision)
+
+- **Event reminders → every active family member** with
+  `pushEnabled && categories.eventReminders`. The locked 7-field event schema
+  has **no attendees/assignee field** (the handoff's "who's it for"
+  multi-select was explicitly deferred), so involvement-based targeting is
+  impossible today. No creator-exclusion: a reminder is time-driven, not
+  action-driven — the creator wants it too.
+- **Birthday alerts → every active family member** with
+  `pushEnabled && categories.birthdays`, **including any birthday person**.
+  Surprise-exclusion is structurally impossible: birthday docs carry a free-
+  text `name`, not a uid ("Grandma Helen" isn't a user), so exclusion would
+  require name-matching against user display names — fragile and a worse
+  privacy posture than the fix we already have: **the body names no one**
+  (§14.5), and the in-app dashboard widget already shows the birthday to
+  everyone including the subject.
+- **New category keys:** `eventReminders`, `birthdays` added to
+  `notificationPreferences.categories` (all members; default `false`,
+  consistent with the master-off default shape). Client settings UI grows
+  two toggles (F10).
+- Cross-tenant guard (M35.7 analog): the per-family loop scopes every query
+  by that family's id, and each recipient's `userPrivate.familyId` is
+  re-checked against it before tokens are read (skip + warn, never throw —
+  same SOR-Fix-6 stance as `notifyBoardPost`). The function **never sends
+  across families within one family's iteration**; recipient state
+  (`isActive`, prefs) is read **at fire time**, so a deactivated member never
+  receives (the threat-model §A.10 "who is in the family when the scheduler
+  fires" question — answer: membership is evaluated per sweep, never cached).
+
+### 14.4 Idempotency: `scheduledSends` markers (decision)
+
+A scheduler sweep can double-fire (retry) or be missed (outage). Dedupe:
+
+```
+scheduledSends/{kind}__{sourceId}__{yyyymmdd}     (kind: 'eventReminder' | 'birthday')
+  kind: string
+  familyId: string
+  sourceId: string          // eventId or birthdayId
+  localDay: string          // 'YYYY-MM-DD' in the FAMILY's timezone
+  sentAt: Timestamp
+  recipientCount: number
+  expiresAt: number         // sentAt + 7d, epoch ms — Firestore TTL (ADR-0015 pattern)
+```
+
+- Written with **`ref.create()` BEFORE the send** (single-doc create is
+  atomic; `ALREADY_EXISTS` → skip silently). Semantics: **at-most-once.** A
+  marker-written-but-send-failed item is a **dropped push, accepted** — a
+  duplicate lock-screen ping trains muting; a dropped reminder is recoverable
+  in-app. Consistent with the project's push-is-non-essential posture
+  (F-PN-5/6, ADR-0014's accepted-drop). No catch-up sweep for missed hours
+  (rejected: per-family per-hour marker probing multiplies reads ~14x for a
+  non-essential delivery).
+- Rules: **deny all client read/list/write** on `scheduledSends/*` (same as
+  `rateLimits`; emulator test). PI: none — ids + counts only.
+- TTL: operator runs the `gcloud firestore fields ttls update expiresAt
+  --collection-group=scheduledSends …` command (runbook F12), same pattern as
+  ADR-0015.
+
+### 14.5 Body constants (M34)
+
+Three new frozen entries in `functions/src/notificationBodies.ts`; all pass
+the forbidden-substring scan (name|wishlist|amount|balance|dollar|kid|child|
+parent|email|title|body), no template markers, <80 chars:
+
+- `eventReminder`: title `Event reminder` · body
+  `An event is on your family calendar today. Open Family HQ for details.`
+- `birthdayToday`: title `Birthday today` · body
+  `Someone special has a birthday today. Open Family HQ for details.`
+  ("birthday" is NOT on the forbidden list; the person is never named;
+  "someone special" avoids asserting family membership for non-member
+  entries like Grandma Helen.)
+- `anniversaryToday`: title `Anniversary today` · body
+  `There is an anniversary today. Open Family HQ for details.`
+
+Event title, birthday name, note, and "turning N" age NEVER appear. Click
+target stays `data: { url: '/notifications' }`.
+
+### 14.6 Fan-out cap (M36 analog)
+
+No caller to rate-limit; the protection target is fan-out volume. Cap:
+**10 marker-creations (pushes) per family per kind per sweep-day**, applied
+by ordering the source query (events by `date` asc; birthdays by `createdAt`
+asc) and slicing. Overflow items are **dropped** (no marker → and no later
+sweep retries them — accepted) with one structured warn carrying
+`{kind, familyId, droppedCount}`. The $5 kill-switch remains the hard
+backstop. Function config: 256MB, `timeoutSeconds: 300`, sequential
+per-family processing (at 10x, ~42 families match per sweep — trivial).
+
+### 14.7 Observability + kill-switch interplay
+
+- Names `notifyEventReminders` / `notifyBirthdays` ride the existing
+  `^notify` dashboard filter — **no dashboard JSON change needed.**
+- One summary log per invocation: `{kind, fnName, familiesScanned,
+  familiesMatched, sourceCount, recipientCount, tokensAttempted,
+  tokensFailed, cleanedTokenCount, markerSkipCount, droppedCount,
+  durationMs}` plus per-family info lines (`familyId` + counts). **New keys
+  must be added to the M38 allow-list test; `timezone` and `localDay` are
+  added to the FORBIDDEN log-field list** (timezone is a coarse-location
+  signal; it stays on the family doc, never in logs). No `actorUid` /
+  `callerUidHash` — there is no caller; the log contract otherwise applies
+  unchanged (response-shape question is moot: nothing consumes a return
+  value).
+- **Kill-switch: no extra wiring.** The $5 cap detaches billing
+  project-wide; scheduled invocations then fail on every tick. Runbook (F12)
+  adds: after a kill-switch event, `gcloud scheduler jobs pause` the two
+  jobs to stop error noise; resume after billing re-attach.
+
+### 14.8 New failure modes
+
+| F# | Mode | Behavior | Recovery |
+| -- | ---- | -------- | -------- |
+| F-PN-11 | Scheduler outage spanning a family's 8am hour | Pushes for that family-day silently dropped | Accepted (no catch-up); in-app surfaces unaffected |
+| F-PN-12 | Sweep double-fire / scheduler retry | `scheduledSends` `create()` collides → skip | By construction; pinned by test |
+| F-PN-13 | Marker written, FCM send fails | Push dropped for that item (at-most-once) | Accepted; `skipReason:'send_failed'` logged |
+| F-PN-14 | Family doc has invalid/missing `timezone` | Fallback `America/Toronto`; warn with familyId only (never the tz value) | Parent fixes via future settings UI (F13) |
+| F-PN-15 | Kill-switch fired → billing detached | Both scheduled fns error every tick | Runbook: pause jobs; resume post-re-attach |
+| F-PN-16 | >10 same-kind items in one family-day | Earliest 10 sent; rest dropped + warn | Accepted; cap constant is an easy knob |
+
+### 14.9 PR F ordered task breakdown
+
+**Gate 0 (blocking): threat-modeler reviews §14 and issues the scheduled-path
+mitigation matrix (§12 PR F gate). No F-task starts before sign-off.**
+
+**F1. Add `timezone` to `families` (type + bootstrap + rules).**
+- Deps: gate 0.
+- Acceptance: `Family.timezone?: string` in `lib/types`; family-creation
+  batch writes `'America/Toronto'`; rules permit parent-only update, value
+  `is string && size() <= 50`; emulator tests: member write denied, parent
+  write allowed, cross-family denied. No backfill (sweep-side fallback).
+- Owner: implementer + test-writer · Risk: low · Estimate: S.
+
+**F2. `scheduledSends` collection: rules + types + TTL.**
+- Deps: gate 0.
+- Acceptance: rules deny ALL client get/list/create/update/delete on
+  `scheduledSends/{id}` (emulator tests incl. authenticated parent);
+  doc shape per §14.4; runbook line for the TTL `gcloud` command (staging +
+  prod). **Security-critical: no autonomous merge.**
+- Owner: test-writer + implementer · Risk: medium · Estimate: S.
+
+**F3. Shared fan-out helper `functions/src/lib/sendCategoryPush.ts`.**
+- Deps: gate 0.
+- Acceptance: `sendCategoryPushToFamily({db, messaging, familyId,
+  categoryKey, bodyConstant})` — resolves active members of ONE family,
+  applies prefs gate, reads tokens, multicasts, cleans stale tokens via the
+  M37 allow-list (`registration-token-not-registered`,
+  `invalid-registration-token` ONLY), returns counts. Unit tests replicate
+  the C-T8/C-T13 contract (cross-tenant recipient skipped+warned; transient
+  FCM codes never delete). Existing callables NOT migrated in this PR
+  (optional follow-up; keeps the diff reviewable).
+- Owner: implementer · Risk: medium · Estimate: M.
+
+**F4. Pure timezone helper `localHourAndDay(nowMs, tz)`.**
+- Deps: gate 0.
+- Acceptance: returns `{hour, day:'YYYY-MM-DD'}` in `tz` via Intl; invalid
+  tz → `{...fallback, usedFallback:true}` with `America/Toronto`. Tests run
+  under non-UTC `process.env.TZ` (lesson 2026-05-28); cases: Toronto,
+  Vancouver, St. John's (half-hour), invalid string, DST boundary day.
+- Owner: implementer · Risk: low · Estimate: S.
+
+**F5. Body constants + M34 audit extension.**
+- Deps: gate 0 (+ human gate: user approves the three strings, §14.5).
+- Acceptance: `eventReminder`, `birthdayToday`, `anniversaryToday` frozen
+  entries; existing CI scan covers them (no template markers, forbidden
+  substrings absent, <80 chars).
+- Owner: implementer · Risk: low · Estimate: S.
+
+**F6. Composite index `events(familyId asc, date asc)`.**
+- Deps: gate 0.
+- Acceptance: added to `firestore.indexes.json`; deploys via the EXISTING
+  rules/indexes step (NEVER bundled with functions deploy — PR #84 lesson).
+- Owner: implementer · Risk: low · Estimate: S.
+
+**F7. `notifyEventReminders` onSchedule function.**
+- Deps: F1-F6.
+- Acceptance: `onSchedule({schedule:'0 * * * *', timeZone:'UTC',
+  region:'northamerica-northeast1', timeoutSeconds:300, memory:'256MiB'},…)`;
+  handler ignores the event payload (test: payload fields never read); scans
+  families, selects local-hour-8 via F4, queries events by familyId+local-day
+  range, caps at 10 (date asc), `create()`s marker before send, sends via F3
+  with `eventReminder` constant, logs per §14.7. Tests: dedupe skip on
+  existing marker; cap overflow drops+warns; cross-family isolation (family
+  A's event never reaches family B's members); marker-then-send order;
+  invalid-tz fallback. **Security-critical: no autonomous merge.**
+- Owner: implementer · Risk: HIGH (first scheduled fn; cross-tenant
+  iteration) · Estimate: L.
+
+**F8. `notifyBirthdays` onSchedule function.**
+- Deps: F1-F6 (parallel with F7 after F3/F4 land).
+- Acceptance: same scaffold; birthdays by `familyId + monthDay` equality;
+  Feb-29→Feb-28 non-leap rule pinned by test; body constant picked by
+  `type` (`birthdayToday` / `anniversaryToday`); cap 10 (createdAt asc);
+  markers `birthday__{birthdayId}__{yyyymmdd}`. **Security-critical: no
+  autonomous merge.**
+- Owner: implementer · Risk: high · Estimate: M.
+
+**F9. M38 log allow-list + AST-gate extension.**
+- Deps: F7, F8.
+- Acceptance: allow-list grows by `familiesScanned, familiesMatched,
+  sourceCount, markerSkipCount, droppedCount`; `timezone` and `localDay`
+  added to the forbidden field names; no-console AST scan covers the new
+  files (it already globs `functions/src/`; assert it).
+- Owner: implementer · Risk: low · Estimate: S.
+
+**F10. Client: two new category toggles.**
+- Deps: F1 merged (types); parallel with F7/F8.
+- Acceptance: `eventReminders` + `birthdays` keys added to the
+  `notificationPreferences.categories` type + default-off bootstrap shape;
+  settings screen renders both toggles for ALL roles; AODA per B5's bar
+  (keyboard, 44px, focus, labels).
+- Owner: designer + implementer · Risk: low · Estimate: M.
+
+**F11. Deploy-list extension + CI assertion.**
+- Deps: F7, F8.
+- Acceptance: `--only` grows to `…,functions:notifyEventReminders,
+  functions:notifyBirthdays`; `billingKillSwitch` remains FIRST (CI
+  assertion updated); flag-gated step unchanged.
+- Owner: implementer · Risk: medium · Estimate: S.
+
+**F12. Runbook `docs/runbooks/scheduled-push.md` + operator deploy.**
+- Deps: F11.
+- Acceptance: documents — post-deploy verification that exactly 2 scheduler
+  jobs exist (`gcloud scheduler jobs list`); the negative invoker assertion
+  (no `allUsers`/`allAuthenticatedUsers` in `roles/run.invoker` on either
+  function's Cloud Run service, with the exact `gcloud` command);
+  pause/resume/force-run commands; kill-switch interplay (§14.7); the
+  `scheduledSends` TTL activation command. Operator executes against
+  staging, force-runs one sweep, verifies a marker + a delivered push, then
+  prod. **Manual operator step — not CI.**
+- Owner: implementer writes · user executes · Risk: medium · Estimate: S.
+
+**F13 (DEFERRED — not in PR F).** Family-settings UI to edit `timezone`.
+Follow-up feature task; until then all families are `America/Toronto`.
+
+### 14.10 PR F human-gate items (LOUD)
+
+1. **ADR-0016 approval** (trigger architecture) via the memory PR.
+2. **Threat-modeler sign-off on §14** before any F-series code (gate 0).
+3. **Approve the three lock-screen strings** (§14.5).
+4. **Approve `America/Toronto` as the universal timezone default** until F13.
+5. **Anniversary inclusion** under the `birthdays` category (§14.2 scope
+   note) — one-line veto.
+6. **Operator runbook execution** (F12): scheduler-job verification, invoker
+   negative assertion, TTL activation.
+7. Cloud Scheduler is a new Google-platform service in the project; it
+   carries **no PI** (empty payload, ignored by handlers) — flagged for the
+   record, no new subprocessor handling PI.
