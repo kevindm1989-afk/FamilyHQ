@@ -371,22 +371,23 @@ describe('A-T3: costAmount < budgetAmount does NOT call updateBillingInfo', () =
 });
 
 // ---------------------------------------------------------------------------
-// A-T4 — idempotent: already-unbilled means no second detach call
+// A-T4 — idempotent at the API level (no getBillingInfo pre-check)
 // ---------------------------------------------------------------------------
+//
+// Operator-debug, 2026-06-11: the original implementation called
+// `getBillingInfo` first as an idempotency check. That requires
+// `billing.resourceAssociations.get` on the project, which
+// `roles/billing.projectManager` does NOT include — the call 403'd on
+// first deploy and the function silently never detached. The Cloud
+// Billing `updateBillingInfo` API is naturally idempotent (calling it
+// on an already-detached project is a no-op success), so the pre-check
+// was redundant. Dropping it keeps the kill-switch SA's IAM minimal
+// (M33b) and removes a hidden permission dependency. Tests now pin the
+// new contract: getBillingInfo is NEVER called; updateBillingInfo fires
+// on every over-threshold breach, including re-fires of the same alert.
 
-describe('A-T4: idempotent — already-detached project does NOT call updateBillingInfo again', () => {
-  it('skips updateBillingInfo when getBillingInfo reports billingEnabled === false', async () => {
-    // Simulate "billing already detached" — a re-fire of the same alert (e.g.
-    // Pub/Sub at-least-once delivery) must NOT call updateBillingInfo again.
-    getBillingInfoMock.mockResolvedValue({
-      data: {
-        name: `projects/${PROJECT_ID}/billingInfo`,
-        projectId: PROJECT_ID,
-        billingAccountName: '',
-        billingEnabled: false,
-      },
-    });
-
+describe('A-T4: idempotent at the API level — no getBillingInfo pre-check', () => {
+  it('calls updateBillingInfo on every over-threshold breach (trusts API idempotency)', async () => {
     await invokeHandlerWith(
       budgetEvent({
         budgetAmount: 5.0,
@@ -395,19 +396,10 @@ describe('A-T4: idempotent — already-detached project does NOT call updateBill
       }),
     );
 
-    expect(updateBillingInfoMock).not.toHaveBeenCalled();
+    expect(updateBillingInfoMock).toHaveBeenCalledTimes(1);
   });
 
-  it('still inspects current billing state by calling getBillingInfo first', async () => {
-    getBillingInfoMock.mockResolvedValue({
-      data: {
-        name: `projects/${PROJECT_ID}/billingInfo`,
-        projectId: PROJECT_ID,
-        billingAccountName: '',
-        billingEnabled: false,
-      },
-    });
-
+  it('does NOT call getBillingInfo at all (M33b: pre-check would require .get permission)', async () => {
     await invokeHandlerWith(
       budgetEvent({
         budgetAmount: 5.0,
@@ -416,7 +408,7 @@ describe('A-T4: idempotent — already-detached project does NOT call updateBill
       }),
     );
 
-    expect(getBillingInfoMock).toHaveBeenCalledTimes(1);
+    expect(getBillingInfoMock).not.toHaveBeenCalled();
   });
 });
 
