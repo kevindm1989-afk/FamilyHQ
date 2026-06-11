@@ -29,6 +29,183 @@ billing-account id is never echoed into git history.
 
 ---
 
+## 0a. First-deploy prerequisites — APIs (one-time, per project)
+
+When deploying the kill-switch to a **fresh** project (or any project
+that has never deployed a 2nd-gen Cloud Function), the deploy
+`firebase deploy --only functions:billingKillSwitch` will whack-a-mole
+through ~10 different "API not enabled" failures, each requiring the
+operator to enable the missing API and re-trigger. **Enable them all
+up front** to skip the dance:
+
+```bash
+gcloud services enable \
+  cloudfunctions.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  firebaseextensions.googleapis.com \
+  run.googleapis.com \
+  eventarc.googleapis.com \
+  pubsub.googleapis.com \
+  storage.googleapis.com \
+  cloudbilling.googleapis.com \
+  --project={PROJECT_ID}
+
+# Verify (expect 9 lines)
+gcloud services list --enabled --project={PROJECT_ID} \
+  --filter='config.name:(cloudfunctions.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com firebaseextensions.googleapis.com run.googleapis.com eventarc.googleapis.com pubsub.googleapis.com storage.googleapis.com cloudbilling.googleapis.com)' \
+  --format='value(config.name)' | sort
+```
+
+Why each is needed:
+- `cloudfunctions.googleapis.com` — Cloud Functions itself.
+- `cloudbuild.googleapis.com` — Functions are built via Cloud Build.
+- `artifactregistry.googleapis.com` — built container images live here.
+- `firebaseextensions.googleapis.com` — firebase-tools reads this even when no extensions exist.
+- `run.googleapis.com` — 2nd-gen Functions run on Cloud Run under the hood.
+- `eventarc.googleapis.com` — the Pub/Sub-to-Cloud-Run trigger machinery.
+- `pubsub.googleapis.com` — the topic itself.
+- `storage.googleapis.com` — Cloud Build uses GCS to stage builds.
+- `cloudbilling.googleapis.com` — the API the function actually calls.
+
+---
+
+## 0b. First-deploy prerequisites — deploy SA project roles
+
+The CI's deploy SA (typically `firebase-adminsdk-fbsvc@{PROJECT_ID}.iam.gserviceaccount.com`)
+ships with `roles/firebase.adminsdkServiceAgent` by default, which does
+NOT include enough permission to deploy 2nd-gen Cloud Functions. Grant
+these three project-level roles BEFORE the first deploy:
+
+```bash
+export DEPLOY_SA=firebase-adminsdk-fbsvc@{PROJECT_ID}.iam.gserviceaccount.com
+
+gcloud projects add-iam-policy-binding {PROJECT_ID} \
+  --member=serviceAccount:$DEPLOY_SA --role=roles/pubsub.editor
+
+gcloud projects add-iam-policy-binding {PROJECT_ID} \
+  --member=serviceAccount:$DEPLOY_SA --role=roles/eventarc.developer
+
+gcloud projects add-iam-policy-binding {PROJECT_ID} \
+  --member=serviceAccount:$DEPLOY_SA --role=roles/run.admin
+```
+
+Verify with `gcloud projects get-iam-policy {PROJECT_ID} --flatten='bindings[].members' --filter="bindings.members:serviceAccount:$DEPLOY_SA" --format='value(bindings.role)' | sort` — the output should include those three plus whatever `firebase-adminsdk-fbsvc` already had.
+
+---
+
+## 0c. First-deploy prerequisites — `actAs` bindings on three SAs
+
+The deploy SA needs `roles/iam.serviceAccountUser` (the "actAs" role) on
+THREE service accounts. Firebase's Cloud Functions deploy machinery
+touches each of them at different stages — missing any one of these
+errors out the deploy partway through.
+
+```bash
+# 1. actAs the kill-switch SA (so the deploy can pin it as the function's
+#    runtime SA per §4 below)
+gcloud iam service-accounts add-iam-policy-binding \
+  kill-switch@{PROJECT_ID}.iam.gserviceaccount.com \
+  --member=serviceAccount:$DEPLOY_SA \
+  --role=roles/iam.serviceAccountUser \
+  --project={PROJECT_ID}
+
+# 2. actAs the App Engine default SA (firebase-tools touches this during
+#    function creation even when serviceAccount is overridden)
+gcloud iam service-accounts add-iam-policy-binding \
+  {PROJECT_ID}@appspot.gserviceaccount.com \
+  --member=serviceAccount:$DEPLOY_SA \
+  --role=roles/iam.serviceAccountUser \
+  --project={PROJECT_ID}
+
+# 3. actAs the Compute Engine default SA (2nd-gen functions use this as
+#    the Cloud Run service identity DURING creation, before the
+#    runtime-SA override takes effect)
+export PROJECT_NUMBER=$(gcloud projects describe {PROJECT_ID} --format='value(projectNumber)')
+gcloud iam service-accounts add-iam-policy-binding \
+  $PROJECT_NUMBER-compute@developer.gserviceaccount.com \
+  --member=serviceAccount:$DEPLOY_SA \
+  --role=roles/iam.serviceAccountUser \
+  --project={PROJECT_ID}
+```
+
+---
+
+## 0d. First-deploy prerequisites — Pub/Sub + Eventarc service-agent bindings
+
+When the deploy first creates the `billingKillSwitch` function with a
+Pub/Sub trigger, Google's machinery needs three service-agent IAM
+bindings the deploy SA can't grant itself:
+
+```bash
+export PROJECT_NUMBER=$(gcloud projects describe {PROJECT_ID} --format='value(projectNumber)')
+
+# Pub/Sub service identity needs to create signed tokens for delivery
+gcloud projects add-iam-policy-binding {PROJECT_ID} \
+  --member=serviceAccount:service-$PROJECT_NUMBER@gcp-sa-pubsub.iam.gserviceaccount.com \
+  --role=roles/iam.serviceAccountTokenCreator
+
+# Compute Engine default SA needs to receive Eventarc events
+gcloud projects add-iam-policy-binding {PROJECT_ID} \
+  --member=serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.com \
+  --role=roles/eventarc.eventReceiver
+
+# Compute Engine default SA needs run.invoker on the project (a service-
+# level binding is also needed — see §0e below — but the project-level
+# is the gate firebase-tools checks during deploy)
+gcloud projects add-iam-policy-binding {PROJECT_ID} \
+  --member=serviceAccount:$PROJECT_NUMBER-compute@developer.gserviceaccount.com \
+  --role=roles/run.invoker
+```
+
+firebase-tools will print these three commands verbatim in its error
+output the first time deploy fails on missing service-agent bindings.
+
+---
+
+## 0e. First-deploy prerequisites — invoker + token-creator on the function itself
+
+This is the step that bit us hardest on 2026-06-11. Firebase 2nd-gen
+Pub/Sub-triggered functions are wired such that the **trigger
+invokes the Cloud Run service using the FUNCTION'S OWN runtime SA via
+an OIDC token signed by Pub/Sub**. For the kill-switch this means:
+
+- The kill-switch SA must have `roles/run.invoker` on its OWN service
+  (self-invocation).
+- The Pub/Sub service identity must be able to mint OIDC tokens AS the
+  kill-switch SA — i.e. `roles/iam.serviceAccountTokenCreator` ON the
+  kill-switch SA (not at the project level).
+
+These ONLY work after the function has been deployed once (the service
+must exist). Run them AFTER the first `firebase deploy` completes:
+
+```bash
+# Self-invocation: kill-switch SA invokes its own Cloud Run service
+gcloud run services add-iam-policy-binding billingkillswitch \
+  --region=northamerica-northeast1 \
+  --project={PROJECT_ID} \
+  --member=serviceAccount:kill-switch@{PROJECT_ID}.iam.gserviceaccount.com \
+  --role=roles/run.invoker
+
+# Pub/Sub can mint OIDC tokens AS the kill-switch SA (on the SA itself,
+# not at the project level)
+export PROJECT_NUMBER=$(gcloud projects describe {PROJECT_ID} --format='value(projectNumber)')
+gcloud iam service-accounts add-iam-policy-binding \
+  kill-switch@{PROJECT_ID}.iam.gserviceaccount.com \
+  --member=serviceAccount:service-$PROJECT_NUMBER@gcp-sa-pubsub.iam.gserviceaccount.com \
+  --role=roles/iam.serviceAccountTokenCreator \
+  --project={PROJECT_ID}
+```
+
+Without §0e the function deploys, the runtime SA is bound correctly,
+the synthetic fire publishes — and every invocation 403s. The
+diagnostic that surfaces this is `gcloud run services logs read
+billingkillswitch ... | grep 403` — the standard logs.read command
+only shows access logs, NOT the function's structured `logger.info`
+output. To see the latter, use `gcloud logging read` (see §5 below).
+
+---
+
 ## 1. Service accounts (TWO distinct SAs)
 
 This kill-switch design uses **two separate** service accounts. Conflating
@@ -83,19 +260,28 @@ operate on this SA.
 
 The kill-switch needs **one** capability and only one: detach the project
 from its billing account. That capability is conferred by
-`roles/billing.projectManager`, granted **on the billing account** — NOT on
-the project.
+`roles/billing.projectManager`, granted **on the project** — NOT on
+the billing account.
 
-This distinction matters: granting `roles/billing.projectManager` at the
-project level (`gcloud projects add-iam-policy-binding ...`) over-scopes
-the SA — it would let any project-level operator add the binding without
-billing-admin review. Granting it on the billing account scopes the
-capability to billing-only actions on projects this billing account owns.
+This distinction is the one that bit us on 2026-06-11: trying to grant
+`roles/billing.projectManager` on the billing account fails with
+`Role roles/billing.projectManager is not supported for this resource`.
+The role exists in the billing-permissions namespace but it is a
+PROJECT-level role — Google's docs are confusing about this. The
+permissions it carries (`billing.resourceAssociations.delete`,
+`billing.resourceAssociations.list`) are evaluated against the
+project's IAM policy, not the billing account's. Grant accordingly.
+
+The narrower alternative would be `roles/billing.admin` granted on the
+billing account, but that over-scopes the SA — it lets it manage the
+entire billing account (link other projects, change payment methods).
+Project-level `roles/billing.projectManager` is the least-privilege
+choice.
 
 ### 2.1 Grant the role
 
 ```bash
-gcloud beta billing accounts add-iam-policy-binding {BILLING_ACCOUNT} \
+gcloud projects add-iam-policy-binding {PROJECT_ID} \
   --member=serviceAccount:{KILL_SWITCH_SA} \
   --role=roles/billing.projectManager
 ```
@@ -103,14 +289,15 @@ gcloud beta billing accounts add-iam-policy-binding {BILLING_ACCOUNT} \
 ### 2.2 Verify the role landed
 
 ```bash
-gcloud beta billing accounts get-iam-policy {BILLING_ACCOUNT} \
-  --filter="bindings.role=roles/billing.projectManager" \
-  --format="table(bindings.role,bindings.members)"
+gcloud projects get-iam-policy {PROJECT_ID} \
+  --flatten='bindings[].members' \
+  --filter="bindings.members:serviceAccount:{KILL_SWITCH_SA} AND bindings.role:roles/billing.projectManager" \
+  --format='value(bindings.role)'
 ```
 
-Expected: one row whose `members` column contains
-`serviceAccount:{KILL_SWITCH_SA}`. If the row is missing, re-run §2.1
-and re-verify. Do NOT proceed to §3 until §2.2 prints the expected row.
+Expected: a single line `roles/billing.projectManager`. If empty,
+re-run §2.1 and re-verify. Do NOT proceed to §3 until §2.2 prints the
+expected role.
 
 ---
 
@@ -233,8 +420,10 @@ gcloud pubsub topics get-iam-policy billing-budget-alerts \
 ```
 
 Expected output: **exactly one member**, the Google-managed billing
-notifier — `serviceAccount:cloud-billing-notifications@system.gserviceaccount.com`.
-If any other principal appears, remove it:
+notifier — `serviceAccount:billing-budget-alert@system.gserviceaccount.com`
+(note: singular `alert`; an older runbook draft pointed at
+`cloud-billing-notifications@…` which is the wrong SA for current
+projects). If any other principal appears, remove it:
 
 ```bash
 gcloud pubsub topics remove-iam-policy-binding billing-budget-alerts \
@@ -297,27 +486,59 @@ proceed to §5 until §4 returned `{KILL_SWITCH_SA}` exactly.**
 
 Quarterly, publish a synthetic budget-alert message to the staging
 project's `billing-budget-alerts` topic to confirm the kill-switch still
-works end to end. Re-attach billing manually after each exercise.
+works end to end. **Re-attach billing manually after each exercise.**
 
 ```bash
-# Synthetic over-cap alert (costAmount > budgetAmount → detach expected)
+# 1. Synthetic over-cap alert (costAmount > budgetAmount → detach expected)
 gcloud pubsub topics publish billing-budget-alerts \
   --project={PROJECT_ID} \
   --message='{"budgetDisplayName":"familyhq-monthly","budgetAmount":5.0,"costAmount":9.99,"currencyCode":"CAD"}'
 
-# Observe the function log
-gcloud functions logs read billingKillSwitch \
-  --region=northamerica-northeast1 \
-  --project={PROJECT_ID} \
-  --limit=20
+# 2. Wait ~20 seconds for cold start + getBillingInfo + updateBillingInfo
+sleep 20
 
-# Confirm billing was detached
+# 3. Read the function's STRUCTURED log (NOT the access log).
+# `gcloud run services logs read` shows only HTTP access lines (POST/GET
+# + status code) — to see the function's `logger.info` output, you MUST
+# use `gcloud logging read` with a structured filter. The 2026-06-11
+# operator-debug pinned this distinction the hard way.
+gcloud logging read \
+  'resource.type="cloud_run_revision" AND resource.labels.service_name="billingkillswitch" AND severity>=INFO' \
+  --project={PROJECT_ID} \
+  --limit=10 \
+  --format='value(timestamp, severity, jsonPayload.action, jsonPayload.message)' \
+  --freshness=5m
+
+# 4. Confirm billing was detached
 gcloud beta billing projects describe {PROJECT_ID}
 
-# Re-attach billing (manual)
+# 5. Re-attach billing (MANDATORY — do not skip)
 gcloud beta billing projects link {PROJECT_ID} \
   --billing-account={BILLING_ACCOUNT}
 ```
+
+**Pass condition:**
+- Step 3 prints a row with `INFO`, `action=billing_detached`, and
+  message `billingKillSwitch: billing detached`.
+- Step 4 prints `billingEnabled: false`.
+- Step 5 returns successfully and a re-describe prints
+  `billingEnabled: true`.
+
+**Diagnostic action codes** (what to look for if step 3 doesn't print
+`billing_detached`):
+- `malformed_payload_dropped` (WARN) — payload decode failed; re-check
+  the publish command's JSON.
+- `below_threshold` (INFO) — `costAmount <= budgetAmount` per M42 / A-T3
+  strict-`>` semantics; raise the cost or lower the budget in step 1.
+- `client_init_failed` (ERROR) — googleapis client construction failed;
+  check ADC / SA identity.
+- `update_billing_info_failed` (ERROR) — the billing API rejected the
+  detach; the kill-switch SA's `roles/billing.projectManager` binding
+  on the project hasn't propagated, OR was granted on the billing
+  account instead of the project (see §2).
+- (no log at all + HTTP 403 in `gcloud run services logs read`) — the
+  invocation chain is broken; re-check §0e (`run.invoker` and
+  `tokenCreator` on the SA itself).
 
 If the synthetic exercise does not detach billing, file an incident and
 re-run §§1-3 from the top.
