@@ -400,10 +400,12 @@ jobs:
       - name: Audit functions workspace for high-severity CVEs (M40)
         run: npm --prefix functions audit --omit=dev --audit-level=high
 
-      - name: Deploy functions:billingKillSwitch
-        # EXACT --only list — `functions:billingKillSwitch` and NOTHING ELSE
-        # in PR A. Adding another function later means appending to this
-        # same --only list in the same PR; NEVER mix functions: with
+      - name: Deploy functions (billingKillSwitch + notifyChoreApproved)
+        # EXACT --only list — kill-switch FIRST, then notifyChoreApproved
+        # (C-T19 / brief PR C4). The kill-switch precedes the chargeable
+        # callable so the $5 cap is in place from second 0; if a deploy
+        # is interrupted between the two functions the chargeable one is
+        # never live without its cap. NEVER mix functions: with
         # firestore: or storage: or hosting in any single --only flag.
         #
         # The kill-switch SA must already be provisioned per
@@ -426,7 +428,7 @@ jobs:
           chmod 600 "$SA_PATH"
           GOOGLE_APPLICATION_CREDENTIALS="$SA_PATH" \
             npx firebase deploy \
-              --only functions:billingKillSwitch \
+              --only functions:billingKillSwitch,functions:notifyChoreApproved \
               --project "$PROJECT_ID" \
               --non-interactive
           rm -f "$SA_PATH"

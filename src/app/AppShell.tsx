@@ -7,6 +7,7 @@ import { JoinAuthedHandoff } from '../features/family/JoinAuthedHandoff';
 import { resetTour } from '../features/onboarding/tourStorage';
 import { AvatarChip, BottomNav, Button, LanguageToggle, Skeleton, TopBar } from '../components';
 import type { NavTab } from '../components';
+import { isPushNotificationsEnabled } from '../features/notifications/featureFlag';
 import { useAuth } from '../hooks/useAuth';
 import { useFamily } from '../hooks/useFamily';
 import { useToast } from '../hooks/useToast';
@@ -298,10 +299,16 @@ function AccountScreen(): ReactElement {
         {t('account.wishlist')}
       </Button>
       {/* Push notification preferences — open to every active member.
-          Per-subject toggles + the per-device sign-out list. */}
-      <Button variant="soft" onClick={() => navigate(ROUTES.notifications.path)}>
-        {t('account.notifications')}
-      </Button>
+          Per-subject toggles + the per-device sign-out list. Gated on
+          VITE_FCM_ENABLED so a Spark-tier deploy without notify-callables
+          doesn't expose a settings screen that can't actually register
+          tokens. The route itself still redirects when the flag is off
+          (defense in depth). */}
+      {isPushNotificationsEnabled() && (
+        <Button variant="soft" onClick={() => navigate(ROUTES.notifications.path)}>
+          {t('account.notifications')}
+        </Button>
+      )}
       <Button variant="danger" loading={signingOut} onClick={handleSignOut}>
         {t('account.signOut')}
       </Button>

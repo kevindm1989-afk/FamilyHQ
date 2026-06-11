@@ -150,7 +150,7 @@ const httpsCallableMock = vi.fn((_functions: unknown, name: string) => {
 // getFunctions / Functions are optional surfaces the implementer might use
 // to instantiate a per-region functions handle. We stub them to no-ops so
 // the import resolves.
-const getFunctionsMock = vi.fn(() => ({ __functions: true }));
+const getFunctionsMock = vi.fn((..._args: unknown[]) => ({ __functions: true }));
 
 vi.mock('firebase/functions', () => ({
   httpsCallable: (...a: [unknown, string]) => httpsCallableMock(...a),
@@ -346,7 +346,13 @@ describe('approveChore — recurring respawn (Feature follow-up)', () => {
   it('does NOT create a next instance when the chore is non-recurring (status flip + balance + ledger only)', async () => {
     // Default fixture has isRecurring=false / recurrenceFrequency='none'.
     await approveChore({ db }, 'chore-1', 'uid-parent-a');
-    const setOps = txnOps.filter((o) => o.op === 'set');
+    // Filter out the PR C callable-invocation marker (the mock pushes a
+    // synthetic `__callable__` set into txnOps for ordering tests). The
+    // real Firestore writes we care about live under transactions/users/
+    // chores collections only.
+    const setOps = txnOps.filter(
+      (o) => o.op === 'set' && o.ref.__collection !== '__callable__',
+    );
     // Only the ledger doc — no second chore set.
     expect(setOps).toHaveLength(1);
     expect(setOps[0]!.ref.__collection).toBe('transactions');

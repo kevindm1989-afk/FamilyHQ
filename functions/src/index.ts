@@ -10,3 +10,4 @@
  * kill-switch silently undeployed (second-opinion review #1).
  */
 export { billingKillSwitch } from './billingKillSwitch.js';
+export { notifyChoreApproved } from './notifyChoreApproved.js';
