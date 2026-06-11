@@ -1,0 +1,40 @@
+{
+  "displayName": "Notify-callable success ratio below 95% (15 min)",
+  "documentation": {
+    "content": "The aggregate success ratio (2xx responses / all responses) across the notify-* callables dropped below 0.95 and stayed there for 15 minutes. Operational alert (Slack #familyhq-ops), not a page.\n\nLikely causes:\n- FCM credentials rotated (sends throw, callables return errors).\n- Firestore rules regression breaking the recipient lookup.\n- A schema-change rollout that nobody migrated.\n\nTriage: the 'Notify-callable success ratio by kind' dashboard widget (infra/monitoring/dashboard.json) breaks the ratio down per callable - a single failing kind usually means a bad deploy of that one function; all kinds failing together usually means credentials or rules.\n\nRunbook: docs/runbooks/observability.md (section 1, series 2).",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "2xx / all notify-* requests ratio < 0.95 for 900s",
+      "conditionThreshold": {
+        "filter": "metric.type=\"run.googleapis.com/request_count\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=monitoring.regex.full_match(\"^notify.*\") AND metric.label.response_code_class=\"2xx\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_DELTA",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ],
+        "denominatorFilter": "metric.type=\"run.googleapis.com/request_count\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=monitoring.regex.full_match(\"^notify.*\")",
+        "denominatorAggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_DELTA",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ],
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 0.95,
+        "duration": "900s",
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "severity": "WARNING",
+  "notificationChannels": [],
+  "enabled": true
+}
