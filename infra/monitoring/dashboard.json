@@ -1,0 +1,164 @@
+{
+  "displayName": "FamilyHQ - Push notifications + kill-switch",
+  "mosaicLayout": {
+    "columns": 12,
+    "tiles": [
+      {
+        "xPos": 0,
+        "yPos": 0,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "displayName": "Notify-callable invocations by kind",
+          "xyChart": {
+            "chartOptions": { "mode": "COLOR" },
+            "dataSets": [
+              {
+                "plotType": "LINE",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "legendTemplate": "${resource.labels.function_name}",
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "metric.type=\"cloudfunctions.googleapis.com/function/execution_count\" AND resource.type=\"cloud_function\" AND resource.label.function_name=monitoring.regex.full_match(\"^notify.*\")",
+                    "aggregation": {
+                      "alignmentPeriod": "60s",
+                      "perSeriesAligner": "ALIGN_RATE",
+                      "crossSeriesReducer": "REDUCE_SUM",
+                      "groupByFields": ["resource.label.function_name"]
+                    }
+                  }
+                }
+              }
+            ],
+            "timeshiftDuration": "0s",
+            "yAxis": { "label": "invocations/s", "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 6,
+        "yPos": 0,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "displayName": "Notify-callable success ratio by kind",
+          "xyChart": {
+            "chartOptions": { "mode": "COLOR" },
+            "dataSets": [
+              {
+                "plotType": "LINE",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "legendTemplate": "${resource.labels.function_name}",
+                "timeSeriesQuery": {
+                  "timeSeriesFilterRatio": {
+                    "numerator": {
+                      "filter": "metric.type=\"cloudfunctions.googleapis.com/function/execution_count\" AND resource.type=\"cloud_function\" AND resource.label.function_name=monitoring.regex.full_match(\"^notify.*\") AND metric.label.status=\"ok\"",
+                      "aggregation": {
+                        "alignmentPeriod": "60s",
+                        "perSeriesAligner": "ALIGN_RATE",
+                        "crossSeriesReducer": "REDUCE_SUM",
+                        "groupByFields": ["resource.label.function_name"]
+                      }
+                    },
+                    "denominator": {
+                      "filter": "metric.type=\"cloudfunctions.googleapis.com/function/execution_count\" AND resource.type=\"cloud_function\" AND resource.label.function_name=monitoring.regex.full_match(\"^notify.*\")",
+                      "aggregation": {
+                        "alignmentPeriod": "60s",
+                        "perSeriesAligner": "ALIGN_RATE",
+                        "crossSeriesReducer": "REDUCE_SUM",
+                        "groupByFields": ["resource.label.function_name"]
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            "thresholds": [
+              { "value": 0.95, "color": "YELLOW", "direction": "BELOW", "label": "SLO floor 95%" }
+            ],
+            "yAxis": { "label": "success ratio (0-1)", "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 4,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "displayName": "FCM stale-token cleanups per kind",
+          "xyChart": {
+            "chartOptions": { "mode": "COLOR" },
+            "dataSets": [
+              {
+                "plotType": "LINE",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "legendTemplate": "${resource.labels.function_name}",
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "metric.type=\"logging.googleapis.com/user/notify_callable_cleaned_token_count\" AND resource.type=\"cloud_function\" AND jsonPayload.cleanedTokenCount>0",
+                    "aggregation": {
+                      "alignmentPeriod": "60s",
+                      "perSeriesAligner": "ALIGN_RATE",
+                      "crossSeriesReducer": "REDUCE_SUM",
+                      "groupByFields": ["resource.label.function_name"]
+                    }
+                  }
+                }
+              }
+            ],
+            "yAxis": { "label": "cleanedTokenCount / s", "scale": "LINEAR" }
+          }
+        }
+      },
+      {
+        "xPos": 6,
+        "yPos": 4,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "displayName": "Billing kill-switch invocations",
+          "xyChart": {
+            "chartOptions": { "mode": "COLOR" },
+            "dataSets": [
+              {
+                "plotType": "STACKED_BAR",
+                "minAlignmentPeriod": "60s",
+                "targetAxis": "Y1",
+                "legendTemplate": "billingKillSwitch",
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "metric.type=\"cloudfunctions.googleapis.com/function/execution_count\" AND resource.type=\"cloud_function\" AND resource.label.function_name=\"billingKillSwitch\"",
+                    "aggregation": {
+                      "alignmentPeriod": "60s",
+                      "perSeriesAligner": "ALIGN_RATE",
+                      "crossSeriesReducer": "REDUCE_SUM",
+                      "groupByFields": ["resource.label.function_name"]
+                    }
+                  }
+                }
+              }
+            ],
+            "thresholds": [
+              {
+                "value": 0,
+                "color": "RED",
+                "direction": "ABOVE",
+                "label": "Any kill-switch invocation is an operational alert"
+              }
+            ],
+            "yAxis": { "label": "invocations/s", "scale": "LINEAR" }
+          }
+        }
+      }
+    ]
+  },
+  "labels": {
+    "owner": "familyhq-platform",
+    "managed_by": "infra/monitoring/dashboard.json",
+    "see_runbook": "docs/runbooks/observability.md"
+  }
+}

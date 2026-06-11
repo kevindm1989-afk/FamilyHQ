@@ -17,6 +17,7 @@ export { TopBar, type TopBarProps } from './TopBar';
 export { BottomNav, type BottomNavProps, type NavTab } from './BottomNav';
 export { Fab, type FabProps } from './Fab';
 export { Toast, type ToastProps } from './Toast';
+export { IosPwaHintBanner } from './IosPwaHintBanner';
 export { BottomSheet, type BottomSheetProps } from './BottomSheet';
 export { EmptyState, type EmptyStateProps } from './EmptyState';
 export { LanguageToggle } from './LanguageToggle';

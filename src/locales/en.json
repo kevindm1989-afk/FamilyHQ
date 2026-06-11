@@ -15,6 +15,7 @@
     "save": "Save",
     "cancel": "Cancel",
     "close": "Close",
+    "dismiss": "Dismiss",
     "retry": "Try again"
   },
 
@@ -896,6 +897,10 @@
   "notifications": {
     "title": "Notifications",
     "iosHint": "Add to Home Screen to receive notifications on iPhone or iPad.",
+    "iosPwaHint": {
+      "title": "Add to Home Screen for push notifications",
+      "body": "To receive push notifications on iPhone or iPad, add Family HQ to your Home Screen first. Tap the Share button, then \"Add to Home Screen.\""
+    },
     "categoriesLegend": "Notification types",
     "master": {
       "label": "Push notifications",
