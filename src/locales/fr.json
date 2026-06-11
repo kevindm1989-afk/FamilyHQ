@@ -15,6 +15,7 @@
     "save": "Enregistrer",
     "cancel": "Annuler",
     "close": "Fermer",
+    "dismiss": "Fermer",
     "retry": "Réessayer"
   },
 
@@ -896,6 +897,11 @@
   "notifications": {
     "title": "Notifications",
     "iosHint": "Ajoutez à l’écran d’accueil pour recevoir les notifications sur iPhone ou iPad.",
+    "iosPwaHint": {
+      "title": "Ajoutez à l’écran d’accueil pour les notifications",
+      "body": "Pour recevoir les notifications sur iPhone ou iPad, ajoutez Family HQ à votre écran d’accueil. Touchez le bouton Partager, puis « Sur l’écran d’accueil ».",
+      "dismissA11y": "Fermer le conseil sur l’ajout à l’écran d’accueil"
+    },
     "categoriesLegend": "Types de notifications",
     "master": {
       "label": "Notifications push",

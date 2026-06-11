@@ -15,8 +15,8 @@
     {
       "name": "AuthedApp shell",
       "pattern": "^AuthedApp-",
-      "maxGzipBytes": 6000,
-      "note": "FamilyProvider + AppShell chrome + AccountScreen. Was 20 KB before #20's per-route splits; now ~4.4 KB. Tight budget keeps the post-auth shell small."
+      "maxGzipBytes": 6400,
+      "note": "FamilyProvider + AppShell chrome + AccountScreen + IosPwaHintBanner (F15, PR E). Was 20 KB before #20's per-route splits; now ~6.2 KB after PR E adds the iOS-PWA hint banner (mounted in AppShell so it must ship in this chunk — non-iOS users self-suppress at runtime, but the code still lands in the bundle). Tight budget keeps the post-auth shell small."
     },
     {
       "name": "per-route chunks",

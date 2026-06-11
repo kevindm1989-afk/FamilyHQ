@@ -5,7 +5,15 @@ import { AccessibilityStatementScreen } from '../features/accessibility/Accessib
 import { LegalScreen } from '../features/legal/LegalScreen';
 import { JoinAuthedHandoff } from '../features/family/JoinAuthedHandoff';
 import { resetTour } from '../features/onboarding/tourStorage';
-import { AvatarChip, BottomNav, Button, LanguageToggle, Skeleton, TopBar } from '../components';
+import {
+  AvatarChip,
+  BottomNav,
+  Button,
+  IosPwaHintBanner,
+  LanguageToggle,
+  Skeleton,
+  TopBar,
+} from '../components';
 import type { NavTab } from '../components';
 import { isPushNotificationsEnabled } from '../features/notifications/featureFlag';
 import { useAuth } from '../hooks/useAuth';
@@ -123,6 +131,14 @@ export function AppShell(): ReactElement {
         tabIndex={-1}
         className="flex-1 overflow-y-auto focus:outline-none"
       >
+        {/* F15: iOS-PWA hint banner. Self-suppresses on every non-iOS UA, when
+            the app is already installed (navigator.standalone), or when the
+            user dismissed within the last 30 days — so the unconditional mount
+            here renders nothing for the overwhelming majority of sessions and
+            no per-route gating is required. Sits inside main so the sticky
+            position is relative to the scrollable content area, not the OS
+            chrome. */}
+        <IosPwaHintBanner />
         <Routes>
           <Route
             path={ROUTES.dashboard.path}
