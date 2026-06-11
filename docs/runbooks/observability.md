@@ -111,15 +111,33 @@ exists in the same project.
 The "FCM stale-token cleanups per kind" widget queries a user-defined
 log-based metric that does NOT exist by default. Create it once per project:
 
+The `gcloud logging metrics create` CLI only exposes a small subset of the
+LogMetric API as flags (`--description`, `--log-filter`). The advanced
+fields we need — `valueExtractor`, `metricDescriptor.metricKind`,
+`metricDescriptor.valueType`, `bucketOptions` — require a YAML config
+file via `--config-from-file`. Save this YAML, then create from it:
+
 ```bash
+cat > /tmp/cleaned-token-metric.yaml <<'EOF'
+filter: |
+  resource.type="cloud_run_revision" AND
+  resource.labels.service_name=~"^notify" AND
+  jsonPayload.cleanedTokenCount>0
+description: Distribution of cleanedTokenCount across notify-* callables (M37 stale-token cleanup events).
+valueExtractor: EXTRACT(jsonPayload.cleanedTokenCount)
+metricDescriptor:
+  metricKind: DELTA
+  valueType: DISTRIBUTION
+  unit: "1"
+bucketOptions:
+  exponentialBuckets:
+    numFiniteBuckets: 10
+    growthFactor: 2.0
+    scale: 1.0
+EOF
+
 gcloud logging metrics create notify_callable_cleaned_token_count \
-  --description="Sum of cleanedTokenCount across notify-* callables (M37 stale-token cleanup events)." \
-  --log-filter='resource.type="cloud_run_revision" AND
-                resource.labels.service_name=~"^notify" AND
-                jsonPayload.cleanedTokenCount>0' \
-  --value-extractor='EXTRACT(jsonPayload.cleanedTokenCount)' \
-  --metric-descriptor-metric-kind=DELTA \
-  --metric-descriptor-value-type=INT64 \
+  --config-from-file=/tmp/cleaned-token-metric.yaml \
   --project="$FIREBASE_PROJECT_ID"
 ```
 
@@ -129,13 +147,20 @@ log filter pins `resource.type="cloud_run_revision"` and uses
 filter would silently match zero events — the dashboard's other widgets
 use the matching gen-2 metric surface.
 
+**Why DISTRIBUTION (not INT64):** GCP requires a `valueExtractor` to be
+paired with `valueType: DISTRIBUTION` — INT64 metrics cannot extract a
+field value from log entries. The `exponentialBuckets` (1, 2, 4, 8, …,
+1024) capture any realistic cleanup count; the dashboard widget can then
+chart mean / p99 / sum-rate of cleanedTokenCount as needed.
+
 Why a custom metric and not a logs-based count: the cleanup events emit a
 `cleanedTokenCount` field with the *number* of tokens cleaned per invocation
 (M37, allow-listed in the threat-model M38 allow-list). The metric extracts
 that integer so the dashboard can chart cleanup volume, not just frequency.
 
 To update the filter or description without re-creating, use
-`gcloud logging metrics update notify_callable_cleaned_token_count ...`.
+`gcloud logging metrics update notify_callable_cleaned_token_count
+--config-from-file=...`.
 
 ---
 

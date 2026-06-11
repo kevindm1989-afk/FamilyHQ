@@ -9,9 +9,11 @@
         "width": 6,
         "height": 4,
         "widget": {
-          "displayName": "Notify-callable invocations by kind",
+          "title": "Notify-callable invocations by kind",
           "xyChart": {
-            "chartOptions": { "mode": "COLOR" },
+            "chartOptions": {
+              "mode": "COLOR"
+            },
             "dataSets": [
               {
                 "plotType": "LINE",
@@ -32,7 +34,10 @@
               }
             ],
             "timeshiftDuration": "0s",
-            "yAxis": { "label": "invocations/s", "scale": "LINEAR" }
+            "yAxis": {
+              "label": "invocations/s",
+              "scale": "LINEAR"
+            }
           }
         }
       },
@@ -42,9 +47,11 @@
         "width": 6,
         "height": 4,
         "widget": {
-          "displayName": "Notify-callable success ratio by kind",
+          "title": "Notify-callable success ratio by kind",
           "xyChart": {
-            "chartOptions": { "mode": "COLOR" },
+            "chartOptions": {
+              "mode": "COLOR"
+            },
             "dataSets": [
               {
                 "plotType": "LINE",
@@ -76,9 +83,15 @@
               }
             ],
             "thresholds": [
-              { "value": 0.95, "color": "YELLOW", "direction": "BELOW", "label": "SLO floor 95%" }
+              {
+                "value": 0.95,
+                "label": "SLO floor 95%"
+              }
             ],
-            "yAxis": { "label": "success ratio (0-1)", "scale": "LINEAR" }
+            "yAxis": {
+              "label": "success ratio (0-1)",
+              "scale": "LINEAR"
+            }
           }
         }
       },
@@ -88,9 +101,11 @@
         "width": 6,
         "height": 4,
         "widget": {
-          "displayName": "FCM stale-token cleanups per kind",
+          "title": "FCM stale-token cleanups per kind",
           "xyChart": {
-            "chartOptions": { "mode": "COLOR" },
+            "chartOptions": {
+              "mode": "COLOR"
+            },
             "dataSets": [
               {
                 "plotType": "LINE",
@@ -110,7 +125,10 @@
                 }
               }
             ],
-            "yAxis": { "label": "cleanedTokenCount / s", "scale": "LINEAR" }
+            "yAxis": {
+              "label": "cleanedTokenCount / s",
+              "scale": "LINEAR"
+            }
           }
         }
       },
@@ -120,9 +138,11 @@
         "width": 6,
         "height": 4,
         "widget": {
-          "displayName": "Billing kill-switch invocations",
+          "title": "Billing kill-switch invocations",
           "xyChart": {
-            "chartOptions": { "mode": "COLOR" },
+            "chartOptions": {
+              "mode": "COLOR"
+            },
             "dataSets": [
               {
                 "plotType": "STACKED_BAR",
@@ -145,20 +165,16 @@
             "thresholds": [
               {
                 "value": 0,
-                "color": "RED",
-                "direction": "ABOVE",
                 "label": "Any kill-switch invocation is an operational alert"
               }
             ],
-            "yAxis": { "label": "invocations/s", "scale": "LINEAR" }
+            "yAxis": {
+              "label": "invocations/s",
+              "scale": "LINEAR"
+            }
           }
         }
       }
     ]
-  },
-  "labels": {
-    "owner": "familyhq-platform",
-    "managed_by": "infra/monitoring/dashboard.json",
-    "see_runbook": "docs/runbooks/observability.md"
   }
 }

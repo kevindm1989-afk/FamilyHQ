@@ -74,8 +74,15 @@ function loadDashboard(): DashboardJson {
 
 // ---------------------------------------------------------------------------
 // Widget enumeration — supports both gridLayout and mosaicLayout shapes.
+// Note on the widget label field: Cloud Monitoring's dashboard API uses
+// `title` at the widget level (NOT `displayName` — that's only the
+// top-level dashboard field). gcloud rejects `widget.displayName` with
+// 'Cannot find field'. We retain `displayName` here for backwards-tolerance
+// (the older shape this codebase initially shipped) but `title` is the
+// correct + currently-deployed field name.
 // ---------------------------------------------------------------------------
 interface WidgetLike {
+  title?: unknown;
   displayName?: unknown;
   // Visible at any nesting depth — we serialize the whole widget back to a
   // string for the metric / filter substring checks, which is the most
@@ -131,9 +138,16 @@ function collectWidgets(dash: DashboardJson): WidgetLike[] {
   return widgets;
 }
 
-/** Returns the widget's displayName as a string, or '' if absent / non-string. */
+/**
+ * Returns the widget's label as a string. Prefers `title` (the
+ * Cloud Monitoring API's actual field name at the widget level) and
+ * falls back to `displayName` for backwards-compatibility with the
+ * older shape.
+ */
 function nameOf(w: WidgetLike): string {
-  return typeof w.displayName === 'string' ? w.displayName : '';
+  if (typeof w.title === 'string') return w.title;
+  if (typeof w.displayName === 'string') return w.displayName;
+  return '';
 }
 
 /**
