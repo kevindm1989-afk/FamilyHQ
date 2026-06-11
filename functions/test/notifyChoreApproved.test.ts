@@ -16,14 +16,17 @@
  *     declaration site without the firebase-functions runtime evaluating the
  *     attestation chain — see brief).
  *   - C-T2..C-T8: auth + user-doc + chore-doc + cross-tenant guards.
- *   - C-T9..C-T11: silent-success branches (opt-out, category-off, no tokens).
+ *   - C-T9..C-T11: silent-skip branches (opt-out, category-off, no tokens)
+ *     return `{ sent: 0, reason: 'opted_out' | 'no_tokens' }` per M39.
  *   - C-T12: happy path + the exact body the implementer must read from
- *     notificationBodies.choreApproved.
- *   - C-T13..C-T16: per-token FCM response handling — delete on stale codes,
- *     NEVER delete on transient codes. M37 contract.
+ *     notificationBodies.choreApproved. Returns `{ sent, cleaned }`.
+ *   - C-T13..C-T16: per-token FCM response handling — delete on stale codes
+ *     (and bump `cleaned`), NEVER delete on transient codes (and do NOT
+ *     bump `cleaned`). M37 + M39 contract.
  *   - C-T17: rate-limit (M36) using a Firestore-counter doc at
  *     rateLimits/{kind}__{callerUid}.
- *   - C-T18: FCM throws → INTERNAL; raw error never echoed.
+ *   - C-T18: FCM throws → `{ sent: 0, reason: 'send_failed' }`; raw error
+ *     never echoed in the surfaced shape (M39, threat-model C-T14).
  *   - C-T19: privacy — outbound FCM payload contains no PI substrings.
  *   - C-T20: log-hygiene — no console.* in the source (extends the PR A AST
  *     scan; pinned here too so the implementer can't ship the file with a
@@ -742,8 +745,8 @@ describe('C-T8b: recipient userPrivate.familyId mismatch → permission-denied',
 // C-T9, C-T10, C-T11 — silent no-op branches: opt-out, category-off, no tokens
 // ===========================================================================
 
-describe('C-T9: pushEnabled == false → silent success, no FCM call', () => {
-  it('returns { sent: 0, failed: 0 } when recipient master push is off', async () => {
+describe('C-T9: pushEnabled == false → silent skip, no FCM call', () => {
+  it('returns { sent: 0, reason: "opted_out" } when recipient master push is off (M39)', async () => {
     seedHappyPath();
     docStore.set(`userPrivate/${RECIPIENT_UID}`, {
       familyId: FAMILY_ID,
@@ -756,7 +759,7 @@ describe('C-T9: pushEnabled == false → silent success, no FCM call', () => {
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
     });
-    expect(result).toMatchObject({ sent: 0, failed: 0 });
+    expect(result).toMatchObject({ sent: 0, reason: 'opted_out' });
   });
 
   it('does NOT call FCM when recipient master push is off', async () => {
@@ -773,8 +776,8 @@ describe('C-T9: pushEnabled == false → silent success, no FCM call', () => {
   });
 });
 
-describe('C-T10: categories.myChoreResolved == false → silent success, no FCM call', () => {
-  it('returns { sent: 0, failed: 0 } when category is muted', async () => {
+describe('C-T10: categories.myChoreResolved == false → silent skip, no FCM call', () => {
+  it('returns { sent: 0, reason: "opted_out" } when category is muted (M39 — same reason as pushEnabled=false to avoid enumeration oracle)', async () => {
     seedHappyPath();
     docStore.set(`userPrivate/${RECIPIENT_UID}`, {
       familyId: FAMILY_ID,
@@ -787,7 +790,7 @@ describe('C-T10: categories.myChoreResolved == false → silent success, no FCM 
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
     });
-    expect(result).toMatchObject({ sent: 0, failed: 0 });
+    expect(result).toMatchObject({ sent: 0, reason: 'opted_out' });
   });
 
   it('does NOT call FCM when category is muted', async () => {
@@ -804,15 +807,15 @@ describe('C-T10: categories.myChoreResolved == false → silent success, no FCM 
   });
 });
 
-describe('C-T11: recipient has no fcmTokens → silent success, no FCM call', () => {
-  it('returns { sent: 0, failed: 0 } when subcollection is empty', async () => {
+describe('C-T11: recipient has no fcmTokens → silent skip, no FCM call', () => {
+  it('returns { sent: 0, reason: "no_tokens" } when subcollection is empty (M39)', async () => {
     seedHappyPath();
     docStore.delete(`userPrivate/${RECIPIENT_UID}/fcmTokens/${TOKEN_HASH_GOOD}`);
     const result = await invoke({
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
     });
-    expect(result).toMatchObject({ sent: 0, failed: 0 });
+    expect(result).toMatchObject({ sent: 0, reason: 'no_tokens' });
   });
 
   it('does NOT call FCM when there are no tokens', async () => {
@@ -828,7 +831,7 @@ describe('C-T11: recipient has no fcmTokens → silent success, no FCM call', ()
 // Body must match notificationBodies.choreApproved verbatim (no PI).
 // ===========================================================================
 
-describe('C-T12: happy path — 2 tokens both succeed → { sent: 2, failed: 0 }', () => {
+describe('C-T12: happy path — 2 tokens both succeed → { sent: 2, cleaned: 0 }', () => {
   beforeEach(() => {
     seedHappyPath();
     docStore.set(`userPrivate/${RECIPIENT_UID}/fcmTokens/${TOKEN_HASH_BAD}`, {
@@ -844,12 +847,12 @@ describe('C-T12: happy path — 2 tokens both succeed → { sent: 2, failed: 0 }
     }));
   });
 
-  it('returns { sent: 2, failed: 0 }', async () => {
+  it('returns { sent: 2, cleaned: 0 }', async () => {
     const result = (await invoke({
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
-    })) as { sent: number; failed: number };
-    expect(result).toEqual({ sent: 2, failed: 0 });
+    })) as { sent: number; cleaned: number };
+    expect(result).toEqual({ sent: 2, cleaned: 0 });
   });
 
   it('calls sendEachForMulticast exactly once', async () => {
@@ -955,12 +958,12 @@ describe('C-T13: registration-token-not-registered → that token doc is deleted
     });
   });
 
-  it('returns { sent: 1, failed: 1 }', async () => {
+  it('returns { sent: 1, cleaned: 1 } (stale-token code bumps cleaned)', async () => {
     const result = (await invoke({
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
-    })) as { sent: number; failed: number };
-    expect(result).toEqual({ sent: 1, failed: 1 });
+    })) as { sent: number; cleaned: number };
+    expect(result).toEqual({ sent: 1, cleaned: 1 });
   });
 
   it('deletes EXACTLY the bad token doc (registration-token-not-registered)', async () => {
@@ -1005,12 +1008,12 @@ describe('C-T14: invalid-registration-token → that token doc is deleted', () =
     });
   });
 
-  it('returns { sent: 1, failed: 1 }', async () => {
+  it('returns { sent: 1, cleaned: 1 } (stale-token code bumps cleaned)', async () => {
     const result = (await invoke({
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
-    })) as { sent: number; failed: number };
-    expect(result).toEqual({ sent: 1, failed: 1 });
+    })) as { sent: number; cleaned: number };
+    expect(result).toEqual({ sent: 1, cleaned: 1 });
   });
 
   it('deletes the invalid token doc', async () => {
@@ -1054,12 +1057,12 @@ describe('C-T15: messaging/server-unavailable is transient — token doc NOT del
     });
   });
 
-  it('returns { sent: 1, failed: 1 }', async () => {
+  it('returns { sent: 1, cleaned: 0 } (transient code does NOT bump cleaned — M39)', async () => {
     const result = (await invoke({
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
-    })) as { sent: number; failed: number };
-    expect(result).toEqual({ sent: 1, failed: 1 });
+    })) as { sent: number; cleaned: number };
+    expect(result).toEqual({ sent: 1, cleaned: 0 });
   });
 
   it('does NOT delete the token doc on a transient error', async () => {
@@ -1095,12 +1098,12 @@ describe('C-T16: messaging/internal-error is transient — token doc NOT deleted
     });
   });
 
-  it('returns { sent: 1, failed: 1 }', async () => {
+  it('returns { sent: 1, cleaned: 0 } (transient code does NOT bump cleaned — M39)', async () => {
     const result = (await invoke({
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
-    })) as { sent: number; failed: number };
-    expect(result).toEqual({ sent: 1, failed: 1 });
+    })) as { sent: number; cleaned: number };
+    expect(result).toEqual({ sent: 1, cleaned: 0 });
   });
 
   it('does NOT delete the token doc on an internal-error response', async () => {
@@ -1191,7 +1194,7 @@ describe('C-T17: M36 rate limit — 11th call within 60s by the same caller → 
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
     });
-    expect(result).toMatchObject({ sent: 1, failed: 0 });
+    expect(result).toMatchObject({ sent: 1, cleaned: 0 });
   });
 
   it('ALLOWS the call when the window has expired (windowStartMs > 60s ago) — counter resets', async () => {
@@ -1204,7 +1207,7 @@ describe('C-T17: M36 rate limit — 11th call within 60s by the same caller → 
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
     });
-    expect(result).toMatchObject({ sent: 1, failed: 0 });
+    expect(result).toMatchObject({ sent: 1, cleaned: 0 });
   });
 
   it('increments the counter doc on a successful call', async () => {
@@ -1229,7 +1232,7 @@ describe('C-T17: M36 rate limit — 11th call within 60s by the same caller → 
 // C-T18 — FCM throws → generic INTERNAL; raw error never echoed (M39).
 // ===========================================================================
 
-describe('C-T18: sendEachForMulticast throws → INTERNAL, raw error never echoed (M39)', () => {
+describe('C-T18: sendEachForMulticast throws → { sent: 0, reason: "send_failed" }, raw error never echoed (M39)', () => {
   beforeEach(() => {
     seedHappyPath();
     sendEachForMulticastMock = vi.fn(async () => {
@@ -1241,39 +1244,40 @@ describe('C-T18: sendEachForMulticast throws → INTERNAL, raw error never echoe
     });
   });
 
-  it('rejects with an HttpsError code of "internal"', async () => {
-    const err = await invoke({
+  it('returns the generic send-failed skip shape (NOT a thrown HttpsError) — M39 / C-T14', async () => {
+    // The chore approval already committed; rethrowing here would invite
+    // client retry storms during the exact window we'd be brownout-throttling.
+    const result = (await invoke({
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
-    }).then(
-      () => new Error('expected rejection'),
-      (e: unknown) => e as { code?: string; message?: string },
-    );
-    expect(err).toBeInstanceOf(FakeHttpsError);
-    expect(err.code).toBe('internal');
+    })) as { sent: number; reason: string };
+    expect(result).toEqual({ sent: 0, reason: 'send_failed' });
   });
 
-  it('the surfaced error message does NOT contain the raw FCM provider text', async () => {
-    const err = await invoke({
-      auth: { uid: CALLER_UID },
-      data: { choreId: CHORE_ID },
-    }).then(
-      () => new Error('expected rejection'),
-      (e: unknown) => e as { message?: string },
-    );
-    expect(err.message ?? '').not.toMatch(/messaging\/server-unavailable/);
-    expect(err.message ?? '').not.toMatch(/RAW PROVIDER TEXT/);
+  it('does NOT throw any HttpsError on FCM provider failure', async () => {
+    let threw = false;
+    try {
+      await invoke({ auth: { uid: CALLER_UID }, data: { choreId: CHORE_ID } });
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(false);
   });
 
-  it('the surfaced error message does NOT contain any FCM error code prefix at all', async () => {
-    const err = await invoke({
-      auth: { uid: CALLER_UID },
-      data: { choreId: CHORE_ID },
-    }).then(
-      () => new Error('expected rejection'),
-      (e: unknown) => e as { message?: string },
-    );
-    expect(err.message ?? '').not.toMatch(/messaging\//i);
+  it('the structured log payload does NOT contain the raw FCM provider text', async () => {
+    await invoke({ auth: { uid: CALLER_UID }, data: { choreId: CHORE_ID } });
+    // Walk every error-log call and assert no payload string carries the
+    // provider text. Operator-side observability ALSO must not leak the
+    // code prefix (would re-expose the M39 oracle to anyone with logs).
+    const serialized = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(serialized).not.toMatch(/messaging\/server-unavailable/);
+    expect(serialized).not.toMatch(/RAW PROVIDER TEXT/);
+  });
+
+  it('the structured log payload does NOT contain any FCM error code prefix at all', async () => {
+    await invoke({ auth: { uid: CALLER_UID }, data: { choreId: CHORE_ID } });
+    const serialized = JSON.stringify(loggerErrorMock.mock.calls);
+    expect(serialized).not.toMatch(/messaging\//i);
   });
 });
 
@@ -1334,6 +1338,71 @@ describe('C-T19: outbound FCM payload contains NO PI substrings (M34, B10 anti-r
       // (no querystring with PI).
       expect(message.data.url).toMatch(/^\/[A-Za-z0-9/_-]*$/);
       expect(message.data.url.toLowerCase()).not.toMatch(/maya|trash|dollar|amount|name/);
+    }
+  });
+});
+
+// ===========================================================================
+// C-T19b — Structured log payload (M38 allow-list). The success-path log
+// MUST carry exactly the seven canonical fields: kind, familyId, actorUid,
+// recipientCount, successCount, cleanedTokenCount, durationMs. No raw token
+// values, no chore title, no PI, no FCM error codes. Pinned because the
+// second-opinion review caught a divergent log payload as a spec violation.
+// ===========================================================================
+
+describe('C-T19b: M38 success-log payload contains the canonical fields and no PI / token bodies', () => {
+  beforeEach(() => {
+    seedHappyPath();
+    sendEachForMulticastMock = vi.fn(async () => ({
+      successCount: 1,
+      failureCount: 0,
+      responses: [{ success: true }],
+    }));
+  });
+
+  it('the success info-log payload contains kind, familyId, actorUid, recipientCount, successCount, cleanedTokenCount, durationMs', async () => {
+    await invoke({ auth: { uid: CALLER_UID }, data: { choreId: CHORE_ID } });
+    // Find the send-complete log entry (the one that carries `successCount`).
+    const sendCompleteCall = loggerInfoMock.mock.calls.find((call) => {
+      const payload = call[1] as Record<string, unknown> | undefined;
+      return payload && 'successCount' in payload;
+    });
+    expect(
+      sendCompleteCall,
+      'expected a logger.info call with `successCount` in its payload',
+    ).toBeDefined();
+    const payload = sendCompleteCall![1] as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      kind: 'choreApproved',
+      familyId: FAMILY_ID,
+      actorUid: CALLER_UID,
+      recipientCount: 1,
+      successCount: 1,
+      cleanedTokenCount: 0,
+    });
+    expect(typeof payload.durationMs).toBe('number');
+  });
+
+  it('the success-log payload does NOT contain the raw FCM token value', async () => {
+    await invoke({ auth: { uid: CALLER_UID }, data: { choreId: CHORE_ID } });
+    const serialized = JSON.stringify(loggerInfoMock.mock.calls);
+    expect(serialized).not.toContain(TOKEN_VALUE_GOOD);
+  });
+
+  it('the success-log payload does NOT contain chore-doc PI substrings', async () => {
+    // Re-seed the chore with PI-looking content the implementer might
+    // accidentally interpolate into a log line.
+    docStore.set(`chores/${CHORE_ID}`, {
+      familyId: FAMILY_ID,
+      status: 'approved',
+      assignedTo: RECIPIENT_UID,
+      title: 'Take out the trash',
+      dollarValue: 38,
+    });
+    await invoke({ auth: { uid: CALLER_UID }, data: { choreId: CHORE_ID } });
+    const serialized = JSON.stringify(loggerInfoMock.mock.calls).toLowerCase();
+    for (const sub of ['trash', '$38', '38.00', 'dollar', 'wishlist']) {
+      expect(serialized).not.toContain(sub.toLowerCase());
     }
   });
 });

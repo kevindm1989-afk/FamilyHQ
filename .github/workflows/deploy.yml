@@ -401,12 +401,20 @@ jobs:
         run: npm --prefix functions audit --omit=dev --audit-level=high
 
       - name: Deploy functions (billingKillSwitch + notifyChoreApproved)
-        # EXACT --only list — kill-switch FIRST, then notifyChoreApproved
-        # (C-T19 / brief PR C4). The kill-switch precedes the chargeable
-        # callable so the $5 cap is in place from second 0; if a deploy
-        # is interrupted between the two functions the chargeable one is
-        # never live without its cap. NEVER mix functions: with
-        # firestore: or storage: or hosting in any single --only flag.
+        # EXACT --only list — billingKillSwitch is listed FIRST as
+        # documentation-of-precedence, but firebase-tools deploys all
+        # functions in this --only list in PARALLEL; the comma order is
+        # NOT a sequencing guarantee (second-opinion review #9). The
+        # operational guarantee is provided EXTERNALLY:
+        # billingKillSwitch was deployed in PR A and has been live since
+        # well before this chargeable callable was even merged. By the
+        # time this step runs, the kill-switch is already running in
+        # production and the project-level $5 cap is in place. Listing
+        # both functions here so the deploy step is idempotent on
+        # re-runs (an unchanged kill-switch revision is a no-op).
+        #
+        # NEVER mix functions: with firestore: or storage: or hosting in
+        # any single --only flag.
         #
         # The kill-switch SA must already be provisioned per
         # docs/runbooks/billing-killswitch.md before this step runs.

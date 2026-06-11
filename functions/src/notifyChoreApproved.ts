@@ -4,9 +4,23 @@
  *
  * Sends a vague, PI-free push when a parent has just approved a kid's chore.
  * Idempotent against replay (rate-limited by M36). Cross-tenant safe (M35).
- * All FCM error codes are mapped to a generic surface (M39) — the response
- * shape sent to the client is `{ sent, failed }` and nothing else. No
- * recipient UIDs, no FCM error code prefixes, no chore PI.
+ * All FCM error codes are mapped to a generic surface (M39).
+ *
+ * Response shape per the spec (M39, design §12 step 10, threat-model
+ * §A.10 C-T14/C-T15):
+ *   - Success: `{ sent: number, cleaned: number }`
+ *     - `sent` = successful FCM deliveries
+ *     - `cleaned` = stale-token responses that triggered a fcmTokens
+ *       doc deletion (subset of failures; transient FCM errors are
+ *       silently retried by the device on next send and don't show
+ *       up in `cleaned`).
+ *   - Skip: `{ sent: 0, reason: 'opted_out' | 'no_tokens' | 'send_failed' }`
+ *     - `opted_out` — recipient's master push toggle or the
+ *       chore-resolved category is false
+ *     - `no_tokens` — recipient has no fcmTokens docs (or missing
+ *       userPrivate)
+ *     - `send_failed` — `sendEachForMulticast` threw (FCM outage,
+ *       quota, etc.). NEVER carries the raw FCM error code.
  *
  * Trust derivation order (intentional — short-circuit cheapest checks first):
  *   1. `request.auth` exists. App Check is enforced at the platform layer
@@ -32,7 +46,8 @@
  *      (`registration-token-not-registered`, `invalid-registration-token`
  *      — M37). Transient codes (`server-unavailable`, `internal-error`,
  *      `quota-exceeded`) leave the doc intact.
- *  13. Return `{ sent, failed }`.
+ *  13. Return `{ sent, cleaned }` (M39 — `cleaned` counts only stale-token
+ *      doc deletions, NOT transient FCM failures).
  *
  * Logging: `firebase-functions/logger` only (M38 — extends PR A's no-`console.*`
  * AST gate to this file via C-T20). Payloads carry only the allow-listed
@@ -40,9 +55,13 @@
  * tokens, or FCM error codes.
  *
  * Error mapping: any throw from `sendEachForMulticast` is caught and
- * rethrown as `HttpsError('internal', '<generic>')`. The raw provider text
- * (incl. `messaging/*` prefixes) NEVER appears in the client-visible
- * message — M39, second-opinion CB3 (FCM as Google subprocessor).
+ * surfaced as `{ sent: 0, reason: 'send_failed' }` — NOT rethrown. The
+ * spec is explicit that an FCM outage is not a caller-facing failure
+ * (M39, threat-model C-T14): the chore approval itself already
+ * committed; the caller learning the FCM provider was down adds no
+ * actionable signal and would invite retry storms. The raw provider
+ * text (incl. `messaging/*` prefixes) NEVER appears anywhere — M39,
+ * second-opinion CB3 (FCM as Google subprocessor).
  */
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import * as logger from 'firebase-functions/logger';
@@ -116,6 +135,9 @@ export const notifyChoreApproved = onCall(
     enforceAppCheck: true,
   },
   async (request) => {
+    // Wall-clock start for the structured-log `durationMs` field (M38).
+    const startedAt = Date.now();
+
     // 1. Auth — must reject UNAUTHENTICATED before any read.
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -125,31 +147,38 @@ export const notifyChoreApproved = onCall(
     const db = getFirestore();
 
     // 2. Rate limit (M36). Runs FIRST after auth so a stolen session burst
-    //    cannot fan out before the chore-doc reads cost us anything. The
-    //    counter doc is a tiny tenant-private resource at
-    //    `rateLimits/{kind}__{callerUid}`. We read-then-write (not
-    //    increment-sentinel) because the C-T17 increment test asserts that
-    //    the persisted `count` is a plain number after the call.
+    //    cannot fan out before the chore-doc reads cost us anything.
+    //    Wrapped in `runTransaction` so two concurrent invocations from
+    //    the same caller can't both read count=N and both write N+1 —
+    //    pinned by security-reviewer Finding 2 / second-opinion concern
+    //    #4. Same `{count, windowStartMs}` doc shape the C-T17 test
+    //    asserts (transaction is the implementation detail; the test
+    //    only sees the persisted shape).
     const rateLimitRef = db.doc(`rateLimits/${KIND}__${callerUid}`);
     const now = Date.now();
-    const rateLimitSnap = await rateLimitRef.get();
-    // The Admin SDK exposes `.data()` as a method; the unit-test mock
-    // exposes it as a property. Tolerate both so the implementation
-    // works against the real SDK at runtime and the test fixtures.
-    const prev = readSnap(rateLimitSnap) as
-      | { count?: unknown; windowStartMs?: unknown }
-      | undefined;
-    const prevCount = typeof prev?.count === 'number' ? prev.count : 0;
-    const prevWindowStart = typeof prev?.windowStartMs === 'number' ? prev.windowStartMs : 0;
-    const withinWindow = now - prevWindowStart < RATE_LIMIT_WINDOW_MS;
-    if (withinWindow && prevCount >= RATE_LIMIT_MAX_PER_WINDOW) {
+    const limitTripped = await db.runTransaction(async (tx) => {
+      const rateLimitSnap = await tx.get(rateLimitRef);
+      // The Admin SDK exposes `.data()` as a method; the unit-test mock
+      // exposes it as a property. Tolerate both via readSnap().
+      const prev = readSnap(rateLimitSnap) as
+        | { count?: unknown; windowStartMs?: unknown }
+        | undefined;
+      const prevCount = typeof prev?.count === 'number' ? prev.count : 0;
+      const prevWindowStart = typeof prev?.windowStartMs === 'number' ? prev.windowStartMs : 0;
+      const withinWindow = now - prevWindowStart < RATE_LIMIT_WINDOW_MS;
+      if (withinWindow && prevCount >= RATE_LIMIT_MAX_PER_WINDOW) {
+        return true;
+      }
+      const nextCount = withinWindow ? prevCount + 1 : 1;
+      const nextWindowStart = withinWindow ? prevWindowStart : now;
+      tx.set(rateLimitRef, { count: nextCount, windowStartMs: nextWindowStart });
+      return false;
+    });
+    if (limitTripped) {
       // Generic message — no enumeration oracle. The actor is told they
       // were limited but not the exact remaining window (M39).
       throw new HttpsError('resource-exhausted', 'Too many requests. Try again shortly.');
     }
-    const nextCount = withinWindow ? prevCount + 1 : 1;
-    const nextWindowStart = withinWindow ? prevWindowStart : now;
-    await rateLimitRef.set({ count: nextCount, windowStartMs: nextWindowStart });
 
     // 3. Caller users doc + isActive. Both missing-doc AND deactivated-doc
     //    surface as `permission-denied` so the response shape does NOT
@@ -205,12 +234,18 @@ export const notifyChoreApproved = onCall(
     //    family in a corrupted state; we belt-and-suspenders the check.
     const recipientPrivateSnap = await db.doc(`userPrivate/${recipientUid}`).get();
     if (!recipientPrivateSnap.exists) {
-      // Treat missing-recipient as a silent no-op (no PI to send to).
-      logger.info('notifyChoreApproved: no recipient userPrivate', {
+      // Treat missing-recipient as `no_tokens` (no addressable
+      // device). Logged + structured per M38.
+      logger.info('notifyChoreApproved: skip', {
         kind: KIND,
+        familyId: callerFamilyId,
+        actorUid: callerUid,
         recipientCount: 0,
+        successCount: 0,
+        cleanedTokenCount: 0,
+        durationMs: Date.now() - startedAt,
       });
-      return { sent: 0, failed: 0 };
+      return { sent: 0 as const, reason: 'no_tokens' as const };
     }
     const recipientPrivate = (readSnap(recipientPrivateSnap) ?? {}) as {
       familyId?: unknown;
@@ -226,20 +261,37 @@ export const notifyChoreApproved = onCall(
     // 7. Recipient preferences. The category mute is part of the master
     //    contract — a kid who muted "my chores resolved" expects no push,
     //    full stop. Master `pushEnabled === false` short-circuits the
-    //    category check.
+    //    category check. Both branches surface the same `opted_out`
+    //    reason — the caller does not learn WHICH toggle is off (no
+    //    preference-state enumeration oracle).
     const prefs = recipientPrivate.notificationPreferences ?? {};
-    if (prefs.pushEnabled !== true) {
-      return { sent: 0, failed: 0 };
-    }
-    if (prefs.categories?.myChoreResolved !== true) {
-      return { sent: 0, failed: 0 };
+    if (prefs.pushEnabled !== true || prefs.categories?.myChoreResolved !== true) {
+      logger.info('notifyChoreApproved: skip', {
+        kind: KIND,
+        familyId: callerFamilyId,
+        actorUid: callerUid,
+        recipientCount: 0,
+        successCount: 0,
+        cleanedTokenCount: 0,
+        durationMs: Date.now() - startedAt,
+      });
+      return { sent: 0 as const, reason: 'opted_out' as const };
     }
 
     // 8. Fetch the recipient's FCM tokens. The subcollection list returns
     //    one entry per device. An empty list is a silent no-op.
     const tokenSnaps = await db.collection(`userPrivate/${recipientUid}/fcmTokens`).get();
     if (tokenSnaps.empty) {
-      return { sent: 0, failed: 0 };
+      logger.info('notifyChoreApproved: skip', {
+        kind: KIND,
+        familyId: callerFamilyId,
+        actorUid: callerUid,
+        recipientCount: 0,
+        successCount: 0,
+        cleanedTokenCount: 0,
+        durationMs: Date.now() - startedAt,
+      });
+      return { sent: 0 as const, reason: 'no_tokens' as const };
     }
 
     // Build the (tokenHash, token) pair list with deterministic order so
@@ -254,7 +306,16 @@ export const notifyChoreApproved = onCall(
       tokenEntries.push({ tokenHash: docSnap.id, token: tokenData.token });
     }
     if (tokenEntries.length === 0) {
-      return { sent: 0, failed: 0 };
+      logger.info('notifyChoreApproved: skip', {
+        kind: KIND,
+        familyId: callerFamilyId,
+        actorUid: callerUid,
+        recipientCount: 0,
+        successCount: 0,
+        cleanedTokenCount: 0,
+        durationMs: Date.now() - startedAt,
+      });
+      return { sent: 0 as const, reason: 'no_tokens' as const };
     }
 
     // 9. Send. The notification payload is the FROZEN constants from
@@ -275,19 +336,24 @@ export const notifyChoreApproved = onCall(
         data: { url: '/notifications' },
       })) as MulticastResult;
     } catch {
-      // M39: never echo the raw FCM provider text (`messaging/server-
-      // unavailable`, etc.) — a `messaging/*` code prefix is itself a
-      // token-validity / config oracle. The generic 'internal' code +
-      // generic message is all the client sees. The original error is
-      // dropped on purpose (not even logged with the error object) so
-      // nested `errorInfo` cannot leak credentials. We log a structured
-      // generic message so the operator can correlate via the rest of
-      // the allow-listed payload.
+      // M39 / C-T14: FCM-throw is NOT a caller-facing failure. The chore
+      // approval already committed; an FCM outage adds nothing the
+      // caller can act on, and rethrowing would invite client retry
+      // storms during the exact window we're brownout-throttling. We
+      // also never echo the raw provider text — a `messaging/*` code
+      // prefix is itself a token-validity / config oracle. The original
+      // error is dropped on purpose (not even logged with the error
+      // object) so nested `errorInfo` cannot leak credentials.
       logger.error('notifyChoreApproved: FCM send failed', {
         kind: KIND,
+        familyId: callerFamilyId,
+        actorUid: callerUid,
         recipientCount: tokenEntries.length,
+        successCount: 0,
+        cleanedTokenCount: 0,
+        durationMs: Date.now() - startedAt,
       });
-      throw new HttpsError('internal', 'Notification send failed.');
+      return { sent: 0 as const, reason: 'send_failed' as const };
     }
 
     // 10. Stale-token cleanup (M37). Only the two pinned codes trigger
@@ -295,9 +361,17 @@ export const notifyChoreApproved = onCall(
     //     try again next send). The per-token response index aligns
     //     with `tokenEntries` because we built the tokens array from
     //     `tokenEntries` directly above.
+    //
+    //     `cleaned` counts ONLY the stale-token doc deletions (the
+    //     subset of failures we acted on). Transient FCM errors do NOT
+    //     bump `cleaned` — that's the spec contract (M39, threat-model
+    //     C-T15). A separate `failed` counter is intentionally NOT
+    //     surfaced: the caller has nothing to do with the number of
+    //     transient FCM hiccups, and exposing it would invite retry
+    //     loops on the client.
     const responses = result.responses ?? [];
     let sent = 0;
-    let failed = 0;
+    let cleaned = 0;
     const deletions: Promise<void>[] = [];
     for (let i = 0; i < tokenEntries.length; i += 1) {
       const entry = tokenEntries[i];
@@ -305,31 +379,38 @@ export const notifyChoreApproved = onCall(
       if (!entry || !response) continue;
       if (response.success === true) {
         sent += 1;
-      } else {
-        failed += 1;
-        const code = response.error?.code;
-        if (typeof code === 'string' && FCM_STALE_TOKEN_CODES.has(code)) {
-          deletions.push(
-            db
-              .doc(`userPrivate/${recipientUid}/fcmTokens/${entry.tokenHash}`)
-              .delete()
-              .then(() => undefined),
-          );
-        }
+        continue;
+      }
+      const code = response.error?.code;
+      if (typeof code === 'string' && FCM_STALE_TOKEN_CODES.has(code)) {
+        cleaned += 1;
+        deletions.push(
+          db
+            .doc(`userPrivate/${recipientUid}/fcmTokens/${entry.tokenHash}`)
+            .delete()
+            .then(() => undefined),
+        );
       }
     }
     if (deletions.length > 0) {
       await Promise.all(deletions);
     }
 
-    // 11. Structured log (M38 allow-list — kind + counts only; no token
-    //     bodies, no chore title, no recipient UID in raw form).
+    // 11. Structured log (M38 allow-list — the canonical seven fields:
+    //     kind, familyId, actorUid, recipientCount, successCount,
+    //     cleanedTokenCount, durationMs. No token bodies, no chore
+    //     title, no recipient UID in raw form, no FCM error codes.
+    //     Pinned by C-T16 + threat-model T5.4.
     logger.info('notifyChoreApproved: send complete', {
       kind: KIND,
+      familyId: callerFamilyId,
+      actorUid: callerUid,
       recipientCount: tokenEntries.length,
-      tokensFailed: failed,
+      successCount: sent,
+      cleanedTokenCount: cleaned,
+      durationMs: Date.now() - startedAt,
     });
 
-    return { sent, failed };
+    return { sent, cleaned };
   },
 );
