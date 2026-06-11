@@ -236,7 +236,7 @@ export async function approveChore(
   // chore title (the server re-derives everything it needs).
   try {
     const fns = getFunctions();
-    const fn = httpsCallable<{ choreId: string }, { sent: number; failed: number }>(
+    const fn = httpsCallable<{ choreId: string }, { sent: number; cleaned: number }>(
       fns,
       'notifyChoreApproved',
     );

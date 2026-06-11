@@ -11,3 +11,9 @@
  */
 export { billingKillSwitch } from './billingKillSwitch.js';
 export { notifyChoreApproved } from './notifyChoreApproved.js';
+export { notifyChoreSubmitted } from './notifyChoreSubmitted.js';
+export { notifyWishlistRequested } from './notifyWishlistRequested.js';
+export { notifyWishlistResolved } from './notifyWishlistResolved.js';
+export { notifyBoardPost } from './notifyBoardPost.js';
+export { notifyTodoCreated } from './notifyTodoCreated.js';
+export { notifyTodoCompleted } from './notifyTodoCompleted.js';

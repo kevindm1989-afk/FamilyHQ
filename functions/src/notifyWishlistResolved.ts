@@ -1,0 +1,304 @@
+/**
+ * notifyWishlistResolved — parent → wishlist-item owner (PR D4).
+ *
+ * Single-recipient shape (mirrors `notifyChoreApproved`). One callable
+ * handles BOTH branches of the state machine — `status='redeemed'` and
+ * `status='denied'` — because the lock-screen copy is intentionally
+ * identical: the design (D4) pins the reason text to the in-app inbox,
+ * not the push body.
+ *
+ * Recipient = `item.ownerUid`. A parent approving / denying their own
+ * wishlist item (edge case: a parent has wishlist items and acts on
+ * them themselves) returns the silent `no_tokens` skip — no self-ping.
+ *
+ * Notification body comes verbatim from
+ * `NOTIFICATION_BODIES.wishlistResolved`. The frozen string never
+ * embeds the `deniedReason` field; M34 + D4 design pin that.
+ */
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import * as logger from 'firebase-functions/logger';
+import { getFirestore } from 'firebase-admin/firestore';
+import { getMessaging } from 'firebase-admin/messaging';
+import { initializeApp, getApps } from 'firebase-admin/app';
+import { NOTIFICATION_BODIES } from './notificationBodies.js';
+
+if (getApps().length === 0) {
+  initializeApp();
+}
+
+const KIND = 'wishlistResolved';
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_PER_WINDOW = 10;
+const FCM_STALE_TOKEN_CODES = new Set<string>([
+  'messaging/registration-token-not-registered',
+  'messaging/invalid-registration-token',
+]);
+const RESOLVED_STATES = new Set<string>(['redeemed', 'denied']);
+
+interface FcmTokenDoc {
+  token: string;
+}
+
+function readSnap(snap: unknown): Record<string, unknown> | undefined {
+  if (!snap || typeof snap !== 'object') return undefined;
+  const candidate = snap as { data?: unknown };
+  if (typeof candidate.data === 'function') {
+    const value = (candidate.data as () => unknown)();
+    return value && typeof value === 'object' ? (value as Record<string, unknown>) : undefined;
+  }
+  if (candidate.data && typeof candidate.data === 'object') {
+    return candidate.data as Record<string, unknown>;
+  }
+  return undefined;
+}
+
+interface SendResponse {
+  success: boolean;
+  error?: { code?: string } | undefined;
+}
+
+interface MulticastResult {
+  successCount?: number;
+  failureCount?: number;
+  responses: SendResponse[];
+}
+
+export const notifyWishlistResolved = onCall(
+  {
+    region: 'northamerica-northeast1',
+    enforceAppCheck: true,
+  },
+  async (request) => {
+    const startedAt = Date.now();
+
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'Sign in required.');
+    }
+    const callerUid = request.auth.uid;
+
+    const db = getFirestore();
+
+    const rateLimitRef = db.doc(`rateLimits/${KIND}__${callerUid}`);
+    const now = Date.now();
+    const limitTripped = await db.runTransaction(async (tx) => {
+      const rateLimitSnap = await tx.get(rateLimitRef);
+      const prev = readSnap(rateLimitSnap) as
+        | { count?: unknown; windowStartMs?: unknown }
+        | undefined;
+      const prevCount = typeof prev?.count === 'number' ? prev.count : 0;
+      const prevWindowStart = typeof prev?.windowStartMs === 'number' ? prev.windowStartMs : 0;
+      const withinWindow = now - prevWindowStart < RATE_LIMIT_WINDOW_MS;
+      if (withinWindow && prevCount >= RATE_LIMIT_MAX_PER_WINDOW) {
+        return true;
+      }
+      const nextCount = withinWindow ? prevCount + 1 : 1;
+      const nextWindowStart = withinWindow ? prevWindowStart : now;
+      // expiresAt = window-start + 7 days (privacy review Fix 2 — TTL).
+      tx.set(rateLimitRef, {
+        count: nextCount,
+        windowStartMs: nextWindowStart,
+        expiresAt: nextWindowStart + 7 * 24 * 60 * 60 * 1000,
+      });
+      return false;
+    });
+    if (limitTripped) {
+      throw new HttpsError('resource-exhausted', 'Too many requests. Try again shortly.');
+    }
+
+    const callerSnap = await db.doc(`users/${callerUid}`).get();
+    if (!callerSnap.exists) {
+      throw new HttpsError('permission-denied', 'Not permitted.');
+    }
+    const caller = (readSnap(callerSnap) ?? {}) as { isActive?: unknown; familyId?: unknown };
+    if (caller.isActive !== true || typeof caller.familyId !== 'string') {
+      throw new HttpsError('permission-denied', 'Not permitted.');
+    }
+    const callerFamilyId = caller.familyId;
+
+    const data = (request.data ?? {}) as { itemId?: unknown };
+    const itemId = data.itemId;
+    if (typeof itemId !== 'string' || itemId.length === 0) {
+      throw new HttpsError('invalid-argument', 'Invalid request.');
+    }
+
+    const itemSnap = await db.doc(`wishlistItems/${itemId}`).get();
+    if (!itemSnap.exists) {
+      throw new HttpsError('not-found', 'Not found.');
+    }
+    const item = (readSnap(itemSnap) ?? {}) as {
+      familyId?: unknown;
+      status?: unknown;
+      ownerUid?: unknown;
+    };
+    if (item.familyId !== callerFamilyId) {
+      throw new HttpsError('permission-denied', 'Not permitted.');
+    }
+    if (typeof item.status !== 'string' || !RESOLVED_STATES.has(item.status)) {
+      throw new HttpsError('permission-denied', 'Not permitted.');
+    }
+    if (typeof item.ownerUid !== 'string' || item.ownerUid.length === 0) {
+      throw new HttpsError('permission-denied', 'Not permitted.');
+    }
+    const recipientUid = item.ownerUid;
+
+    // Self-ping guard: a parent acting on their own wishlist item returns
+    // the silent skip without invoking FCM.
+    if (recipientUid === callerUid) {
+      logger.info('notifyWishlistResolved: skip', {
+        kind: KIND,
+        familyId: callerFamilyId,
+        actorUid: callerUid,
+        recipientCount: 0,
+        successCount: 0,
+        cleanedTokenCount: 0,
+        durationMs: Date.now() - startedAt,
+        skipReason: 'no_tokens',
+      });
+      return { sent: 0 as const, cleaned: 0 as const };
+    }
+
+    const recipientPrivateSnap = await db.doc(`userPrivate/${recipientUid}`).get();
+    if (!recipientPrivateSnap.exists) {
+      logger.info('notifyWishlistResolved: skip', {
+        kind: KIND,
+        familyId: callerFamilyId,
+        actorUid: callerUid,
+        recipientCount: 0,
+        successCount: 0,
+        cleanedTokenCount: 0,
+        durationMs: Date.now() - startedAt,
+        skipReason: 'no_tokens',
+      });
+      return { sent: 0 as const, cleaned: 0 as const };
+    }
+    const recipientPrivate = (readSnap(recipientPrivateSnap) ?? {}) as {
+      familyId?: unknown;
+      notificationPreferences?: {
+        pushEnabled?: unknown;
+        categories?: { myWishlistResolved?: unknown };
+      };
+    };
+    if (recipientPrivate.familyId !== callerFamilyId) {
+      throw new HttpsError('permission-denied', 'Not permitted.');
+    }
+    const prefs = recipientPrivate.notificationPreferences ?? {};
+    if (prefs.pushEnabled !== true || prefs.categories?.myWishlistResolved !== true) {
+      logger.info('notifyWishlistResolved: skip', {
+        kind: KIND,
+        familyId: callerFamilyId,
+        actorUid: callerUid,
+        recipientCount: 0,
+        successCount: 0,
+        cleanedTokenCount: 0,
+        durationMs: Date.now() - startedAt,
+        skipReason: 'opted_out',
+      });
+      return { sent: 0 as const, cleaned: 0 as const };
+    }
+
+    const tokenSnaps = await db.collection(`userPrivate/${recipientUid}/fcmTokens`).get();
+    if (tokenSnaps.empty) {
+      logger.info('notifyWishlistResolved: skip', {
+        kind: KIND,
+        familyId: callerFamilyId,
+        actorUid: callerUid,
+        recipientCount: 0,
+        successCount: 0,
+        cleanedTokenCount: 0,
+        durationMs: Date.now() - startedAt,
+        skipReason: 'no_tokens',
+      });
+      return { sent: 0 as const, cleaned: 0 as const };
+    }
+
+    const tokenEntries: Array<{ tokenHash: string; token: string }> = [];
+    for (const docSnap of tokenSnaps.docs) {
+      const tokenData = (readSnap(docSnap) ?? {}) as Partial<FcmTokenDoc>;
+      if (typeof tokenData.token !== 'string' || tokenData.token.length === 0) {
+        continue;
+      }
+      tokenEntries.push({
+        tokenHash: (docSnap as { id?: string }).id ?? '',
+        token: tokenData.token,
+      });
+    }
+    if (tokenEntries.length === 0) {
+      logger.info('notifyWishlistResolved: skip', {
+        kind: KIND,
+        familyId: callerFamilyId,
+        actorUid: callerUid,
+        recipientCount: 0,
+        successCount: 0,
+        cleanedTokenCount: 0,
+        durationMs: Date.now() - startedAt,
+        skipReason: 'no_tokens',
+      });
+      return { sent: 0 as const, cleaned: 0 as const };
+    }
+
+    const tokens = tokenEntries.map((entry) => entry.token);
+    const messaging = getMessaging();
+    let result: MulticastResult;
+    try {
+      result = (await messaging.sendEachForMulticast({
+        tokens,
+        notification: {
+          title: NOTIFICATION_BODIES.wishlistResolved.title,
+          body: NOTIFICATION_BODIES.wishlistResolved.body,
+        },
+        data: { url: '/notifications' },
+      })) as MulticastResult;
+    } catch {
+      logger.error('notifyWishlistResolved: FCM send failed', {
+        kind: KIND,
+        familyId: callerFamilyId,
+        actorUid: callerUid,
+        recipientCount: tokenEntries.length,
+        successCount: 0,
+        cleanedTokenCount: 0,
+        durationMs: Date.now() - startedAt,
+        skipReason: 'send_failed',
+      });
+      return { sent: 0 as const, cleaned: 0 as const };
+    }
+
+    const responses = result.responses ?? [];
+    let sent = 0;
+    let cleaned = 0;
+    const deletions: Promise<void>[] = [];
+    for (let i = 0; i < tokenEntries.length; i += 1) {
+      const entry = tokenEntries[i];
+      const response = responses[i];
+      if (!entry || !response) continue;
+      if (response.success === true) {
+        sent += 1;
+        continue;
+      }
+      const code = response.error?.code;
+      if (typeof code === 'string' && FCM_STALE_TOKEN_CODES.has(code)) {
+        cleaned += 1;
+        deletions.push(
+          db
+            .doc(`userPrivate/${recipientUid}/fcmTokens/${entry.tokenHash}`)
+            .delete()
+            .then(() => undefined),
+        );
+      }
+    }
+    if (deletions.length > 0) {
+      await Promise.all(deletions);
+    }
+
+    logger.info('notifyWishlistResolved: send complete', {
+      kind: KIND,
+      familyId: callerFamilyId,
+      actorUid: callerUid,
+      recipientCount: tokenEntries.length,
+      successCount: sent,
+      cleanedTokenCount: cleaned,
+      durationMs: Date.now() - startedAt,
+    });
+
+    return { sent, cleaned };
+  },
+);

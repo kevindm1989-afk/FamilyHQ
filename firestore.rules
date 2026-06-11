@@ -1145,6 +1145,24 @@ service cloud.firestore {
                     && (isWishlistOwner() || isParent());
     }
 
+    // --- rateLimits (server-only, push-notifications rate limit) -----------
+    //
+    // The notify-callables write per-caller counter docs at
+    // `rateLimits/{kind}__{callerUid}` with `{count, windowStartMs, expiresAt}`
+    // inside `runTransaction`. The Admin SDK bypasses these rules, so the
+    // server side keeps working. A client-side read or write — anonymous OR
+    // authenticated — must NEVER touch this collection: it would let a
+    // caller spy on, reset, or pre-poison their own (or any other) rate
+    // window. The default-deny catch-all already covers it, but pinning
+    // this block alongside the other collections makes the intent explicit
+    // for auditors and survives any future refactor that re-orders rules.
+    //
+    // (Privacy review Fix 3 / Fix 4 — pairs with the `expiresAt` TTL field
+    // the callables now write.)
+    match /rateLimits/{any} {
+      allow read, write: if false;
+    }
+
     // --- default deny ------------------------------------------------------
     match /{document=**} {
       allow read, write: if false;

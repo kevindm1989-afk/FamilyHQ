@@ -36,16 +36,37 @@ export const NOTIFICATION_BODIES = Object.freeze({
     title: 'Allowance update',
     body: 'A chore was approved. Open Family HQ for details.',
   }),
-  // PR D placeholders — implementer fills these in when each callable
-  // ships. Empty strings deliberately bypass the M34 non-empty-value
-  // forbidden-substring scan; the PR D test for the new callable will
-  // pin the fresh wording at that time.
-  choreSubmitted: Object.freeze({ title: '', body: '' }),
-  wishlistRequested: Object.freeze({ title: '', body: '' }),
-  wishlistResolved: Object.freeze({ title: '', body: '' }),
-  familyBoardPost: Object.freeze({ title: '', body: '' }),
-  todoCreated: Object.freeze({ title: '', body: '' }),
-  todoCompleted: Object.freeze({ title: '', body: '' }),
+  // PR D — six new categories. Each title carries the category only and
+  // each body is a vague, PI-free instruction to open the app. M34's
+  // forbidden vocabulary (name, wishlist, amount, balance, dollar, kid,
+  // child, parent, email, title, body) is deliberately absent from every
+  // string. The CI gate at
+  // test/functions/notification-bodies-no-pi.test.ts re-scans these
+  // values on every change.
+  choreSubmitted: Object.freeze({
+    title: 'Chore update',
+    body: 'A chore is ready for review. Open Family HQ for details.',
+  }),
+  wishlistRequested: Object.freeze({
+    title: 'New request',
+    body: 'An item was requested. Open Family HQ for details.',
+  }),
+  wishlistResolved: Object.freeze({
+    title: 'Request update',
+    body: 'A request was updated. Open Family HQ for details.',
+  }),
+  familyBoardPost: Object.freeze({
+    title: 'New family post',
+    body: 'Someone in your family shared an update.',
+  }),
+  todoCreated: Object.freeze({
+    title: 'New to-do',
+    body: "Something was added to your family's to-do list.",
+  }),
+  todoCompleted: Object.freeze({
+    title: 'To-do completed',
+    body: "Something on your family's to-do list was finished.",
+  }),
 }) satisfies Readonly<Record<string, NotificationBody>>;
 
 export type NotificationKind = keyof typeof NOTIFICATION_BODIES;

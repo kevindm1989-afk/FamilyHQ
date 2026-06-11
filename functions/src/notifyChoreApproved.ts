@@ -14,13 +14,14 @@
  *       doc deletion (subset of failures; transient FCM errors are
  *       silently retried by the device on next send and don't show
  *       up in `cleaned`).
- *   - Skip: `{ sent: 0, reason: 'opted_out' | 'no_tokens' | 'send_failed' }`
- *     - `opted_out` — recipient's master push toggle or the
- *       chore-resolved category is false
- *     - `no_tokens` — recipient has no fcmTokens docs (or missing
- *       userPrivate)
- *     - `send_failed` — `sendEachForMulticast` threw (FCM outage,
- *       quota, etc.). NEVER carries the raw FCM error code.
+ *   - Skip: `{ sent: 0, cleaned: 0 }`
+ *     The reason classification (opted_out | no_tokens | send_failed)
+ *     is preserved in the structured server log (`skipReason`) but is
+ *     NOT echoed to the caller. Privacy review (post-PR-D) identified
+ *     a preference-enumeration oracle if a caller could flip a recipient's
+ *     toggle and observe `reason` change — aggregate family-member
+ *     preference state, including children's, would be inferable. Skip
+ *     reasons live SERVER-SIDE only.
  *
  * Trust derivation order (intentional — short-circuit cheapest checks first):
  *   1. `request.auth` exists. App Check is enforced at the platform layer
@@ -55,7 +56,8 @@
  * tokens, or FCM error codes.
  *
  * Error mapping: any throw from `sendEachForMulticast` is caught and
- * surfaced as `{ sent: 0, reason: 'send_failed' }` — NOT rethrown. The
+ * surfaced as `{ sent: 0, cleaned: 0 }` (with `skipReason: 'send_failed'`
+ * in the server log) — NOT rethrown. The
  * spec is explicit that an FCM outage is not a caller-facing failure
  * (M39, threat-model C-T14): the chore approval itself already
  * committed; the caller learning the FCM provider was down adds no
@@ -171,7 +173,14 @@ export const notifyChoreApproved = onCall(
       }
       const nextCount = withinWindow ? prevCount + 1 : 1;
       const nextWindowStart = withinWindow ? prevWindowStart : now;
-      tx.set(rateLimitRef, { count: nextCount, windowStartMs: nextWindowStart });
+      // expiresAt = window-start + 7 days (Firestore TTL retention bound,
+      // privacy review Fix 2). The field is in place now so the TTL
+      // policy can be activated without a schema change later.
+      tx.set(rateLimitRef, {
+        count: nextCount,
+        windowStartMs: nextWindowStart,
+        expiresAt: nextWindowStart + 7 * 24 * 60 * 60 * 1000,
+      });
       return false;
     });
     if (limitTripped) {
@@ -235,7 +244,9 @@ export const notifyChoreApproved = onCall(
     const recipientPrivateSnap = await db.doc(`userPrivate/${recipientUid}`).get();
     if (!recipientPrivateSnap.exists) {
       // Treat missing-recipient as `no_tokens` (no addressable
-      // device). Logged + structured per M38.
+      // device). Logged + structured per M38. The skip reason lives
+      // in the server log only — never in the caller response — to
+      // close the preference-enumeration oracle (privacy review Fix 1).
       logger.info('notifyChoreApproved: skip', {
         kind: KIND,
         familyId: callerFamilyId,
@@ -244,8 +255,9 @@ export const notifyChoreApproved = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason: 'no_tokens',
       });
-      return { sent: 0 as const, reason: 'no_tokens' as const };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
     const recipientPrivate = (readSnap(recipientPrivateSnap) ?? {}) as {
       familyId?: unknown;
@@ -274,8 +286,9 @@ export const notifyChoreApproved = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason: 'opted_out',
       });
-      return { sent: 0 as const, reason: 'opted_out' as const };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
 
     // 8. Fetch the recipient's FCM tokens. The subcollection list returns
@@ -290,8 +303,9 @@ export const notifyChoreApproved = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason: 'no_tokens',
       });
-      return { sent: 0 as const, reason: 'no_tokens' as const };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
 
     // Build the (tokenHash, token) pair list with deterministic order so
@@ -314,8 +328,9 @@ export const notifyChoreApproved = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason: 'no_tokens',
       });
-      return { sent: 0 as const, reason: 'no_tokens' as const };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
 
     // 9. Send. The notification payload is the FROZEN constants from
@@ -352,8 +367,9 @@ export const notifyChoreApproved = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason: 'send_failed',
       });
-      return { sent: 0 as const, reason: 'send_failed' as const };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
 
     // 10. Stale-token cleanup (M37). Only the two pinned codes trigger
