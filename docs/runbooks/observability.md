@@ -5,8 +5,8 @@
 operator's deploy / update / alert manual.
 
 **Companion:** `infra/monitoring/dashboard.json`,
-`docs/runbooks/billing-killswitch.md`, threat-model §A.10 (E-T6), mitigation
-M38, push-notifications design §16.
+`infra/monitoring/alert-policies/`, `docs/runbooks/billing-killswitch.md`,
+threat-model §A.10 (E-T6), mitigation M38, push-notifications design §16.
 
 This document satisfies acceptance criterion E-T6 and the dashboard schema test
 (`test/observability/dashboard-schema.test.ts`).
@@ -164,28 +164,96 @@ To update the filter or description without re-creating, use
 
 ---
 
-## 5. Recommended alerts (follow-up PR)
+## 5. Alert policies
 
 These alerts are NOT in `dashboard.json` (alerts live in
-`monitoring.googleapis.com/alertPolicies`, a separate API). They are listed
-here so the next operator wires them up consistently:
+`monitoring.googleapis.com/alertPolicies`, a separate API with a DIFFERENT
+schema — alert policies use `displayName`, require a top-level `combiner`
+even for a single condition, and express ratios via `denominatorFilter` or
+MQL). The three policies ship as review-gated JSON in
+`infra/monitoring/alert-policies/`, schema-gated by
+`test/observability/alert-policies-schema.test.ts`:
 
-- **Kill-switch invocation count > 0 in any 5-minute window** → page the
-  operator immediately. ADR-0013 §6 specifies the kill-switch only runs on a
-  real cap breach, so any invocation is an incident — investigate the
-  associated billing alert in the same window.
-- **Notify-callable success ratio < 0.95 over 15 minutes** → operational
-  alert (Slack `#familyhq-ops`, no pager). Likely causes: FCM credentials
-  rotated, Firestore rules regression breaking the recipient lookup, or a
-  schema-change rollout that nobody migrated.
-- **`cleanedTokenCount` rate > 100 / hour** → potential incident (Slack
-  `#familyhq-ops`, no pager). Mass token invalidation usually means an
-  external dependency changed (FCM key rotation, APNs cert revoked, or the
-  app upgraded a major version that all clients re-registered through).
+- **`kill-switch-invoked.json`** — kill-switch invocation count > 0 in any
+  5-minute window → page the operator immediately (severity `CRITICAL`).
+  ADR-0013 §6 specifies the kill-switch only runs on a real cap breach, so
+  any invocation is an incident — investigate the associated billing alert
+  in the same window. Runbook: `docs/runbooks/billing-killswitch.md`.
+- **`notify-success-ratio-low.json`** — notify-callable success ratio
+  (2xx / all requests) < 0.95 over 15 minutes → operational alert (Slack
+  `#familyhq-ops`, no pager; severity `WARNING`). Likely causes: FCM
+  credentials rotated, Firestore rules regression breaking the recipient
+  lookup, or a schema-change rollout that nobody migrated.
+- **`token-cleanup-spike.json`** — `cleanedTokenCount` sum > 100 / hour →
+  potential incident (Slack `#familyhq-ops`, no pager; severity `WARNING`).
+  Mass token invalidation usually means an external dependency changed (FCM
+  key rotation, APNs cert revoked, or the app upgraded a major version that
+  all clients re-registered through). **Prerequisite:** the log-based metric
+  from §4 must exist first — the policy queries
+  `logging.googleapis.com/user/notify_callable_cleaned_token_count`. The
+  aligner is `ALIGN_SUM` (not `ALIGN_DELTA`): on a DISTRIBUTION metric,
+  `ALIGN_DELTA` yields a distribution, which a threshold condition cannot
+  compare; `ALIGN_SUM` collapses every extracted value in the window to one
+  number.
 
-When these are provisioned, mirror the JSON into `infra/monitoring/alerts/`
-following the same review-gated pattern as `dashboard.json` and add an
-acceptance test to `test/observability/`.
+### Provisioning
+
+The operator identity needs `roles/monitoring.alertPolicyEditor` (the
+dashboard role from §2 does not cover alert policies). One create per file:
+
+```bash
+gcloud alpha monitoring policies create \
+  --policy-from-file=infra/monitoring/alert-policies/kill-switch-invoked.json \
+  --project="$FIREBASE_PROJECT_ID"
+
+gcloud alpha monitoring policies create \
+  --policy-from-file=infra/monitoring/alert-policies/notify-success-ratio-low.json \
+  --project="$FIREBASE_PROJECT_ID"
+
+gcloud alpha monitoring policies create \
+  --policy-from-file=infra/monitoring/alert-policies/token-cleanup-spike.json \
+  --project="$FIREBASE_PROJECT_ID"
+```
+
+Each command prints the created policy's resource name
+(`projects/{PROJECT_ID}/alertPolicies/{POLICY_ID}`). Capture the trailing
+`{POLICY_ID}` segment in your operator notes (not the repo) — you need it
+for channel wiring and every subsequent update.
+
+### Wiring notification channels
+
+The JSON ships with `"notificationChannels": []` ON PURPOSE — channel IDs
+are environment-specific resources and must not live in the repo. After
+creating the policies:
+
+1. Create the channels in the console: **Monitoring → Alerting →
+   "Edit notification channels"**. The kill-switch alert is page-worthy
+   (PagerDuty / SMS / the operator's pager-equivalent); the other two go to
+   Slack `#familyhq-ops`.
+2. List the channel IDs:
+   `gcloud alpha monitoring channels list --project="$FIREBASE_PROJECT_ID"`.
+3. Attach each channel to its policy:
+
+```bash
+gcloud alpha monitoring policies update {POLICY_ID} \
+  --add-notification-channels={CHANNEL_ID} \
+  --project="$FIREBASE_PROJECT_ID"
+```
+
+### Updating an existing policy
+
+Same review-gated process as the dashboard (§6 applies to alert policies
+too — console edits are drift):
+
+1. Edit the JSON in `infra/monitoring/alert-policies/` on a feature branch.
+2. Verify: `npx vitest run test/observability/`.
+3. After merge:
+   `gcloud alpha monitoring policies update {POLICY_ID}
+   --policy-from-file=infra/monitoring/alert-policies/<file>.json
+   --project="$FIREBASE_PROJECT_ID"`.
+   Note that `update` replaces the policy fields from the file but keeps
+   the attached notification channels unless you also pass channel flags —
+   verify the channels survived in the console after updating.
 
 ---
 

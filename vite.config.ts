@@ -167,7 +167,7 @@ export default defineConfig(async () => ({
     // (verify.sh Tier 4); excluded here so they execute exactly once per
     // verifier invocation, not twice.
     // `functions/**` is a separate workspace with its own Vitest config + its
-    // own runtime semantics (Node 20, no jsdom, mocks the firebase-functions
+    // own runtime semantics (Node 22, no jsdom, mocks the firebase-functions
     // SDK at the boundary). The root `npm test` must NOT pick those tests up
     // — they run via `cd functions && npm test`. Root-side AST/IAM/CI-shape
     // tests that scan the functions tree live under `test/functions/**` and

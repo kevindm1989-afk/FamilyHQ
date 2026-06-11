@@ -24,7 +24,10 @@ together and `CLAUDE.md` for the orchestration conventions.
 
 ## Prerequisites
 
-- Node 20 (see `.nvmrc`; `nvm use` picks it up)
+- Node 20 for the SPA (see `.nvmrc`; `nvm use` picks it up). The
+  `functions/` workspace targets Node 22 (`functions/.nvmrc`, matching the
+  deployed `nodejs22` runtime) — run `nvm use` inside `functions/` when
+  working there.
 - Java 11+ (the Firestore emulator runs on a JVM — only needed for `make test-rules`)
 
 ## Getting started (clean machine)

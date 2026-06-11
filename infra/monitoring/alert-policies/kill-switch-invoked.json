@@ -1,0 +1,32 @@
+{
+  "displayName": "Billing kill-switch invoked (cost cap fired)",
+  "documentation": {
+    "content": "Any invocation of the `billingkillswitch` Cloud Run service means the project's $5 monthly cost cap fired (ADR-0013): the budget Pub/Sub topic delivered a cap-breach message and the kill-switch ran to detach billing. This is page-worthy - there is no benign rate for this metric.\n\nImmediate actions:\n1. Check the billing alert / budget notification in the SAME time window (Console -> Billing -> Budgets & alerts) to confirm the cap breach that triggered it.\n2. Confirm whether billing was actually detached and which service drove the spend.\n3. Follow the runbook: docs/runbooks/billing-killswitch.md (recovery + re-attach procedure).\n\nDashboard: 'Billing kill-switch invocations' widget in infra/monitoring/dashboard.json (docs/runbooks/observability.md section 1, series 4).",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "billingkillswitch request count > 0 over 5 minutes",
+      "conditionThreshold": {
+        "filter": "metric.type=\"run.googleapis.com/request_count\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"billingkillswitch\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_DELTA",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0,
+        "duration": "0s",
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "severity": "CRITICAL",
+  "notificationChannels": [],
+  "enabled": true
+}

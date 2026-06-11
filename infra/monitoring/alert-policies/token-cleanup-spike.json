@@ -1,0 +1,32 @@
+{
+  "displayName": "FCM stale-token cleanup spike (>100 per hour)",
+  "documentation": {
+    "content": "The notify-* callables cleaned more than 100 stale FCM tokens in an hour (sum of the `cleanedTokenCount` log field, M37). Potential incident (Slack #familyhq-ops), not a page.\n\nMass token invalidation usually means an external dependency changed:\n- The Firebase project's FCM key was rotated.\n- APNs revoked our certificate.\n- The app shipped a major version that all clients re-registered through.\n\nPrerequisite: this policy queries the user-defined log-based metric `logging.googleapis.com/user/notify_callable_cleaned_token_count` (DISTRIBUTION) - it must exist in the project first; see docs/runbooks/observability.md section 4 for the create command. The aligner is ALIGN_SUM (sums every extracted cleanedTokenCount value in the window into a single number) because ALIGN_DELTA on a DISTRIBUTION metric yields a distribution, which a threshold condition cannot compare.\n\nRunbook: docs/runbooks/observability.md (section 1, series 3).",
+    "mimeType": "text/markdown"
+  },
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "sum(cleanedTokenCount) > 100 over 3600s",
+      "conditionThreshold": {
+        "filter": "metric.type=\"logging.googleapis.com/user/notify_callable_cleaned_token_count\" AND resource.type=\"cloud_run_revision\"",
+        "aggregations": [
+          {
+            "alignmentPeriod": "3600s",
+            "perSeriesAligner": "ALIGN_SUM",
+            "crossSeriesReducer": "REDUCE_SUM"
+          }
+        ],
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 100,
+        "duration": "0s",
+        "trigger": {
+          "count": 1
+        }
+      }
+    }
+  ],
+  "severity": "WARNING",
+  "notificationChannels": [],
+  "enabled": true
+}

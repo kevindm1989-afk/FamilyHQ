@@ -370,10 +370,16 @@ jobs:
           fi
           echo "Pre-flight OK — preparing to deploy functions on: $PROJECT"
 
-      - name: Setup Node
+      - name: Setup Node (functions runtime version)
+        # This job builds, tests, and deploys the FUNCTIONS workspace, so it
+        # runs on the functions deploy runtime (functions/.nvmrc → Node 22,
+        # matching engines.node in functions/package.json and the nodejs22
+        # runtime in firebase.json) — NOT the root .nvmrc, which pins the
+        # SPA's Node version. The root `npm ci` below only installs
+        # firebase-tools (the deploy CLI), which supports Node 20 and 22.
         uses: actions/setup-node@v4
         with:
-          node-version-file: '.nvmrc'
+          node-version-file: 'functions/.nvmrc'
           cache: 'npm'
 
       - name: Install root dependencies (firebase-tools)
