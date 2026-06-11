@@ -1,17 +1,25 @@
 /**
- * notifyTodoCreated — creator → assignee (PR D6).
+ * notifyTodoCreated — creator → all OTHER family members (PR D6, post
+ * review-restructure).
  *
- * Single-recipient shape (mirrors `notifyChoreApproved`). Recipient =
- * `todo.assignedTo`. Self-assignment (`assignedTo == createdBy`) returns
- * the silent `no_tokens` skip — a kid who created their own todo
- * doesn't need a push from themselves.
+ * Broadcast shape (mirrors `notifyBoardPost`). The design (D6,
+ * push-notifications-design.md:576-582) and threat-model D-T4 specify
+ * "creator → every active member of the family EXCEPT the creator".
+ * The original PR D6 single-recipient (assignee) implementation was a
+ * silent spec divergence and is corrected here.
  *
- * State guard: the todo doc must exist, must be in the caller's family,
- * and must carry a non-empty `assignedTo`. The complete/incomplete bit
- * is irrelevant — the test pins that the creation-side notification
- * runs regardless of `isCompleted`.
+ * Recipients: server queries `users where familyId == callerFamilyId
+ * && isActive == true`, then filters out the caller. The per-recipient
+ * `userPrivate/{uid}` cross-tenant + preference + tokens check matches
+ * `notifyBoardPost` exactly. ONE `sendEachForMulticast` over the
+ * aggregated tokens; per-token recipient mapping kept for stale-token
+ * cleanup.
  *
- * Category: `familyTodos`. Body: frozen
+ * Skip + error shape: `{ sent: 0, cleaned: 0 }` (no `reason` field —
+ * privacy review Fix 1, preference-enumeration oracle); reason class
+ * is logged server-side as `skipReason`.
+ *
+ * Category key: `familyTodos`. Body: frozen
  * `NOTIFICATION_BODIES.todoCreated`.
  */
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
@@ -26,6 +34,7 @@ if (getApps().length === 0) {
 }
 
 const KIND = 'todoCreated';
+const CATEGORY_KEY = 'familyTodos';
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_PER_WINDOW = 10;
 const FCM_STALE_TOKEN_CODES = new Set<string>([
@@ -91,7 +100,12 @@ export const notifyTodoCreated = onCall(
       }
       const nextCount = withinWindow ? prevCount + 1 : 1;
       const nextWindowStart = withinWindow ? prevWindowStart : now;
-      tx.set(rateLimitRef, { count: nextCount, windowStartMs: nextWindowStart });
+      // expiresAt = window-start + 7 days (privacy review Fix 2 — TTL).
+      tx.set(rateLimitRef, {
+        count: nextCount,
+        windowStartMs: nextWindowStart,
+        expiresAt: nextWindowStart + 7 * 24 * 60 * 60 * 1000,
+      });
       return false;
     });
     if (limitTripped) {
@@ -126,88 +140,79 @@ export const notifyTodoCreated = onCall(
     if (todo.familyId !== callerFamilyId) {
       throw new HttpsError('permission-denied', 'Not permitted.');
     }
+    // State guard kept from the original PR D6 contract: a todo without
+    // an `assignedTo` field is considered malformed. The broadcast still
+    // goes to everyone-except-creator, but the doc must be a real todo.
     if (typeof todo.assignedTo !== 'string' || todo.assignedTo.length === 0) {
       throw new HttpsError('permission-denied', 'Not permitted.');
     }
-    const recipientUid = todo.assignedTo;
 
-    // Self-assignment guard — assigner notifying themselves is a noop.
-    if (typeof todo.createdBy === 'string' && todo.createdBy === recipientUid) {
-      logger.info('notifyTodoCreated: skip', {
-        kind: KIND,
-        familyId: callerFamilyId,
-        actorUid: callerUid,
-        recipientCount: 0,
-        successCount: 0,
-        cleanedTokenCount: 0,
-        durationMs: Date.now() - startedAt,
-      });
-      return { sent: 0 as const, reason: 'no_tokens' as const };
-    }
-
-    const recipientPrivateSnap = await db.doc(`userPrivate/${recipientUid}`).get();
-    if (!recipientPrivateSnap.exists) {
-      logger.info('notifyTodoCreated: skip', {
-        kind: KIND,
-        familyId: callerFamilyId,
-        actorUid: callerUid,
-        recipientCount: 0,
-        successCount: 0,
-        cleanedTokenCount: 0,
-        durationMs: Date.now() - startedAt,
-      });
-      return { sent: 0 as const, reason: 'no_tokens' as const };
-    }
-    const recipientPrivate = (readSnap(recipientPrivateSnap) ?? {}) as {
-      familyId?: unknown;
-      notificationPreferences?: {
-        pushEnabled?: unknown;
-        categories?: { familyTodos?: unknown };
-      };
-    };
-    if (recipientPrivate.familyId !== callerFamilyId) {
-      throw new HttpsError('permission-denied', 'Not permitted.');
-    }
-    const prefs = recipientPrivate.notificationPreferences ?? {};
-    if (prefs.pushEnabled !== true || prefs.categories?.familyTodos !== true) {
-      logger.info('notifyTodoCreated: skip', {
-        kind: KIND,
-        familyId: callerFamilyId,
-        actorUid: callerUid,
-        recipientCount: 0,
-        successCount: 0,
-        cleanedTokenCount: 0,
-        durationMs: Date.now() - startedAt,
-      });
-      return { sent: 0 as const, reason: 'opted_out' as const };
+    // Recipients = every active user in the family EXCEPT the caller.
+    // Self-exclusion is structural (the creator is filtered from the
+    // recipient query), not a state-machine guard — D-T4 / spec D6 fix.
+    const userSnaps = await db
+      .collection('users')
+      .where('familyId', '==', callerFamilyId)
+      .where('isActive', '==', true)
+      .get();
+    const recipientUids: string[] = [];
+    for (const userSnap of userSnaps.docs) {
+      const uid = (userSnap as { id?: string }).id;
+      if (typeof uid === 'string' && uid.length > 0 && uid !== callerUid) {
+        recipientUids.push(uid);
+      }
     }
 
-    const tokenSnaps = await db.collection(`userPrivate/${recipientUid}/fcmTokens`).get();
-    if (tokenSnaps.empty) {
-      logger.info('notifyTodoCreated: skip', {
-        kind: KIND,
-        familyId: callerFamilyId,
-        actorUid: callerUid,
-        recipientCount: 0,
-        successCount: 0,
-        cleanedTokenCount: 0,
-        durationMs: Date.now() - startedAt,
-      });
-      return { sent: 0 as const, reason: 'no_tokens' as const };
-    }
-
-    const tokenEntries: Array<{ tokenHash: string; token: string }> = [];
-    for (const docSnap of tokenSnaps.docs) {
-      const tokenData = (readSnap(docSnap) ?? {}) as Partial<FcmTokenDoc>;
-      if (typeof tokenData.token !== 'string' || tokenData.token.length === 0) {
+    const tokenEntries: Array<{ tokenHash: string; token: string; recipientUid: string }> = [];
+    let anyOptedOut = false;
+    for (const recipientUid of recipientUids) {
+      const recipientPrivateSnap = await db.doc(`userPrivate/${recipientUid}`).get();
+      if (!recipientPrivateSnap.exists) {
         continue;
       }
-      tokenEntries.push({
-        tokenHash: (docSnap as { id?: string }).id ?? '',
-        token: tokenData.token,
-      });
+      const recipientPrivate = (readSnap(recipientPrivateSnap) ?? {}) as {
+        familyId?: unknown;
+        notificationPreferences?: {
+          pushEnabled?: unknown;
+          categories?: Record<string, unknown> | undefined;
+        };
+      };
+      // Per-recipient cross-tenant guard (M35.7). Skip + warn, do NOT
+      // throw — Fix 6.
+      if (recipientPrivate.familyId !== callerFamilyId) {
+        logger.warn('notifyTodoCreated: recipient skipped — userPrivate familyId mismatch', {
+          kind: KIND,
+          familyId: callerFamilyId,
+          actorUid: callerUid,
+        });
+        continue;
+      }
+      const prefs = recipientPrivate.notificationPreferences ?? {};
+      const pushEnabled = prefs.pushEnabled === true;
+      const categoryOn = prefs.categories?.[CATEGORY_KEY] === true;
+      if (!pushEnabled || !categoryOn) {
+        anyOptedOut = true;
+        continue;
+      }
+      const tokenSnaps = await db.collection(`userPrivate/${recipientUid}/fcmTokens`).get();
+      if (tokenSnaps.empty) {
+        continue;
+      }
+      for (const tokenDoc of tokenSnaps.docs) {
+        const tokenData = (readSnap(tokenDoc) ?? {}) as Partial<FcmTokenDoc>;
+        if (typeof tokenData.token !== 'string' || tokenData.token.length === 0) {
+          continue;
+        }
+        tokenEntries.push({
+          tokenHash: (tokenDoc as { id?: string }).id ?? '',
+          token: tokenData.token,
+          recipientUid,
+        });
+      }
     }
+
     if (tokenEntries.length === 0) {
+      const skipReason = anyOptedOut ? 'opted_out' : 'no_tokens';
       logger.info('notifyTodoCreated: skip', {
         kind: KIND,
         familyId: callerFamilyId,
@@ -216,8 +221,9 @@ export const notifyTodoCreated = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason,
       });
-      return { sent: 0 as const, reason: 'no_tokens' as const };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
 
     const tokens = tokenEntries.map((entry) => entry.token);
@@ -241,8 +247,9 @@ export const notifyTodoCreated = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason: 'send_failed',
       });
-      return { sent: 0 as const, reason: 'send_failed' as const };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
 
     const responses = result.responses ?? [];
@@ -262,7 +269,7 @@ export const notifyTodoCreated = onCall(
         cleaned += 1;
         deletions.push(
           db
-            .doc(`userPrivate/${recipientUid}/fcmTokens/${entry.tokenHash}`)
+            .doc(`userPrivate/${entry.recipientUid}/fcmTokens/${entry.tokenHash}`)
             .delete()
             .then(() => undefined),
         );

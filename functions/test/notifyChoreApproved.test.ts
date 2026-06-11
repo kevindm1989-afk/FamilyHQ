@@ -17,7 +17,9 @@
  *     attestation chain — see brief).
  *   - C-T2..C-T8: auth + user-doc + chore-doc + cross-tenant guards.
  *   - C-T9..C-T11: silent-skip branches (opt-out, category-off, no tokens)
- *     return `{ sent: 0, reason: 'opted_out' | 'no_tokens' }` per M39.
+ *     return `{ sent: 0, cleaned: 0 }` (the skip reason classification is
+ *     logged server-side as `skipReason` per privacy review Fix 1 — the
+ *     wire shape carries no preference-enumeration oracle).
  *   - C-T12: happy path + the exact body the implementer must read from
  *     notificationBodies.choreApproved. Returns `{ sent, cleaned }`.
  *   - C-T13..C-T16: per-token FCM response handling — delete on stale codes
@@ -25,7 +27,7 @@
  *     bump `cleaned`). M37 + M39 contract.
  *   - C-T17: rate-limit (M36) using a Firestore-counter doc at
  *     rateLimits/{kind}__{callerUid}.
- *   - C-T18: FCM throws → `{ sent: 0, reason: 'send_failed' }`; raw error
+ *   - C-T18: FCM throws → `{ sent: 0, cleaned: 0 }` (skipReason in log only); raw error
  *     never echoed in the surfaced shape (M39, threat-model C-T14).
  *   - C-T19: privacy — outbound FCM payload contains no PI substrings.
  *   - C-T20: log-hygiene — no console.* in the source (extends the PR A AST
@@ -746,7 +748,7 @@ describe('C-T8b: recipient userPrivate.familyId mismatch → permission-denied',
 // ===========================================================================
 
 describe('C-T9: pushEnabled == false → silent skip, no FCM call', () => {
-  it('returns { sent: 0, reason: "opted_out" } when recipient master push is off (M39)', async () => {
+  it('returns { sent: 0, cleaned: 0 } when recipient master push is off (M39 — no `reason` on the wire, privacy review Fix 1)', async () => {
     seedHappyPath();
     docStore.set(`userPrivate/${RECIPIENT_UID}`, {
       familyId: FAMILY_ID,
@@ -759,7 +761,7 @@ describe('C-T9: pushEnabled == false → silent skip, no FCM call', () => {
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
     });
-    expect(result).toMatchObject({ sent: 0, reason: 'opted_out' });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
   });
 
   it('does NOT call FCM when recipient master push is off', async () => {
@@ -777,7 +779,7 @@ describe('C-T9: pushEnabled == false → silent skip, no FCM call', () => {
 });
 
 describe('C-T10: categories.myChoreResolved == false → silent skip, no FCM call', () => {
-  it('returns { sent: 0, reason: "opted_out" } when category is muted (M39 — same reason as pushEnabled=false to avoid enumeration oracle)', async () => {
+  it('returns { sent: 0, cleaned: 0 } when category is muted (M39 + privacy review Fix 1 — skip reason never on the wire)', async () => {
     seedHappyPath();
     docStore.set(`userPrivate/${RECIPIENT_UID}`, {
       familyId: FAMILY_ID,
@@ -790,7 +792,7 @@ describe('C-T10: categories.myChoreResolved == false → silent skip, no FCM cal
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
     });
-    expect(result).toMatchObject({ sent: 0, reason: 'opted_out' });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
   });
 
   it('does NOT call FCM when category is muted', async () => {
@@ -808,14 +810,14 @@ describe('C-T10: categories.myChoreResolved == false → silent skip, no FCM cal
 });
 
 describe('C-T11: recipient has no fcmTokens → silent skip, no FCM call', () => {
-  it('returns { sent: 0, reason: "no_tokens" } when subcollection is empty (M39)', async () => {
+  it('returns { sent: 0, cleaned: 0 } when subcollection is empty (M39 + privacy review Fix 1)', async () => {
     seedHappyPath();
     docStore.delete(`userPrivate/${RECIPIENT_UID}/fcmTokens/${TOKEN_HASH_GOOD}`);
     const result = await invoke({
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
     });
-    expect(result).toMatchObject({ sent: 0, reason: 'no_tokens' });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
   });
 
   it('does NOT call FCM when there are no tokens', async () => {
@@ -1232,7 +1234,7 @@ describe('C-T17: M36 rate limit — 11th call within 60s by the same caller → 
 // C-T18 — FCM throws → generic INTERNAL; raw error never echoed (M39).
 // ===========================================================================
 
-describe('C-T18: sendEachForMulticast throws → { sent: 0, reason: "send_failed" }, raw error never echoed (M39)', () => {
+describe('C-T18: sendEachForMulticast throws → { sent: 0, cleaned: 0 }, raw error never echoed (M39 + privacy review Fix 1)', () => {
   beforeEach(() => {
     seedHappyPath();
     sendEachForMulticastMock = vi.fn(async () => {
@@ -1250,8 +1252,8 @@ describe('C-T18: sendEachForMulticast throws → { sent: 0, reason: "send_failed
     const result = (await invoke({
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
-    })) as { sent: number; reason: string };
-    expect(result).toEqual({ sent: 0, reason: 'send_failed' });
+    })) as { sent: number; cleaned: number };
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
   });
 
   it('does NOT throw any HttpsError on FCM provider failure', async () => {
@@ -1381,6 +1383,30 @@ describe('C-T19b: M38 success-log payload contains the canonical fields and no P
       cleanedTokenCount: 0,
     });
     expect(typeof payload.durationMs).toBe('number');
+  });
+
+  it('the SKIP log payload (opted_out) carries a server-side `skipReason` field (privacy review Fix 1)', async () => {
+    // Re-seed the recipient to be opted out — exercises the skip-log path.
+    docStore.set(`userPrivate/${RECIPIENT_UID}`, {
+      familyId: FAMILY_ID,
+      notificationPreferences: {
+        pushEnabled: false,
+        categories: { myChoreResolved: true },
+      },
+    });
+    await invoke({ auth: { uid: CALLER_UID }, data: { choreId: CHORE_ID } });
+    const skipCall = loggerInfoMock.mock.calls.find((call) => {
+      const payload = call[1] as Record<string, unknown> | undefined;
+      return payload && 'skipReason' in payload;
+    });
+    expect(skipCall, 'expected a skip logger.info call carrying `skipReason`').toBeDefined();
+    const payload = skipCall![1] as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      kind: 'choreApproved',
+      familyId: FAMILY_ID,
+      actorUid: CALLER_UID,
+      skipReason: 'opted_out',
+    });
   });
 
   it('the success-log payload does NOT contain the raw FCM token value', async () => {

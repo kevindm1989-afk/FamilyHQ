@@ -1,14 +1,13 @@
 /**
- * notifyTodoCompleted — unit contract (PR D7, completer → creator).
+ * notifyTodoCompleted — unit contract (PR D7, post review-restructure).
  *
- * Surface: a todo doc's isCompleted flipped to true. Recipient = the
- * original creator. Self-completion (completer == creator) MUST NOT
- * self-ping — the callable returns { sent: 0, reason: 'no_tokens' } and
- * never calls FCM.
+ * Surface: the completer just marked a todo done. The server broadcasts a
+ * vague, PI-free push to every active family member EXCEPT the completer
+ * (structural self-exclusion via the recipient query). The todo creator
+ * IS included — design D7 explicitly notes the broadcast "closes the
+ * loop" for the original creator.
  *
  * Test indexing: TD-T1..TD-T20.
- *
- * MUST FAIL today: functions/src/notifyTodoCompleted.ts does not exist.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
@@ -19,15 +18,18 @@ import * as ts from 'typescript';
 // Fixtures
 // ---------------------------------------------------------------------------
 const FIXED_NOW = Date.UTC(2026, 5, 11, 12, 0, 0);
-const CALLER_UID = 'uid-member-a'; // the completer
-const CREATOR_UID = 'uid-parent-a'; // the recipient
+const COMPLETER_UID = 'uid-member-a'; // the caller / completer
+const CREATOR_UID = 'uid-parent-a'; // the original todo creator
+const MEMBER_C_UID = 'uid-kid-c'; // a third family member
 const TODO_ID = 'todo-x';
 const FAMILY_ID = 'fam-A';
 const OTHER_FAMILY_ID = 'fam-B';
-const TOKEN_HASH_GOOD = 'aaaaaaaaaaaaaaaaaaaaaaaa';
-const TOKEN_HASH_BAD = 'bbbbbbbbbbbbbbbbbbbbbbbb';
-const TOKEN_VALUE_GOOD = 'fcm-token-good';
-const TOKEN_VALUE_BAD = 'fcm-token-bad';
+const TOKEN_HASH_CREATOR = 'aaaaaaaaaaaaaaaaaaaaaaaa';
+const TOKEN_HASH_C = 'bbbbbbbbbbbbbbbbbbbbbbbb';
+const TOKEN_HASH_COMPLETER = 'cccccccccccccccccccccccc';
+const TOKEN_VALUE_CREATOR = 'fcm-token-creator';
+const TOKEN_VALUE_C = 'fcm-token-member-c';
+const TOKEN_VALUE_COMPLETER = 'fcm-token-completer';
 
 const REGION = 'northamerica-northeast1';
 const KIND = 'todoCompleted';
@@ -79,7 +81,7 @@ vi.mock('firebase-functions', () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Firestore mock
+// Firestore mock (where-aware) — mirrors notifyBoardPost.test.ts.
 // ---------------------------------------------------------------------------
 type DocSnap = { exists: boolean; data: Record<string, unknown> | undefined; id: string };
 type DocStore = Map<string, Record<string, unknown> | undefined>;
@@ -103,19 +105,26 @@ const docSetMock = vi.fn(
 const docDeleteMock = vi.fn(async (path: string) => {
   docStore.delete(path);
 });
-const collectionListMock = vi.fn(async (prefix: string): Promise<DocSnap[]> => {
-  const out: DocSnap[] = [];
-  for (const [path, data] of docStore.entries()) {
-    if (path.startsWith(`${prefix}/`) && data !== undefined) {
+const collectionListMock = vi.fn(
+  async (prefix: string, whereClauses?: Array<[string, string, unknown]>): Promise<DocSnap[]> => {
+    const out: DocSnap[] = [];
+    for (const [path, data] of docStore.entries()) {
+      if (!path.startsWith(`${prefix}/`) || data === undefined) continue;
+      if (path.slice(prefix.length + 1).split('/').length !== 1) continue;
+      let pass = true;
+      for (const [field, op, value] of whereClauses ?? []) {
+        const fieldValue = data[field];
+        if (op === '==' && fieldValue !== value) pass = false;
+        if (op === '!=' && fieldValue === value) pass = false;
+      }
+      if (!pass) continue;
       const segs = path.split('/');
       const id = segs[segs.length - 1] ?? '';
-      if (path.slice(prefix.length + 1).split('/').length === 1) {
-        out.push({ exists: true, data, id });
-      }
+      out.push({ exists: true, data, id });
     }
-  }
-  return out;
-});
+    return out;
+  },
+);
 
 const SERVER_TIMESTAMP_SENTINEL = { __sentinel: 'serverTimestamp' };
 const incrementSentinel = (n: number) => ({ __sentinel: 'increment', n });
@@ -132,7 +141,10 @@ function buildDocRef(path: string): unknown {
     collection: (sub: string) => buildCollectionRef(`${path}/${sub}`),
   };
 }
-function buildCollectionRef(path: string): unknown {
+function buildCollectionRef(
+  path: string,
+  whereClauses: Array<[string, string, unknown]> = [],
+): unknown {
   return {
     path,
     doc: (id: string) => buildDocRef(`${path}/${id}`),
@@ -142,9 +154,10 @@ function buildCollectionRef(path: string): unknown {
       await docSetMock(fullPath, data);
       return buildDocRef(fullPath);
     },
-    where: () => buildCollectionRef(path),
+    where: (field: string, op: string, value: unknown) =>
+      buildCollectionRef(path, [...whereClauses, [field, op, value]]),
     get: async () => {
-      const docs = await collectionListMock(path);
+      const docs = await collectionListMock(path, whereClauses);
       return {
         empty: docs.length === 0,
         size: docs.length,
@@ -156,7 +169,7 @@ function buildCollectionRef(path: string): unknown {
       };
     },
     listDocuments: async () => {
-      const docs = await collectionListMock(path);
+      const docs = await collectionListMock(path, whereClauses);
       return docs.map((d) => buildDocRef(`${path}/${d.id}`));
     },
   };
@@ -231,11 +244,12 @@ vi.mock('firebase-admin', () => ({
 // ---------------------------------------------------------------------------
 
 /**
- * Member just completed a todo created by parent A. The todo is now
- * isCompleted: true. Recipient = creator (parent A).
+ * The completer (a member) just marked a todo done. Creator (parent A)
+ * and a third member (C) are both active in the family. Broadcast goes
+ * to creator + C, NOT to the completer themselves.
  */
 function seedHappyPath(): void {
-  docStore.set(`users/${CALLER_UID}`, {
+  docStore.set(`users/${COMPLETER_UID}`, {
     familyId: FAMILY_ID,
     isActive: true,
     role: 'member',
@@ -245,24 +259,44 @@ function seedHappyPath(): void {
     isActive: true,
     role: 'parent',
   });
+  docStore.set(`users/${MEMBER_C_UID}`, {
+    familyId: FAMILY_ID,
+    isActive: true,
+    role: 'member',
+  });
   docStore.set(`todos/${TODO_ID}`, {
     familyId: FAMILY_ID,
     createdBy: CREATOR_UID,
-    assignedTo: CALLER_UID,
+    assignedTo: COMPLETER_UID,
     title: 'Take out the trash',
     isCompleted: true,
     completedAt: FIXED_NOW - 500,
   });
-  docStore.set(`userPrivate/${CREATOR_UID}`, {
-    familyId: FAMILY_ID,
-    notificationPreferences: {
-      pushEnabled: true,
-      categories: { [CATEGORY_KEY]: true },
-    },
-  });
-  docStore.set(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_GOOD}`, {
-    token: TOKEN_VALUE_GOOD,
+  for (const uid of [COMPLETER_UID, CREATOR_UID, MEMBER_C_UID]) {
+    docStore.set(`userPrivate/${uid}`, {
+      familyId: FAMILY_ID,
+      notificationPreferences: {
+        pushEnabled: true,
+        categories: { [CATEGORY_KEY]: true },
+      },
+    });
+  }
+  docStore.set(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_CREATOR}`, {
+    token: TOKEN_VALUE_CREATOR,
     userAgent: 'Chrome',
+    createdAt: FIXED_NOW - 60_000,
+    lastSeenAt: FIXED_NOW - 60_000,
+  });
+  docStore.set(`userPrivate/${MEMBER_C_UID}/fcmTokens/${TOKEN_HASH_C}`, {
+    token: TOKEN_VALUE_C,
+    userAgent: 'Firefox',
+    createdAt: FIXED_NOW - 60_000,
+    lastSeenAt: FIXED_NOW - 60_000,
+  });
+  // The completer has their own token — it MUST NOT appear in the multicast.
+  docStore.set(`userPrivate/${COMPLETER_UID}/fcmTokens/${TOKEN_HASH_COMPLETER}`, {
+    token: TOKEN_VALUE_COMPLETER,
+    userAgent: 'Safari',
     createdAt: FIXED_NOW - 60_000,
     lastSeenAt: FIXED_NOW - 60_000,
   });
@@ -303,10 +337,10 @@ beforeEach(() => {
   getFirestoreMock.mockClear();
   initializeAppMock.mockClear();
   getMessagingMock.mockClear();
-  sendEachForMulticastMock = vi.fn(async () => ({
-    successCount: 1,
+  sendEachForMulticastMock = vi.fn(async (msg: { tokens: string[] }) => ({
+    successCount: msg.tokens.length,
     failureCount: 0,
-    responses: [{ success: true }],
+    responses: msg.tokens.map(() => ({ success: true })),
   }));
 });
 
@@ -401,9 +435,9 @@ describe('TD-T2: unauthenticated → UNAUTHENTICATED, no FCM', () => {
 describe('TD-T3: caller users/{uid} missing → permission-denied', () => {
   it('rejects', async () => {
     seedHappyPath();
-    docStore.delete(`users/${CALLER_UID}`);
+    docStore.delete(`users/${COMPLETER_UID}`);
     const err = await invoke({
-      auth: { uid: CALLER_UID },
+      auth: { uid: COMPLETER_UID },
       data: { todoId: TODO_ID },
     }).then(
       () => new Error('expected rejection'),
@@ -416,13 +450,13 @@ describe('TD-T3: caller users/{uid} missing → permission-denied', () => {
 describe('TD-T4: caller isActive==false → permission-denied', () => {
   it('rejects', async () => {
     seedHappyPath();
-    docStore.set(`users/${CALLER_UID}`, {
+    docStore.set(`users/${COMPLETER_UID}`, {
       familyId: FAMILY_ID,
       isActive: false,
       role: 'member',
     });
     const err = await invoke({
-      auth: { uid: CALLER_UID },
+      auth: { uid: COMPLETER_UID },
       data: { todoId: TODO_ID },
     }).then(
       () => new Error('expected rejection'),
@@ -445,7 +479,7 @@ describe('TD-T5: invalid todoId → invalid-argument', () => {
   ] as const)('rejects when data is %s', async (_label, data) => {
     seedHappyPath();
     const err = await invoke({
-      auth: { uid: CALLER_UID },
+      auth: { uid: COMPLETER_UID },
       data,
     }).then(
       () => new Error('expected rejection'),
@@ -464,7 +498,7 @@ describe('TD-T6: todos/{todoId} doc missing → not-found', () => {
     seedHappyPath();
     docStore.delete(`todos/${TODO_ID}`);
     const err = await invoke({
-      auth: { uid: CALLER_UID },
+      auth: { uid: COMPLETER_UID },
       data: { todoId: TODO_ID },
     }).then(
       () => new Error('expected rejection'),
@@ -476,7 +510,9 @@ describe('TD-T6: todos/{todoId} doc missing → not-found', () => {
   it('no FCM call', async () => {
     seedHappyPath();
     docStore.delete(`todos/${TODO_ID}`);
-    await invoke({ auth: { uid: CALLER_UID }, data: { todoId: TODO_ID } }).catch(() => undefined);
+    await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } }).catch(
+      () => undefined,
+    );
     expect(sendEachForMulticastMock).not.toHaveBeenCalled();
   });
 });
@@ -491,12 +527,10 @@ describe('TD-T7: todo.familyId mismatch → permission-denied; no foreign id ech
     docStore.set(`todos/${TODO_ID}`, {
       familyId: OTHER_FAMILY_ID,
       createdBy: CREATOR_UID,
-      assignedTo: CALLER_UID,
-      title: 'irrelevant',
       isCompleted: true,
     });
     const err = await invoke({
-      auth: { uid: CALLER_UID },
+      auth: { uid: COMPLETER_UID },
       data: { todoId: TODO_ID },
     }).then(
       () => new Error('expected rejection'),
@@ -511,11 +545,11 @@ describe('TD-T7: todo.familyId mismatch → permission-denied; no foreign id ech
     docStore.set(`todos/${TODO_ID}`, {
       familyId: OTHER_FAMILY_ID,
       createdBy: CREATOR_UID,
-      assignedTo: CALLER_UID,
-      title: 'irrelevant',
       isCompleted: true,
     });
-    await invoke({ auth: { uid: CALLER_UID }, data: { todoId: TODO_ID } }).catch(() => undefined);
+    await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } }).catch(
+      () => undefined,
+    );
     expect(sendEachForMulticastMock).not.toHaveBeenCalled();
   });
 });
@@ -524,18 +558,20 @@ describe('TD-T7: todo.familyId mismatch → permission-denied; no foreign id ech
 // TD-T8 — state guard: isCompleted must be true.
 // ===========================================================================
 
-describe('TD-T8: todo.isCompleted != true → permission-denied (state-machine guard)', () => {
-  it.each([false, undefined, null] as const)('rejects when isCompleted == %p', async (val) => {
+describe('TD-T8: todo.isCompleted is not true → permission-denied', () => {
+  it.each([
+    ['false', false],
+    ['undefined', undefined],
+    ['null', null],
+  ] as const)('rejects when isCompleted is %s', async (_label, value) => {
     seedHappyPath();
     docStore.set(`todos/${TODO_ID}`, {
       familyId: FAMILY_ID,
       createdBy: CREATOR_UID,
-      assignedTo: CALLER_UID,
-      title: 'irrelevant',
-      isCompleted: val,
+      ...(value === undefined ? {} : { isCompleted: value }),
     });
     const err = await invoke({
-      auth: { uid: CALLER_UID },
+      auth: { uid: COMPLETER_UID },
       data: { todoId: TODO_ID },
     }).then(
       () => new Error('expected rejection'),
@@ -543,27 +579,14 @@ describe('TD-T8: todo.isCompleted != true → permission-denied (state-machine g
     );
     expect(err.code).toBe('permission-denied');
   });
-
-  it('does NOT call FCM when isCompleted is false', async () => {
-    seedHappyPath();
-    docStore.set(`todos/${TODO_ID}`, {
-      familyId: FAMILY_ID,
-      createdBy: CREATOR_UID,
-      assignedTo: CALLER_UID,
-      title: 'irrelevant',
-      isCompleted: false,
-    });
-    await invoke({ auth: { uid: CALLER_UID }, data: { todoId: TODO_ID } }).catch(() => undefined);
-    expect(sendEachForMulticastMock).not.toHaveBeenCalled();
-  });
 });
 
 // ===========================================================================
-// TD-T8b — recipient cross-tenant guard.
+// TD-T8b — per-recipient cross-tenant guard: SKIP, do NOT throw (Fix 6).
 // ===========================================================================
 
-describe('TD-T8b: creator userPrivate.familyId mismatch → permission-denied', () => {
-  it('rejects when creator userPrivate.familyId differs', async () => {
+describe('TD-T8b: a recipient userPrivate.familyId mismatch is SKIPPED — multicast continues', () => {
+  it('skips the corrupt recipient and still sends to the good recipient (sent:1, not sent:0)', async () => {
     seedHappyPath();
     docStore.set(`userPrivate/${CREATOR_UID}`, {
       familyId: OTHER_FAMILY_ID,
@@ -572,160 +595,155 @@ describe('TD-T8b: creator userPrivate.familyId mismatch → permission-denied', 
         categories: { [CATEGORY_KEY]: true },
       },
     });
-    const err = await invoke({
-      auth: { uid: CALLER_UID },
-      data: { todoId: TODO_ID },
-    }).then(
-      () => new Error('expected rejection'),
-      (e: unknown) => e as { code?: string },
-    );
-    expect(err.code).toBe('permission-denied');
-  });
-});
-
-// ===========================================================================
-// TD-T9 — pushEnabled=false.
-// ===========================================================================
-
-describe('TD-T9: creator pushEnabled==false → opted_out, no FCM', () => {
-  it('returns opted_out', async () => {
-    seedHappyPath();
-    docStore.set(`userPrivate/${CREATOR_UID}`, {
-      familyId: FAMILY_ID,
-      notificationPreferences: {
-        pushEnabled: false,
-        categories: { [CATEGORY_KEY]: true },
-      },
-    });
-    const result = await invoke({
-      auth: { uid: CALLER_UID },
-      data: { todoId: TODO_ID },
-    });
-    expect(result).toMatchObject({ sent: 0, reason: 'opted_out' });
-    expect(sendEachForMulticastMock).not.toHaveBeenCalled();
-  });
-});
-
-// ===========================================================================
-// TD-T10 — category muted.
-// ===========================================================================
-
-describe(`TD-T10: categories.${CATEGORY_KEY} == false → opted_out`, () => {
-  it('returns opted_out', async () => {
-    seedHappyPath();
-    docStore.set(`userPrivate/${CREATOR_UID}`, {
-      familyId: FAMILY_ID,
-      notificationPreferences: {
-        pushEnabled: true,
-        categories: { [CATEGORY_KEY]: false },
-      },
-    });
-    const result = await invoke({
-      auth: { uid: CALLER_UID },
-      data: { todoId: TODO_ID },
-    });
-    expect(result).toMatchObject({ sent: 0, reason: 'opted_out' });
-  });
-});
-
-// ===========================================================================
-// TD-T11 — no tokens.
-// ===========================================================================
-
-describe('TD-T11: creator has no fcmTokens → no_tokens', () => {
-  it('returns no_tokens', async () => {
-    seedHappyPath();
-    docStore.delete(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_GOOD}`);
-    const result = await invoke({
-      auth: { uid: CALLER_UID },
-      data: { todoId: TODO_ID },
-    });
-    expect(result).toMatchObject({ sent: 0, reason: 'no_tokens' });
-    expect(sendEachForMulticastMock).not.toHaveBeenCalled();
-  });
-});
-
-// ===========================================================================
-// TD-T11b — Self-completion skip: completer == creator → no_tokens, no FCM.
-// ===========================================================================
-
-describe('TD-T11b: self-completion (completer == creator) → no self-ping, no FCM', () => {
-  it('returns { sent: 0, reason: "no_tokens" } when the creator completed their own todo', async () => {
-    seedHappyPath();
-    // Caller IS the creator.
-    docStore.set(`todos/${TODO_ID}`, {
-      familyId: FAMILY_ID,
-      createdBy: CALLER_UID,
-      assignedTo: CALLER_UID,
-      title: 'irrelevant',
-      isCompleted: true,
-    });
-    // The caller has their own token — must NOT receive.
-    docStore.set(`userPrivate/${CALLER_UID}`, {
-      familyId: FAMILY_ID,
-      notificationPreferences: {
-        pushEnabled: true,
-        categories: { [CATEGORY_KEY]: true },
-      },
-    });
-    docStore.set(`userPrivate/${CALLER_UID}/fcmTokens/${TOKEN_HASH_BAD}`, {
-      token: TOKEN_VALUE_BAD,
-      userAgent: 'Safari',
-      createdAt: FIXED_NOW - 60_000,
-      lastSeenAt: FIXED_NOW - 60_000,
-    });
-    const result = await invoke({
-      auth: { uid: CALLER_UID },
-      data: { todoId: TODO_ID },
-    });
-    expect(result).toMatchObject({ sent: 0, reason: 'no_tokens' });
-    expect(sendEachForMulticastMock).not.toHaveBeenCalled();
-  });
-});
-
-// ===========================================================================
-// TD-T12 — happy path.
-// ===========================================================================
-
-describe('TD-T12: happy path — creator with 1 token → { sent: 1, cleaned: 0 }', () => {
-  it('returns { sent: 1, cleaned: 0 }', async () => {
-    seedHappyPath();
     const result = (await invoke({
-      auth: { uid: CALLER_UID },
+      auth: { uid: COMPLETER_UID },
       data: { todoId: TODO_ID },
     })) as { sent: number; cleaned: number };
     expect(result).toEqual({ sent: 1, cleaned: 0 });
+    const [message] = sendEachForMulticastMock.mock.calls[0] as [{ tokens: string[] }];
+    expect(message.tokens).toEqual([TOKEN_VALUE_C]);
   });
 
-  it('returns { sent: 2, cleaned: 0 } when creator has 2 tokens (both succeed)', async () => {
+  it('emits a structured warn (no recipientUid, no foreign familyId) when skipping a corrupt recipient', async () => {
     seedHappyPath();
-    docStore.set(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_BAD}`, {
-      token: TOKEN_VALUE_BAD,
-      userAgent: 'Firefox',
-      createdAt: FIXED_NOW - 30_000,
-      lastSeenAt: FIXED_NOW - 30_000,
+    docStore.set(`userPrivate/${CREATOR_UID}`, {
+      familyId: OTHER_FAMILY_ID,
+      notificationPreferences: {
+        pushEnabled: true,
+        categories: { [CATEGORY_KEY]: true },
+      },
     });
-    sendEachForMulticastMock = vi.fn(async () => ({
-      successCount: 2,
-      failureCount: 0,
-      responses: [{ success: true }, { success: true }],
-    }));
+    await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } });
+    expect(loggerWarnMock).toHaveBeenCalled();
+    const warnSerialized = JSON.stringify(loggerWarnMock.mock.calls);
+    expect(warnSerialized).not.toContain(CREATOR_UID);
+    expect(warnSerialized).not.toContain(OTHER_FAMILY_ID);
+  });
+});
+
+// ===========================================================================
+// TD-T9 — every recipient pushEnabled=false.
+// ===========================================================================
+
+describe('TD-T9: every recipient pushEnabled==false → uniform skip, no FCM', () => {
+  it('returns { sent: 0, cleaned: 0 } when ALL recipients have master push off', async () => {
+    seedHappyPath();
+    for (const uid of [CREATOR_UID, MEMBER_C_UID]) {
+      docStore.set(`userPrivate/${uid}`, {
+        familyId: FAMILY_ID,
+        notificationPreferences: {
+          pushEnabled: false,
+          categories: { [CATEGORY_KEY]: true },
+        },
+      });
+    }
+    const result = await invoke({
+      auth: { uid: COMPLETER_UID },
+      data: { todoId: TODO_ID },
+    });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
+    expect(sendEachForMulticastMock).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// TD-T10 — category muted for every recipient.
+// ===========================================================================
+
+describe(`TD-T10: categories.${CATEGORY_KEY} == false for every recipient → uniform skip`, () => {
+  it('returns { sent: 0, cleaned: 0 }', async () => {
+    seedHappyPath();
+    for (const uid of [CREATOR_UID, MEMBER_C_UID]) {
+      docStore.set(`userPrivate/${uid}`, {
+        familyId: FAMILY_ID,
+        notificationPreferences: {
+          pushEnabled: true,
+          categories: { [CATEGORY_KEY]: false },
+        },
+      });
+    }
+    const result = await invoke({
+      auth: { uid: COMPLETER_UID },
+      data: { todoId: TODO_ID },
+    });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
+  });
+});
+
+// ===========================================================================
+// TD-T11 — no tokens across all recipients.
+// ===========================================================================
+
+describe('TD-T11: no fcmTokens across non-completer members → uniform skip', () => {
+  it('returns { sent: 0, cleaned: 0 }', async () => {
+    seedHappyPath();
+    docStore.delete(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_CREATOR}`);
+    docStore.delete(`userPrivate/${MEMBER_C_UID}/fcmTokens/${TOKEN_HASH_C}`);
+    const result = await invoke({
+      auth: { uid: COMPLETER_UID },
+      data: { todoId: TODO_ID },
+    });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
+    expect(sendEachForMulticastMock).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// TD-T11b — Structural self-exclusion: family of ONE (completer only) →
+// recipient list = [] → no FCM call. Mirrors BP-T11b.
+// ===========================================================================
+
+describe('TD-T11b: only the completer is in the family → uniform skip, no self-ping', () => {
+  it('returns { sent: 0, cleaned: 0 } and does NOT call FCM (structural self-exclusion)', async () => {
+    seedHappyPath();
+    docStore.delete(`users/${CREATOR_UID}`);
+    docStore.delete(`users/${MEMBER_C_UID}`);
+    docStore.delete(`userPrivate/${CREATOR_UID}`);
+    docStore.delete(`userPrivate/${MEMBER_C_UID}`);
+    docStore.delete(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_CREATOR}`);
+    docStore.delete(`userPrivate/${MEMBER_C_UID}/fcmTokens/${TOKEN_HASH_C}`);
+    const result = await invoke({
+      auth: { uid: COMPLETER_UID },
+      data: { todoId: TODO_ID },
+    });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
+    expect(sendEachForMulticastMock).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// TD-T12 — happy path: creator + member-C × 1 token each. Creator IS
+// included (closes the loop, design D7); completer is NOT.
+// ===========================================================================
+
+describe('TD-T12: happy path — 2 non-completer members × 1 token each → { sent: 2, cleaned: 0 }', () => {
+  it('returns { sent: 2, cleaned: 0 }', async () => {
+    seedHappyPath();
     const result = (await invoke({
-      auth: { uid: CALLER_UID },
+      auth: { uid: COMPLETER_UID },
       data: { todoId: TODO_ID },
     })) as { sent: number; cleaned: number };
     expect(result).toEqual({ sent: 2, cleaned: 0 });
   });
 
-  it('calls sendEachForMulticast EXACTLY ONCE', async () => {
+  it('calls sendEachForMulticast EXACTLY ONCE (aggregated)', async () => {
     seedHappyPath();
-    await invoke({ auth: { uid: CALLER_UID }, data: { todoId: TODO_ID } });
+    await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } });
     expect(sendEachForMulticastMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('multicast includes the creator (closes the loop per design D7) and excludes the completer', async () => {
+    seedHappyPath();
+    await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } });
+    const [message] = sendEachForMulticastMock.mock.calls[0] as [{ tokens: string[] }];
+    expect(message.tokens).toEqual(expect.arrayContaining([TOKEN_VALUE_CREATOR, TOKEN_VALUE_C]));
+    expect(message.tokens).toHaveLength(2);
+    expect(message.tokens).not.toContain(TOKEN_VALUE_COMPLETER);
   });
 
   it('title matches notificationBodies.todoCompleted.title VERBATIM', async () => {
     seedHappyPath();
-    await invoke({ auth: { uid: CALLER_UID }, data: { todoId: TODO_ID } });
+    await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } });
     const bodies = (await import('../src/notificationBodies.js')) as {
       todoCompleted?: { title: string; body: string };
       NOTIFICATION_BODIES?: Record<string, { title: string; body: string }>;
@@ -749,7 +767,7 @@ describe('TD-T12: happy path — creator with 1 token → { sent: 1, cleaned: 0 
 
   it('body matches notificationBodies.todoCompleted.body VERBATIM', async () => {
     seedHappyPath();
-    await invoke({ auth: { uid: CALLER_UID }, data: { todoId: TODO_ID } });
+    await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } });
     const bodies = (await import('../src/notificationBodies.js')) as {
       todoCompleted?: { title: string; body: string };
       NOTIFICATION_BODIES?: Record<string, { title: string; body: string }>;
@@ -771,10 +789,11 @@ describe('TD-T12: happy path — creator with 1 token → { sent: 1, cleaned: 0 
     expect(message.notification.body).not.toContain('{{');
   });
 
-  it('does NOT delete the token doc on the happy path', async () => {
+  it('does NOT delete any token doc on the happy path', async () => {
     seedHappyPath();
-    await invoke({ auth: { uid: CALLER_UID }, data: { todoId: TODO_ID } });
-    expect(docStore.has(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_GOOD}`)).toBe(true);
+    await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } });
+    expect(docStore.has(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_CREATOR}`)).toBe(true);
+    expect(docStore.has(`userPrivate/${MEMBER_C_UID}/fcmTokens/${TOKEN_HASH_C}`)).toBe(true);
     expect(docDeleteMock).not.toHaveBeenCalled();
   });
 });
@@ -783,18 +802,12 @@ describe('TD-T12: happy path — creator with 1 token → { sent: 1, cleaned: 0 
 // TD-T13, TD-T14 — stale-token cleanup.
 // ===========================================================================
 
-describe('TD-T13: registration-token-not-registered → that token doc deleted', () => {
-  beforeEach(() => {
+describe('TD-T13: registration-token-not-registered → that token doc deleted, others survive', () => {
+  it('deletes the failing token only; { sent: 1, cleaned: 1 }', async () => {
     seedHappyPath();
-    docStore.set(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_BAD}`, {
-      token: TOKEN_VALUE_BAD,
-      userAgent: 'Firefox',
-      createdAt: FIXED_NOW - 30_000,
-      lastSeenAt: FIXED_NOW - 30_000,
-    });
     sendEachForMulticastMock = vi.fn(async (msg: { tokens: string[] }) => {
       const responses = msg.tokens.map((t) =>
-        t === TOKEN_VALUE_BAD
+        t === TOKEN_VALUE_C
           ? { success: false, error: { code: 'messaging/registration-token-not-registered' } }
           : { success: true },
       );
@@ -804,35 +817,23 @@ describe('TD-T13: registration-token-not-registered → that token doc deleted',
         responses,
       };
     });
-  });
-
-  it('returns { sent: 1, cleaned: 1 }', async () => {
     const result = (await invoke({
-      auth: { uid: CALLER_UID },
+      auth: { uid: COMPLETER_UID },
       data: { todoId: TODO_ID },
     })) as { sent: number; cleaned: number };
     expect(result).toEqual({ sent: 1, cleaned: 1 });
-  });
-
-  it('deletes EXACTLY the bad token doc', async () => {
-    await invoke({ auth: { uid: CALLER_UID }, data: { todoId: TODO_ID } });
-    expect(docStore.has(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_BAD}`)).toBe(false);
-    expect(docStore.has(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_GOOD}`)).toBe(true);
+    expect(docStore.has(`userPrivate/${MEMBER_C_UID}/fcmTokens/${TOKEN_HASH_C}`)).toBe(false);
+    expect(docStore.has(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_CREATOR}`)).toBe(true);
+    expect(docDeleteMock).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('TD-T14: invalid-registration-token → that token doc deleted', () => {
-  beforeEach(() => {
+  it('deletes the invalid token; { sent: 1, cleaned: 1 }', async () => {
     seedHappyPath();
-    docStore.set(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_BAD}`, {
-      token: TOKEN_VALUE_BAD,
-      userAgent: 'Firefox',
-      createdAt: FIXED_NOW - 30_000,
-      lastSeenAt: FIXED_NOW - 30_000,
-    });
     sendEachForMulticastMock = vi.fn(async (msg: { tokens: string[] }) => {
       const responses = msg.tokens.map((t) =>
-        t === TOKEN_VALUE_BAD
+        t === TOKEN_VALUE_C
           ? { success: false, error: { code: 'messaging/invalid-registration-token' } }
           : { success: true },
       );
@@ -842,19 +843,12 @@ describe('TD-T14: invalid-registration-token → that token doc deleted', () => 
         responses,
       };
     });
-  });
-
-  it('returns { sent: 1, cleaned: 1 }', async () => {
     const result = (await invoke({
-      auth: { uid: CALLER_UID },
+      auth: { uid: COMPLETER_UID },
       data: { todoId: TODO_ID },
     })) as { sent: number; cleaned: number };
     expect(result).toEqual({ sent: 1, cleaned: 1 });
-  });
-
-  it('deletes the invalid token doc', async () => {
-    await invoke({ auth: { uid: CALLER_UID }, data: { todoId: TODO_ID } });
-    expect(docStore.has(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_BAD}`)).toBe(false);
+    expect(docStore.has(`userPrivate/${MEMBER_C_UID}/fcmTokens/${TOKEN_HASH_C}`)).toBe(false);
   });
 });
 
@@ -862,18 +856,12 @@ describe('TD-T14: invalid-registration-token → that token doc deleted', () => 
 // TD-T15, TD-T16 — transient codes leave doc intact.
 // ===========================================================================
 
-describe('TD-T15: server-unavailable transient — doc NOT deleted', () => {
-  it('returns { sent: 1, cleaned: 0 }, doc intact', async () => {
+describe('TD-T15: server-unavailable transient — doc NOT deleted, cleaned NOT bumped', () => {
+  it('returns { sent: 1, cleaned: 0 }; doc intact', async () => {
     seedHappyPath();
-    docStore.set(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_BAD}`, {
-      token: TOKEN_VALUE_BAD,
-      userAgent: 'Firefox',
-      createdAt: FIXED_NOW - 30_000,
-      lastSeenAt: FIXED_NOW - 30_000,
-    });
     sendEachForMulticastMock = vi.fn(async (msg: { tokens: string[] }) => {
       const responses = msg.tokens.map((t) =>
-        t === TOKEN_VALUE_BAD
+        t === TOKEN_VALUE_C
           ? { success: false, error: { code: 'messaging/server-unavailable' } }
           : { success: true },
       );
@@ -884,11 +872,11 @@ describe('TD-T15: server-unavailable transient — doc NOT deleted', () => {
       };
     });
     const result = (await invoke({
-      auth: { uid: CALLER_UID },
+      auth: { uid: COMPLETER_UID },
       data: { todoId: TODO_ID },
     })) as { sent: number; cleaned: number };
     expect(result).toEqual({ sent: 1, cleaned: 0 });
-    expect(docStore.has(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_BAD}`)).toBe(true);
+    expect(docStore.has(`userPrivate/${MEMBER_C_UID}/fcmTokens/${TOKEN_HASH_C}`)).toBe(true);
   });
 });
 
@@ -897,15 +885,9 @@ describe('TD-T16: internal-error / quota-exceeded transient', () => {
     'leaves doc intact for %p',
     async (code) => {
       seedHappyPath();
-      docStore.set(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_BAD}`, {
-        token: TOKEN_VALUE_BAD,
-        userAgent: 'Firefox',
-        createdAt: FIXED_NOW - 30_000,
-        lastSeenAt: FIXED_NOW - 30_000,
-      });
       sendEachForMulticastMock = vi.fn(async (msg: { tokens: string[] }) => {
         const responses = msg.tokens.map((t) =>
-          t === TOKEN_VALUE_BAD ? { success: false, error: { code } } : { success: true },
+          t === TOKEN_VALUE_C ? { success: false, error: { code } } : { success: true },
         );
         return {
           successCount: responses.filter((r) => r.success).length,
@@ -914,11 +896,11 @@ describe('TD-T16: internal-error / quota-exceeded transient', () => {
         };
       });
       const result = (await invoke({
-        auth: { uid: CALLER_UID },
+        auth: { uid: COMPLETER_UID },
         data: { todoId: TODO_ID },
       })) as { sent: number; cleaned: number };
       expect(result.cleaned).toBe(0);
-      expect(docStore.has(`userPrivate/${CREATOR_UID}/fcmTokens/${TOKEN_HASH_BAD}`)).toBe(true);
+      expect(docStore.has(`userPrivate/${MEMBER_C_UID}/fcmTokens/${TOKEN_HASH_C}`)).toBe(true);
     },
   );
 });
@@ -928,13 +910,13 @@ describe('TD-T16: internal-error / quota-exceeded transient', () => {
 // ===========================================================================
 
 describe(`TD-T17: M36 rate limit at rateLimits/${KIND}__{callerUid}`, () => {
-  const RATE_LIMIT_PATH = `rateLimits/${KIND}__${CALLER_UID}`;
+  const RATE_LIMIT_PATH = `rateLimits/${KIND}__${COMPLETER_UID}`;
 
   it('rejects with resource-exhausted at count >= 10', async () => {
     seedHappyPath();
     docStore.set(RATE_LIMIT_PATH, { count: 10, windowStartMs: FIXED_NOW - 30_000 });
     const err = await invoke({
-      auth: { uid: CALLER_UID },
+      auth: { uid: COMPLETER_UID },
       data: { todoId: TODO_ID },
     }).then(
       () => new Error('expected rejection'),
@@ -947,28 +929,39 @@ describe(`TD-T17: M36 rate limit at rateLimits/${KIND}__{callerUid}`, () => {
     seedHappyPath();
     docStore.set(RATE_LIMIT_PATH, { count: 9, windowStartMs: FIXED_NOW - 30_000 });
     const result = await invoke({
-      auth: { uid: CALLER_UID },
+      auth: { uid: COMPLETER_UID },
       data: { todoId: TODO_ID },
     });
-    expect(result).toMatchObject({ sent: 1, cleaned: 0 });
+    expect(result).toMatchObject({ sent: 2, cleaned: 0 });
   });
 
   it('allows + resets when windowStartMs > 60s ago', async () => {
     seedHappyPath();
     docStore.set(RATE_LIMIT_PATH, { count: 10, windowStartMs: FIXED_NOW - 61_000 });
     const result = await invoke({
-      auth: { uid: CALLER_UID },
+      auth: { uid: COMPLETER_UID },
       data: { todoId: TODO_ID },
     });
-    expect(result).toMatchObject({ sent: 1, cleaned: 0 });
+    expect(result).toMatchObject({ sent: 2, cleaned: 0 });
   });
 
   it('increments the counter on a successful call', async () => {
     seedHappyPath();
     docStore.set(RATE_LIMIT_PATH, { count: 3, windowStartMs: FIXED_NOW - 10_000 });
-    await invoke({ auth: { uid: CALLER_UID }, data: { todoId: TODO_ID } });
+    await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } });
     const after = docStore.get(RATE_LIMIT_PATH) as { count?: number } | undefined;
     expect(after?.count ?? 0).toBeGreaterThan(3);
+  });
+
+  it('persisted rate-limit doc carries an `expiresAt` retention bound (privacy review Fix 2)', async () => {
+    seedHappyPath();
+    docStore.set(RATE_LIMIT_PATH, { count: 3, windowStartMs: FIXED_NOW - 10_000 });
+    await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } });
+    const after = docStore.get(RATE_LIMIT_PATH) as
+      | { count?: number; windowStartMs?: number; expiresAt?: number }
+      | undefined;
+    expect(typeof after?.expiresAt).toBe('number');
+    expect(after!.expiresAt!).toBeGreaterThan(after!.windowStartMs!);
   });
 });
 
@@ -976,28 +969,28 @@ describe(`TD-T17: M36 rate limit at rateLimits/${KIND}__{callerUid}`, () => {
 // TD-T18 — FCM throws.
 // ===========================================================================
 
-describe('TD-T18: FCM throws → { sent: 0, reason: "send_failed" }', () => {
+describe('TD-T18: FCM throws → { sent: 0, cleaned: 0 } (privacy review Fix 1)', () => {
   beforeEach(() => {
     seedHappyPath();
     sendEachForMulticastMock = vi.fn(async () => {
-      const e = new Error('messaging/quota-exceeded — RAW PROVIDER TEXT, must not surface');
-      (e as Error & { code: string }).code = 'messaging/quota-exceeded';
+      const e = new Error('messaging/server-unavailable — RAW PROVIDER TEXT, must not surface');
+      (e as Error & { code: string }).code = 'messaging/server-unavailable';
       throw e;
     });
   });
 
-  it('returns generic send-failed shape', async () => {
+  it('returns generic send-failed shape (no `reason` on the wire)', async () => {
     const result = (await invoke({
-      auth: { uid: CALLER_UID },
+      auth: { uid: COMPLETER_UID },
       data: { todoId: TODO_ID },
-    })) as { sent: number; reason: string };
-    expect(result).toEqual({ sent: 0, reason: 'send_failed' });
+    })) as { sent: number; cleaned: number };
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
   });
 
   it('does NOT throw HttpsError', async () => {
     let threw = false;
     try {
-      await invoke({ auth: { uid: CALLER_UID }, data: { todoId: TODO_ID } });
+      await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } });
     } catch {
       threw = true;
     }
@@ -1005,7 +998,7 @@ describe('TD-T18: FCM throws → { sent: 0, reason: "send_failed" }', () => {
   });
 
   it('error log never contains messaging/* prefix or raw provider text', async () => {
-    await invoke({ auth: { uid: CALLER_UID }, data: { todoId: TODO_ID } });
+    await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } });
     const serialized = JSON.stringify(loggerErrorMock.mock.calls);
     expect(serialized).not.toMatch(/messaging\//i);
     expect(serialized).not.toMatch(/RAW PROVIDER TEXT/);
@@ -1022,14 +1015,14 @@ describe('TD-T19: outbound FCM payload contains NO todo title, NO PI', () => {
     docStore.set(`todos/${TODO_ID}`, {
       familyId: FAMILY_ID,
       createdBy: CREATOR_UID,
-      assignedTo: CALLER_UID,
+      assignedTo: COMPLETER_UID,
       title: 'Buy Maya a birthday gift for $40',
       isCompleted: true,
     });
   });
 
   it('forbidden PI substrings absent', async () => {
-    await invoke({ auth: { uid: CALLER_UID }, data: { todoId: TODO_ID } });
+    await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } });
     const [message] = sendEachForMulticastMock.mock.calls[0] as [Record<string, unknown>];
     const clone: Record<string, unknown> = { ...message };
     delete clone.tokens;
@@ -1060,7 +1053,7 @@ describe('TD-T19: outbound FCM payload contains NO todo title, NO PI', () => {
   });
 
   it('data.url is opaque', async () => {
-    await invoke({ auth: { uid: CALLER_UID }, data: { todoId: TODO_ID } });
+    await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } });
     const [message] = sendEachForMulticastMock.mock.calls[0] as [{ data?: { url?: string } }];
     if (message.data && typeof message.data.url === 'string') {
       expect(message.data.url).toMatch(/^\/[A-Za-z0-9/_-]*$/);
@@ -1077,7 +1070,7 @@ describe(`TD-T19b: success log carries canonical fields with kind="${KIND}"`, ()
   beforeEach(() => seedHappyPath());
 
   it('canonical 7-field payload present', async () => {
-    await invoke({ auth: { uid: CALLER_UID }, data: { todoId: TODO_ID } });
+    await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } });
     const sendCompleteCall = loggerInfoMock.mock.calls.find((call) => {
       const payload = call[1] as Record<string, unknown> | undefined;
       return payload && 'successCount' in payload;
@@ -1087,25 +1080,45 @@ describe(`TD-T19b: success log carries canonical fields with kind="${KIND}"`, ()
     expect(payload).toMatchObject({
       kind: KIND,
       familyId: FAMILY_ID,
-      actorUid: CALLER_UID,
-      recipientCount: 1,
-      successCount: 1,
+      actorUid: COMPLETER_UID,
+      recipientCount: 2,
+      successCount: 2,
       cleanedTokenCount: 0,
     });
     expect(typeof payload.durationMs).toBe('number');
+  });
+
+  it('the SKIP log payload (opted_out) carries a server-side `skipReason` field (privacy review Fix 1)', async () => {
+    for (const uid of [CREATOR_UID, MEMBER_C_UID]) {
+      docStore.set(`userPrivate/${uid}`, {
+        familyId: FAMILY_ID,
+        notificationPreferences: {
+          pushEnabled: false,
+          categories: { [CATEGORY_KEY]: true },
+        },
+      });
+    }
+    await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } });
+    const skipCall = loggerInfoMock.mock.calls.find((call) => {
+      const payload = call[1] as Record<string, unknown> | undefined;
+      return payload && 'skipReason' in payload;
+    });
+    expect(skipCall).toBeDefined();
+    expect(skipCall![1]).toMatchObject({ kind: KIND, skipReason: 'opted_out' });
   });
 
   it('log NEVER contains raw token values or todo title PI', async () => {
     docStore.set(`todos/${TODO_ID}`, {
       familyId: FAMILY_ID,
       createdBy: CREATOR_UID,
-      assignedTo: CALLER_UID,
+      assignedTo: COMPLETER_UID,
       title: 'Buy Maya a birthday gift',
       isCompleted: true,
     });
-    await invoke({ auth: { uid: CALLER_UID }, data: { todoId: TODO_ID } });
+    await invoke({ auth: { uid: COMPLETER_UID }, data: { todoId: TODO_ID } });
     const serialized = JSON.stringify(loggerInfoMock.mock.calls).toLowerCase();
-    expect(serialized).not.toContain(TOKEN_VALUE_GOOD.toLowerCase());
+    expect(serialized).not.toContain(TOKEN_VALUE_CREATOR.toLowerCase());
+    expect(serialized).not.toContain(TOKEN_VALUE_C.toLowerCase());
     for (const sub of ['maya', 'birthday', 'gift', 'dollar', 'wishlist']) {
       expect(serialized).not.toContain(sub.toLowerCase());
     }

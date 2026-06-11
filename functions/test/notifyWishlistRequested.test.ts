@@ -583,8 +583,8 @@ describe('WR-T8: item.status != "requested" → permission-denied', () => {
 // WR-T8b — recipient cross-tenant guard.
 // ===========================================================================
 
-describe('WR-T8b: a recipient userPrivate.familyId mismatch → permission-denied', () => {
-  it('rejects when any parent userPrivate.familyId belongs to a different family', async () => {
+describe('WR-T8b: a recipient userPrivate.familyId mismatch is SKIPPED — multicast continues (Fix 6)', () => {
+  it('skips the corrupt recipient and still sends to the good parent (sent:1, not sent:0)', async () => {
     seedHappyPath();
     docStore.set(`userPrivate/${PARENT_A_UID}`, {
       familyId: OTHER_FAMILY_ID,
@@ -593,14 +593,29 @@ describe('WR-T8b: a recipient userPrivate.familyId mismatch → permission-denie
         categories: { [CATEGORY_KEY]: true },
       },
     });
-    const err = await invoke({
+    const result = (await invoke({
       auth: { uid: CALLER_UID },
       data: { itemId: ITEM_ID },
-    }).then(
-      () => new Error('expected rejection'),
-      (e: unknown) => e as { code?: string },
-    );
-    expect(err.code).toBe('permission-denied');
+    })) as { sent: number; cleaned: number };
+    expect(result).toEqual({ sent: 1, cleaned: 0 });
+    const [message] = sendEachForMulticastMock.mock.calls[0] as [{ tokens: string[] }];
+    expect(message.tokens).toEqual([TOKEN_VALUE_B]);
+  });
+
+  it('emits a structured warn (no recipientUid, no foreign familyId) when skipping a corrupt recipient', async () => {
+    seedHappyPath();
+    docStore.set(`userPrivate/${PARENT_A_UID}`, {
+      familyId: OTHER_FAMILY_ID,
+      notificationPreferences: {
+        pushEnabled: true,
+        categories: { [CATEGORY_KEY]: true },
+      },
+    });
+    await invoke({ auth: { uid: CALLER_UID }, data: { itemId: ITEM_ID } });
+    expect(loggerWarnMock).toHaveBeenCalled();
+    const warnSerialized = JSON.stringify(loggerWarnMock.mock.calls);
+    expect(warnSerialized).not.toContain(PARENT_A_UID);
+    expect(warnSerialized).not.toContain(OTHER_FAMILY_ID);
   });
 });
 
@@ -629,7 +644,7 @@ describe('WR-T9: every recipient pushEnabled==false → opted_out', () => {
       auth: { uid: CALLER_UID },
       data: { itemId: ITEM_ID },
     });
-    expect(result).toMatchObject({ sent: 0, reason: 'opted_out' });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
     expect(sendEachForMulticastMock).not.toHaveBeenCalled();
   });
 
@@ -677,7 +692,7 @@ describe(`WR-T10: categories.${CATEGORY_KEY} == false for every recipient → op
       auth: { uid: CALLER_UID },
       data: { itemId: ITEM_ID },
     });
-    expect(result).toMatchObject({ sent: 0, reason: 'opted_out' });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
   });
 });
 
@@ -694,7 +709,7 @@ describe('WR-T11: no fcmTokens anywhere → no_tokens', () => {
       auth: { uid: CALLER_UID },
       data: { itemId: ITEM_ID },
     });
-    expect(result).toMatchObject({ sent: 0, reason: 'no_tokens' });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
     expect(sendEachForMulticastMock).not.toHaveBeenCalled();
   });
 });
@@ -947,7 +962,7 @@ describe(`WR-T17: M36 rate limit at rateLimits/${KIND}__{callerUid}`, () => {
 // WR-T18 — FCM throws.
 // ===========================================================================
 
-describe('WR-T18: FCM throws → { sent: 0, reason: "send_failed" }, raw text not echoed', () => {
+describe('WR-T18: FCM throws → { sent: 0, cleaned: 0 } (privacy review Fix 1), raw text not echoed', () => {
   beforeEach(() => {
     seedHappyPath();
     sendEachForMulticastMock = vi.fn(async () => {
@@ -957,12 +972,12 @@ describe('WR-T18: FCM throws → { sent: 0, reason: "send_failed" }, raw text no
     });
   });
 
-  it('returns the generic send-failed shape', async () => {
+  it('returns the generic send-failed shape (no `reason` on the wire)', async () => {
     const result = (await invoke({
       auth: { uid: CALLER_UID },
       data: { itemId: ITEM_ID },
-    })) as { sent: number; reason: string };
-    expect(result).toEqual({ sent: 0, reason: 'send_failed' });
+    })) as { sent: number; cleaned: number };
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
   });
 
   it('does NOT throw HttpsError', async () => {
@@ -1064,6 +1079,30 @@ describe(`WR-T19b: success log payload contains canonical fields with kind="${KI
       cleanedTokenCount: 0,
     });
     expect(typeof payload.durationMs).toBe('number');
+  });
+
+  it('the SKIP log payload (opted_out) carries a server-side `skipReason` field (privacy review Fix 1)', async () => {
+    docStore.set(`userPrivate/${PARENT_A_UID}`, {
+      familyId: FAMILY_ID,
+      notificationPreferences: {
+        pushEnabled: false,
+        categories: { [CATEGORY_KEY]: true },
+      },
+    });
+    docStore.set(`userPrivate/${PARENT_B_UID}`, {
+      familyId: FAMILY_ID,
+      notificationPreferences: {
+        pushEnabled: false,
+        categories: { [CATEGORY_KEY]: true },
+      },
+    });
+    await invoke({ auth: { uid: CALLER_UID }, data: { itemId: ITEM_ID } });
+    const skipCall = loggerInfoMock.mock.calls.find((call) => {
+      const payload = call[1] as Record<string, unknown> | undefined;
+      return payload && 'skipReason' in payload;
+    });
+    expect(skipCall).toBeDefined();
+    expect(skipCall![1]).toMatchObject({ kind: KIND, skipReason: 'opted_out' });
   });
 
   it('log NEVER contains raw token values or wishlist-item PI', async () => {

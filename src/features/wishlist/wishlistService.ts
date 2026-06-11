@@ -48,10 +48,7 @@ async function fireAndForgetNotify(
 ): Promise<void> {
   try {
     const fns = getFunctions();
-    const fn = httpsCallable<
-      { itemId: string },
-      { sent: number; cleaned?: number; reason?: string }
-    >(fns, name);
+    const fn = httpsCallable<{ itemId: string }, { sent: number; cleaned: number }>(fns, name);
     await fn({ itemId });
   } catch {
     // Intentionally swallowed.

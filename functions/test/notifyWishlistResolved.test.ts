@@ -605,7 +605,7 @@ describe('WV-T9: recipient pushEnabled==false → opted_out, no FCM', () => {
       auth: { uid: CALLER_UID },
       data: { itemId: ITEM_ID },
     });
-    expect(result).toMatchObject({ sent: 0, reason: 'opted_out' });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
     expect(sendEachForMulticastMock).not.toHaveBeenCalled();
   });
 });
@@ -628,7 +628,7 @@ describe(`WV-T10: categories.${CATEGORY_KEY} == false → opted_out`, () => {
       auth: { uid: CALLER_UID },
       data: { itemId: ITEM_ID },
     });
-    expect(result).toMatchObject({ sent: 0, reason: 'opted_out' });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
   });
 });
 
@@ -644,7 +644,7 @@ describe('WV-T11: recipient has no fcmTokens → no_tokens', () => {
       auth: { uid: CALLER_UID },
       data: { itemId: ITEM_ID },
     });
-    expect(result).toMatchObject({ sent: 0, reason: 'no_tokens' });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
     expect(sendEachForMulticastMock).not.toHaveBeenCalled();
   });
 });
@@ -955,7 +955,7 @@ describe(`WV-T17: M36 rate limit at rateLimits/${KIND}__{callerUid}`, () => {
 // WV-T18 — FCM throws.
 // ===========================================================================
 
-describe('WV-T18: FCM throws → { sent: 0, reason: "send_failed" }', () => {
+describe('WV-T18: FCM throws → { sent: 0, cleaned: 0 } (privacy review Fix 1)', () => {
   beforeEach(() => {
     seedHappyPath();
     sendEachForMulticastMock = vi.fn(async () => {
@@ -965,12 +965,12 @@ describe('WV-T18: FCM throws → { sent: 0, reason: "send_failed" }', () => {
     });
   });
 
-  it('returns generic send-failed shape', async () => {
+  it('returns generic send-failed shape (no `reason` on the wire)', async () => {
     const result = (await invoke({
       auth: { uid: CALLER_UID },
       data: { itemId: ITEM_ID },
-    })) as { sent: number; reason: string };
-    expect(result).toEqual({ sent: 0, reason: 'send_failed' });
+    })) as { sent: number; cleaned: number };
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
   });
 
   it('does NOT throw HttpsError', async () => {
@@ -1075,6 +1075,23 @@ describe(`WV-T19b: success log includes canonical fields with kind="${KIND}"`, (
       cleanedTokenCount: 0,
     });
     expect(typeof payload.durationMs).toBe('number');
+  });
+
+  it('the SKIP log payload (opted_out) carries a server-side `skipReason` field (privacy review Fix 1)', async () => {
+    docStore.set(`userPrivate/${OWNER_UID}`, {
+      familyId: FAMILY_ID,
+      notificationPreferences: {
+        pushEnabled: false,
+        categories: { [CATEGORY_KEY]: true },
+      },
+    });
+    await invoke({ auth: { uid: CALLER_UID }, data: { itemId: ITEM_ID } });
+    const skipCall = loggerInfoMock.mock.calls.find((call) => {
+      const payload = call[1] as Record<string, unknown> | undefined;
+      return payload && 'skipReason' in payload;
+    });
+    expect(skipCall).toBeDefined();
+    expect(skipCall![1]).toMatchObject({ kind: KIND, skipReason: 'opted_out' });
   });
 
   it('no raw token + no wishlist-item PI in log', async () => {

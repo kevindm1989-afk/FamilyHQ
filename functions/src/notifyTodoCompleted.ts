@@ -1,14 +1,21 @@
 /**
- * notifyTodoCompleted — completer → creator (PR D7).
+ * notifyTodoCompleted — completer → all OTHER family members (PR D7,
+ * post review-restructure).
  *
- * Single-recipient shape. Recipient = `todo.createdBy`. Self-completion
- * (completer is the creator) returns the silent `no_tokens` skip.
+ * Broadcast shape (mirrors `notifyBoardPost`). Design D7 + threat-model
+ * D-T4: "completer → every active member of the family EXCEPT the
+ * completer". Per the design note, "the creator gets it as part of the
+ * broadcast — closes the loop", so we do NOT additionally exclude the
+ * todo creator (they are filtered ONLY if they happen to be the
+ * completer themselves).
  *
- * State guard: `todo.isCompleted == true`. Any other value (including
- * undefined / null) is rejected with `permission-denied` so a malformed
- * todo can't trigger spurious notifications.
+ * State guard: `todo.isCompleted == true`.
  *
- * Category: `familyTodos`. Body: frozen
+ * Skip + error shape: `{ sent: 0, cleaned: 0 }` (no `reason` field —
+ * privacy review Fix 1, preference-enumeration oracle); reason class
+ * is logged server-side as `skipReason`.
+ *
+ * Category key: `familyTodos` (shared with D6). Body: frozen
  * `NOTIFICATION_BODIES.todoCompleted`.
  */
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
@@ -23,6 +30,7 @@ if (getApps().length === 0) {
 }
 
 const KIND = 'todoCompleted';
+const CATEGORY_KEY = 'familyTodos';
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_PER_WINDOW = 10;
 const FCM_STALE_TOKEN_CODES = new Set<string>([
@@ -88,7 +96,12 @@ export const notifyTodoCompleted = onCall(
       }
       const nextCount = withinWindow ? prevCount + 1 : 1;
       const nextWindowStart = withinWindow ? prevWindowStart : now;
-      tx.set(rateLimitRef, { count: nextCount, windowStartMs: nextWindowStart });
+      // expiresAt = window-start + 7 days (privacy review Fix 2 — TTL).
+      tx.set(rateLimitRef, {
+        count: nextCount,
+        windowStartMs: nextWindowStart,
+        expiresAt: nextWindowStart + 7 * 24 * 60 * 60 * 1000,
+      });
       return false;
     });
     if (limitTripped) {
@@ -126,89 +139,73 @@ export const notifyTodoCompleted = onCall(
     if (todo.isCompleted !== true) {
       throw new HttpsError('permission-denied', 'Not permitted.');
     }
-    if (typeof todo.createdBy !== 'string' || todo.createdBy.length === 0) {
-      throw new HttpsError('permission-denied', 'Not permitted.');
-    }
-    const recipientUid = todo.createdBy;
 
-    // Self-completion guard — the creator marking their own todo done
-    // is a noop.
-    if (recipientUid === callerUid) {
-      logger.info('notifyTodoCompleted: skip', {
-        kind: KIND,
-        familyId: callerFamilyId,
-        actorUid: callerUid,
-        recipientCount: 0,
-        successCount: 0,
-        cleanedTokenCount: 0,
-        durationMs: Date.now() - startedAt,
-      });
-      return { sent: 0 as const, reason: 'no_tokens' as const };
+    // Recipients = every active user in the family EXCEPT the completer.
+    // The creator IS included (closes the loop, per design D7) unless
+    // they happen to be the completer themselves.
+    const userSnaps = await db
+      .collection('users')
+      .where('familyId', '==', callerFamilyId)
+      .where('isActive', '==', true)
+      .get();
+    const recipientUids: string[] = [];
+    for (const userSnap of userSnaps.docs) {
+      const uid = (userSnap as { id?: string }).id;
+      if (typeof uid === 'string' && uid.length > 0 && uid !== callerUid) {
+        recipientUids.push(uid);
+      }
     }
 
-    const recipientPrivateSnap = await db.doc(`userPrivate/${recipientUid}`).get();
-    if (!recipientPrivateSnap.exists) {
-      logger.info('notifyTodoCompleted: skip', {
-        kind: KIND,
-        familyId: callerFamilyId,
-        actorUid: callerUid,
-        recipientCount: 0,
-        successCount: 0,
-        cleanedTokenCount: 0,
-        durationMs: Date.now() - startedAt,
-      });
-      return { sent: 0 as const, reason: 'no_tokens' as const };
-    }
-    const recipientPrivate = (readSnap(recipientPrivateSnap) ?? {}) as {
-      familyId?: unknown;
-      notificationPreferences?: {
-        pushEnabled?: unknown;
-        categories?: { familyTodos?: unknown };
-      };
-    };
-    if (recipientPrivate.familyId !== callerFamilyId) {
-      throw new HttpsError('permission-denied', 'Not permitted.');
-    }
-    const prefs = recipientPrivate.notificationPreferences ?? {};
-    if (prefs.pushEnabled !== true || prefs.categories?.familyTodos !== true) {
-      logger.info('notifyTodoCompleted: skip', {
-        kind: KIND,
-        familyId: callerFamilyId,
-        actorUid: callerUid,
-        recipientCount: 0,
-        successCount: 0,
-        cleanedTokenCount: 0,
-        durationMs: Date.now() - startedAt,
-      });
-      return { sent: 0 as const, reason: 'opted_out' as const };
-    }
-
-    const tokenSnaps = await db.collection(`userPrivate/${recipientUid}/fcmTokens`).get();
-    if (tokenSnaps.empty) {
-      logger.info('notifyTodoCompleted: skip', {
-        kind: KIND,
-        familyId: callerFamilyId,
-        actorUid: callerUid,
-        recipientCount: 0,
-        successCount: 0,
-        cleanedTokenCount: 0,
-        durationMs: Date.now() - startedAt,
-      });
-      return { sent: 0 as const, reason: 'no_tokens' as const };
-    }
-
-    const tokenEntries: Array<{ tokenHash: string; token: string }> = [];
-    for (const docSnap of tokenSnaps.docs) {
-      const tokenData = (readSnap(docSnap) ?? {}) as Partial<FcmTokenDoc>;
-      if (typeof tokenData.token !== 'string' || tokenData.token.length === 0) {
+    const tokenEntries: Array<{ tokenHash: string; token: string; recipientUid: string }> = [];
+    let anyOptedOut = false;
+    for (const recipientUid of recipientUids) {
+      const recipientPrivateSnap = await db.doc(`userPrivate/${recipientUid}`).get();
+      if (!recipientPrivateSnap.exists) {
         continue;
       }
-      tokenEntries.push({
-        tokenHash: (docSnap as { id?: string }).id ?? '',
-        token: tokenData.token,
-      });
+      const recipientPrivate = (readSnap(recipientPrivateSnap) ?? {}) as {
+        familyId?: unknown;
+        notificationPreferences?: {
+          pushEnabled?: unknown;
+          categories?: Record<string, unknown> | undefined;
+        };
+      };
+      // Per-recipient cross-tenant guard (M35.7). Skip + warn, do NOT
+      // throw — Fix 6.
+      if (recipientPrivate.familyId !== callerFamilyId) {
+        logger.warn('notifyTodoCompleted: recipient skipped — userPrivate familyId mismatch', {
+          kind: KIND,
+          familyId: callerFamilyId,
+          actorUid: callerUid,
+        });
+        continue;
+      }
+      const prefs = recipientPrivate.notificationPreferences ?? {};
+      const pushEnabled = prefs.pushEnabled === true;
+      const categoryOn = prefs.categories?.[CATEGORY_KEY] === true;
+      if (!pushEnabled || !categoryOn) {
+        anyOptedOut = true;
+        continue;
+      }
+      const tokenSnaps = await db.collection(`userPrivate/${recipientUid}/fcmTokens`).get();
+      if (tokenSnaps.empty) {
+        continue;
+      }
+      for (const tokenDoc of tokenSnaps.docs) {
+        const tokenData = (readSnap(tokenDoc) ?? {}) as Partial<FcmTokenDoc>;
+        if (typeof tokenData.token !== 'string' || tokenData.token.length === 0) {
+          continue;
+        }
+        tokenEntries.push({
+          tokenHash: (tokenDoc as { id?: string }).id ?? '',
+          token: tokenData.token,
+          recipientUid,
+        });
+      }
     }
+
     if (tokenEntries.length === 0) {
+      const skipReason = anyOptedOut ? 'opted_out' : 'no_tokens';
       logger.info('notifyTodoCompleted: skip', {
         kind: KIND,
         familyId: callerFamilyId,
@@ -217,8 +214,9 @@ export const notifyTodoCompleted = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason,
       });
-      return { sent: 0 as const, reason: 'no_tokens' as const };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
 
     const tokens = tokenEntries.map((entry) => entry.token);
@@ -242,8 +240,9 @@ export const notifyTodoCompleted = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason: 'send_failed',
       });
-      return { sent: 0 as const, reason: 'send_failed' as const };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
 
     const responses = result.responses ?? [];
@@ -263,7 +262,7 @@ export const notifyTodoCompleted = onCall(
         cleaned += 1;
         deletions.push(
           db
-            .doc(`userPrivate/${recipientUid}/fcmTokens/${entry.tokenHash}`)
+            .doc(`userPrivate/${entry.recipientUid}/fcmTokens/${entry.tokenHash}`)
             .delete()
             .then(() => undefined),
         );

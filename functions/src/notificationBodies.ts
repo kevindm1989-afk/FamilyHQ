@@ -56,16 +56,16 @@ export const NOTIFICATION_BODIES = Object.freeze({
     body: 'A request was updated. Open Family HQ for details.',
   }),
   familyBoardPost: Object.freeze({
-    title: 'Family update',
-    body: 'A new family post is up. Open Family HQ.',
+    title: 'New family post',
+    body: 'Someone in your family shared an update.',
   }),
   todoCreated: Object.freeze({
-    title: 'New task',
-    body: 'You have a new task. Open Family HQ for details.',
+    title: 'New to-do',
+    body: "Something was added to your family's to-do list.",
   }),
   todoCompleted: Object.freeze({
-    title: 'Task update',
-    body: 'A task was completed. Open Family HQ for details.',
+    title: 'To-do completed',
+    body: "Something on your family's to-do list was finished.",
   }),
 }) satisfies Readonly<Record<string, NotificationBody>>;
 

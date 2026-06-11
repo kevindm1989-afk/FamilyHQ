@@ -236,10 +236,10 @@ export async function approveChore(
   // chore title (the server re-derives everything it needs).
   try {
     const fns = getFunctions();
-    const fn = httpsCallable<
-      { choreId: string },
-      { sent: number; cleaned?: number; reason?: string }
-    >(fns, 'notifyChoreApproved');
+    const fn = httpsCallable<{ choreId: string }, { sent: number; cleaned: number }>(
+      fns,
+      'notifyChoreApproved',
+    );
     await fn({ choreId });
   } catch {
     // Intentionally swallowed — see comment above. No re-throw, no toast.

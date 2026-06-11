@@ -589,11 +589,35 @@ describe('BP-T8: caller != post.authorId → permission-denied (forged-author gu
 });
 
 // ===========================================================================
-// BP-T8b — recipient cross-tenant guard.
+// BP-T8b — recipient cross-tenant guard. Multi-recipient callable:
+// a single corrupt userPrivate must NOT DoS the whole multicast — the
+// implementation skips the bad recipient + warns, and the OTHER
+// recipients in the family continue normally (SOR Concern 3 / Fix 6).
 // ===========================================================================
 
-describe('BP-T8b: any recipient userPrivate.familyId mismatch → permission-denied', () => {
-  it('rejects when a member userPrivate.familyId belongs to a different family', async () => {
+describe('BP-T8b: a recipient userPrivate.familyId mismatch is SKIPPED — multicast continues for the rest', () => {
+  it('skips the corrupt recipient and still sends to the good parent (sent:1, not sent:0)', async () => {
+    seedHappyPath();
+    // Member B has a corrupted userPrivate doc whose familyId points to
+    // another family. The callable MUST skip B silently and still
+    // deliver to member C.
+    docStore.set(`userPrivate/${MEMBER_B_UID}`, {
+      familyId: OTHER_FAMILY_ID,
+      notificationPreferences: {
+        pushEnabled: true,
+        categories: { [CATEGORY_KEY]: true },
+      },
+    });
+    const result = (await invoke({
+      auth: { uid: AUTHOR_UID },
+      data: { postId: POST_ID },
+    })) as { sent: number; cleaned: number };
+    expect(result).toEqual({ sent: 1, cleaned: 0 });
+    const [message] = sendEachForMulticastMock.mock.calls[0] as [{ tokens: string[] }];
+    expect(message.tokens).toEqual([TOKEN_VALUE_C]);
+  });
+
+  it('emits a structured warn (no recipientUid, no foreign familyId) when skipping a corrupt recipient', async () => {
     seedHappyPath();
     docStore.set(`userPrivate/${MEMBER_B_UID}`, {
       familyId: OTHER_FAMILY_ID,
@@ -602,14 +626,13 @@ describe('BP-T8b: any recipient userPrivate.familyId mismatch → permission-den
         categories: { [CATEGORY_KEY]: true },
       },
     });
-    const err = await invoke({
-      auth: { uid: AUTHOR_UID },
-      data: { postId: POST_ID },
-    }).then(
-      () => new Error('expected rejection'),
-      (e: unknown) => e as { code?: string },
-    );
-    expect(err.code).toBe('permission-denied');
+    await invoke({ auth: { uid: AUTHOR_UID }, data: { postId: POST_ID } });
+    expect(loggerWarnMock).toHaveBeenCalled();
+    const warnSerialized = JSON.stringify(loggerWarnMock.mock.calls);
+    // Payload must NOT leak the recipient uid or the foreign familyId
+    // (M38 allow-list).
+    expect(warnSerialized).not.toContain(MEMBER_B_UID);
+    expect(warnSerialized).not.toContain(OTHER_FAMILY_ID);
   });
 });
 
@@ -633,7 +656,7 @@ describe('BP-T9: every recipient pushEnabled==false → opted_out', () => {
       auth: { uid: AUTHOR_UID },
       data: { postId: POST_ID },
     });
-    expect(result).toMatchObject({ sent: 0, reason: 'opted_out' });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
     expect(sendEachForMulticastMock).not.toHaveBeenCalled();
   });
 
@@ -676,7 +699,7 @@ describe(`BP-T10: categories.${CATEGORY_KEY} == false for every recipient → op
       auth: { uid: AUTHOR_UID },
       data: { postId: POST_ID },
     });
-    expect(result).toMatchObject({ sent: 0, reason: 'opted_out' });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
   });
 });
 
@@ -693,7 +716,7 @@ describe('BP-T11: no fcmTokens across non-author members → no_tokens', () => {
       auth: { uid: AUTHOR_UID },
       data: { postId: POST_ID },
     });
-    expect(result).toMatchObject({ sent: 0, reason: 'no_tokens' });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
     expect(sendEachForMulticastMock).not.toHaveBeenCalled();
   });
 });
@@ -702,8 +725,8 @@ describe('BP-T11: no fcmTokens across non-author members → no_tokens', () => {
 // BP-T11b — Self-recipient skip: family of ONE (author only) → no_tokens, no FCM.
 // ===========================================================================
 
-describe('BP-T11b: only the author is in the family (computed recipient set excludes author) → no_tokens, no self-ping', () => {
-  it('returns { sent: 0, reason: "no_tokens" } and does NOT call FCM', async () => {
+describe('BP-T11b: only the author is in the family (computed recipient set excludes author) → uniform skip, no self-ping', () => {
+  it('returns { sent: 0, cleaned: 0 } and does NOT call FCM (privacy review Fix 1)', async () => {
     seedHappyPath();
     // Remove all other members from the family.
     docStore.delete(`users/${MEMBER_B_UID}`);
@@ -716,7 +739,7 @@ describe('BP-T11b: only the author is in the family (computed recipient set excl
       auth: { uid: AUTHOR_UID },
       data: { postId: POST_ID },
     });
-    expect(result).toMatchObject({ sent: 0, reason: 'no_tokens' });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
     expect(sendEachForMulticastMock).not.toHaveBeenCalled();
   });
 });
@@ -970,7 +993,7 @@ describe(`BP-T17: M36 rate limit at rateLimits/${KIND}__{callerUid}`, () => {
 // BP-T18 — FCM throws.
 // ===========================================================================
 
-describe('BP-T18: FCM throws → { sent: 0, reason: "send_failed" }', () => {
+describe('BP-T18: FCM throws → { sent: 0, cleaned: 0 } (privacy review Fix 1)', () => {
   beforeEach(() => {
     seedHappyPath();
     sendEachForMulticastMock = vi.fn(async () => {
@@ -980,12 +1003,12 @@ describe('BP-T18: FCM throws → { sent: 0, reason: "send_failed" }', () => {
     });
   });
 
-  it('returns generic send-failed shape', async () => {
+  it('returns generic send-failed shape (no `reason` on the wire)', async () => {
     const result = (await invoke({
       auth: { uid: AUTHOR_UID },
       data: { postId: POST_ID },
-    })) as { sent: number; reason: string };
-    expect(result).toEqual({ sent: 0, reason: 'send_failed' });
+    })) as { sent: number; cleaned: number };
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
   });
 
   it('does NOT throw HttpsError', async () => {

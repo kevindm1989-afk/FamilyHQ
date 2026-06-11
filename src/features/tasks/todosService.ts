@@ -39,10 +39,7 @@ async function fireAndForgetTodoNotify(
 ): Promise<void> {
   try {
     const fns = getFunctions();
-    const fn = httpsCallable<
-      { todoId: string },
-      { sent: number; cleaned?: number; reason?: string }
-    >(fns, name);
+    const fn = httpsCallable<{ todoId: string }, { sent: number; cleaned: number }>(fns, name);
     await fn({ todoId });
   } catch {
     // Intentionally swallowed.

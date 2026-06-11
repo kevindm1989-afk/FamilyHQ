@@ -676,8 +676,8 @@ describe('CS-T8: chore.status != "complete" → permission-denied', () => {
 // CS-T8b — recipient cross-tenant guard (any parent userPrivate familyId mismatch).
 // ===========================================================================
 
-describe('CS-T8b: any recipient userPrivate.familyId mismatch → permission-denied', () => {
-  it('rejects when a parent userPrivate.familyId belongs to a different family', async () => {
+describe('CS-T8b: a recipient userPrivate.familyId mismatch is SKIPPED — multicast continues for the rest (Fix 6)', () => {
+  it('skips the corrupt recipient and still sends to the good parent (sent:1, not sent:0)', async () => {
     seedHappyPath();
     docStore.set(`userPrivate/${PARENT_A_UID}`, {
       familyId: OTHER_FAMILY_ID,
@@ -686,14 +686,29 @@ describe('CS-T8b: any recipient userPrivate.familyId mismatch → permission-den
         categories: { [CATEGORY_KEY]: true },
       },
     });
-    const err = await invoke({
+    const result = (await invoke({
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
-    }).then(
-      () => new Error('expected rejection'),
-      (e: unknown) => e as { code?: string },
-    );
-    expect(err.code).toBe('permission-denied');
+    })) as { sent: number; cleaned: number };
+    expect(result).toEqual({ sent: 1, cleaned: 0 });
+    const [message] = sendEachForMulticastMock.mock.calls[0] as [{ tokens: string[] }];
+    expect(message.tokens).toEqual([TOKEN_VALUE_B]);
+  });
+
+  it('emits a structured warn (no recipientUid, no foreign familyId) when skipping a corrupt recipient', async () => {
+    seedHappyPath();
+    docStore.set(`userPrivate/${PARENT_A_UID}`, {
+      familyId: OTHER_FAMILY_ID,
+      notificationPreferences: {
+        pushEnabled: true,
+        categories: { [CATEGORY_KEY]: true },
+      },
+    });
+    await invoke({ auth: { uid: CALLER_UID }, data: { choreId: CHORE_ID } });
+    expect(loggerWarnMock).toHaveBeenCalled();
+    const warnSerialized = JSON.stringify(loggerWarnMock.mock.calls);
+    expect(warnSerialized).not.toContain(PARENT_A_UID);
+    expect(warnSerialized).not.toContain(OTHER_FAMILY_ID);
   });
 });
 
@@ -701,8 +716,8 @@ describe('CS-T8b: any recipient userPrivate.familyId mismatch → permission-den
 // CS-T9 — All parents opted-out → opted_out, no FCM.
 // ===========================================================================
 
-describe('CS-T9: every recipient has pushEnabled==false → { sent: 0, reason: "opted_out" }, no FCM', () => {
-  it('returns opted_out when ALL parent recipients have master push off', async () => {
+describe('CS-T9: every recipient has pushEnabled==false → { sent: 0, cleaned: 0 } (skipReason server-side only)', () => {
+  it('returns the uniform skip shape when ALL parent recipients have master push off', async () => {
     seedHappyPath();
     docStore.set(`userPrivate/${PARENT_A_UID}`, {
       familyId: FAMILY_ID,
@@ -722,7 +737,7 @@ describe('CS-T9: every recipient has pushEnabled==false → { sent: 0, reason: "
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
     });
-    expect(result).toMatchObject({ sent: 0, reason: 'opted_out' });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
     expect(sendEachForMulticastMock).not.toHaveBeenCalled();
   });
 
@@ -749,8 +764,8 @@ describe('CS-T9: every recipient has pushEnabled==false → { sent: 0, reason: "
 // CS-T10 — Category muted for ALL recipients → opted_out (exact key pinned).
 // ===========================================================================
 
-describe(`CS-T10: categories.${CATEGORY_KEY} == false for every recipient → opted_out`, () => {
-  it(`returns opted_out when every parent has categories.${CATEGORY_KEY} == false`, async () => {
+describe(`CS-T10: categories.${CATEGORY_KEY} == false for every recipient → uniform skip shape`, () => {
+  it(`returns { sent: 0, cleaned: 0 } when every parent has categories.${CATEGORY_KEY} == false`, async () => {
     seedHappyPath();
     docStore.set(`userPrivate/${PARENT_A_UID}`, {
       familyId: FAMILY_ID,
@@ -770,7 +785,7 @@ describe(`CS-T10: categories.${CATEGORY_KEY} == false for every recipient → op
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
     });
-    expect(result).toMatchObject({ sent: 0, reason: 'opted_out' });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
     expect(sendEachForMulticastMock).not.toHaveBeenCalled();
   });
 });
@@ -779,8 +794,8 @@ describe(`CS-T10: categories.${CATEGORY_KEY} == false for every recipient → op
 // CS-T11 — No tokens across all recipients → no_tokens.
 // ===========================================================================
 
-describe('CS-T11: no fcmTokens anywhere → { sent: 0, reason: "no_tokens" }', () => {
-  it('returns no_tokens when every parent has zero tokens', async () => {
+describe('CS-T11: no fcmTokens anywhere → { sent: 0, cleaned: 0 } (privacy review Fix 1)', () => {
+  it('returns the uniform skip shape when every parent has zero tokens', async () => {
     seedHappyPath();
     docStore.delete(`userPrivate/${PARENT_A_UID}/fcmTokens/${TOKEN_HASH_A}`);
     docStore.delete(`userPrivate/${PARENT_B_UID}/fcmTokens/${TOKEN_HASH_B}`);
@@ -788,7 +803,7 @@ describe('CS-T11: no fcmTokens anywhere → { sent: 0, reason: "no_tokens" }', (
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
     });
-    expect(result).toMatchObject({ sent: 0, reason: 'no_tokens' });
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
     expect(sendEachForMulticastMock).not.toHaveBeenCalled();
   });
 });
@@ -1088,10 +1103,10 @@ describe('CS-T17: M36 rate limit — 11th call within 60s → resource-exhausted
 });
 
 // ===========================================================================
-// CS-T18 — FCM throws → { sent: 0, reason: 'send_failed' }; raw code never echoed.
+// CS-T18 — FCM throws → { sent: 0, cleaned: 0 } (privacy review Fix 1); raw code never echoed.
 // ===========================================================================
 
-describe('CS-T18: FCM throws → { sent: 0, reason: "send_failed" } (M39, no HttpsError)', () => {
+describe('CS-T18: FCM throws → { sent: 0, cleaned: 0 } (M39 + privacy review Fix 1, no HttpsError)', () => {
   beforeEach(() => {
     seedHappyPath();
     sendEachForMulticastMock = vi.fn(async () => {
@@ -1101,12 +1116,12 @@ describe('CS-T18: FCM throws → { sent: 0, reason: "send_failed" } (M39, no Htt
     });
   });
 
-  it('returns the generic send-failed skip shape', async () => {
+  it('returns the generic send-failed skip shape (no `reason` on the wire)', async () => {
     const result = (await invoke({
       auth: { uid: CALLER_UID },
       data: { choreId: CHORE_ID },
-    })) as { sent: number; reason: string };
-    expect(result).toEqual({ sent: 0, reason: 'send_failed' });
+    })) as { sent: number; cleaned: number };
+    expect(result).toEqual({ sent: 0, cleaned: 0 });
   });
 
   it('does NOT throw any HttpsError', async () => {
@@ -1213,6 +1228,30 @@ describe(`CS-T19b: M38 success-log payload contains kind="${KIND}" + canonical f
       cleanedTokenCount: 0,
     });
     expect(typeof payload.durationMs).toBe('number');
+  });
+
+  it('the SKIP log payload (opted_out) carries a server-side `skipReason` field (privacy review Fix 1)', async () => {
+    docStore.set(`userPrivate/${PARENT_A_UID}`, {
+      familyId: FAMILY_ID,
+      notificationPreferences: {
+        pushEnabled: false,
+        categories: { [CATEGORY_KEY]: true },
+      },
+    });
+    docStore.set(`userPrivate/${PARENT_B_UID}`, {
+      familyId: FAMILY_ID,
+      notificationPreferences: {
+        pushEnabled: false,
+        categories: { [CATEGORY_KEY]: true },
+      },
+    });
+    await invoke({ auth: { uid: CALLER_UID }, data: { choreId: CHORE_ID } });
+    const skipCall = loggerInfoMock.mock.calls.find((call) => {
+      const payload = call[1] as Record<string, unknown> | undefined;
+      return payload && 'skipReason' in payload;
+    });
+    expect(skipCall).toBeDefined();
+    expect(skipCall![1]).toMatchObject({ kind: KIND, skipReason: 'opted_out' });
   });
 
   it('success log NEVER contains raw token values or chore-doc PI', async () => {

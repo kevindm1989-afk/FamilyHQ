@@ -91,10 +91,10 @@ export async function createPost(deps: { db: Firestore }, input: CreatePostInput
   // non-essential (ADR-0014); the in-app inbox is the source of truth.
   try {
     const fns = getFunctions();
-    const fn = httpsCallable<
-      { postId: string },
-      { sent: number; cleaned?: number; reason?: string }
-    >(fns, 'notifyBoardPost');
+    const fn = httpsCallable<{ postId: string }, { sent: number; cleaned: number }>(
+      fns,
+      'notifyBoardPost',
+    );
     await fn({ postId });
   } catch {
     // Intentionally swallowed.

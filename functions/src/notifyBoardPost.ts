@@ -95,7 +95,12 @@ export const notifyBoardPost = onCall(
       }
       const nextCount = withinWindow ? prevCount + 1 : 1;
       const nextWindowStart = withinWindow ? prevWindowStart : now;
-      tx.set(rateLimitRef, { count: nextCount, windowStartMs: nextWindowStart });
+      // expiresAt = window-start + 7 days (privacy review Fix 2 — TTL).
+      tx.set(rateLimitRef, {
+        count: nextCount,
+        windowStartMs: nextWindowStart,
+        expiresAt: nextWindowStart + 7 * 24 * 60 * 60 * 1000,
+      });
       return false;
     });
     if (limitTripped) {
@@ -164,8 +169,16 @@ export const notifyBoardPost = onCall(
           categories?: Record<string, unknown> | undefined;
         };
       };
+      // Per-recipient cross-tenant guard (M35.7). Skip + warn, do NOT
+      // throw — a single corrupt userPrivate must not DoS the multicast
+      // (SOR Concern 3 / Fix 6).
       if (recipientPrivate.familyId !== callerFamilyId) {
-        throw new HttpsError('permission-denied', 'Not permitted.');
+        logger.warn('notifyBoardPost: recipient skipped — userPrivate familyId mismatch', {
+          kind: KIND,
+          familyId: callerFamilyId,
+          actorUid: callerUid,
+        });
+        continue;
       }
       const prefs = recipientPrivate.notificationPreferences ?? {};
       const pushEnabled = prefs.pushEnabled === true;
@@ -192,7 +205,7 @@ export const notifyBoardPost = onCall(
     }
 
     if (tokenEntries.length === 0) {
-      const reason = anyOptedOut ? 'opted_out' : 'no_tokens';
+      const skipReason = anyOptedOut ? 'opted_out' : 'no_tokens';
       logger.info('notifyBoardPost: skip', {
         kind: KIND,
         familyId: callerFamilyId,
@@ -201,8 +214,9 @@ export const notifyBoardPost = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason,
       });
-      return { sent: 0 as const, reason: reason as 'opted_out' | 'no_tokens' };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
 
     const tokens = tokenEntries.map((entry) => entry.token);
@@ -226,8 +240,9 @@ export const notifyBoardPost = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason: 'send_failed',
       });
-      return { sent: 0 as const, reason: 'send_failed' as const };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
 
     const responses = result.responses ?? [];

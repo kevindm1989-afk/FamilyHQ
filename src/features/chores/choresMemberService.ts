@@ -68,10 +68,10 @@ export async function markComplete(deps: { db: Firestore }, choreId: string): Pr
   // everything it needs).
   try {
     const fns = getFunctions();
-    const fn = httpsCallable<
-      { choreId: string },
-      { sent: number; cleaned?: number; reason?: string }
-    >(fns, 'notifyChoreSubmitted');
+    const fn = httpsCallable<{ choreId: string }, { sent: number; cleaned: number }>(
+      fns,
+      'notifyChoreSubmitted',
+    );
     await fn({ choreId });
   } catch {
     // Intentionally swallowed — push is fire-and-forget.

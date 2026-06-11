@@ -93,7 +93,12 @@ export const notifyWishlistResolved = onCall(
       }
       const nextCount = withinWindow ? prevCount + 1 : 1;
       const nextWindowStart = withinWindow ? prevWindowStart : now;
-      tx.set(rateLimitRef, { count: nextCount, windowStartMs: nextWindowStart });
+      // expiresAt = window-start + 7 days (privacy review Fix 2 — TTL).
+      tx.set(rateLimitRef, {
+        count: nextCount,
+        windowStartMs: nextWindowStart,
+        expiresAt: nextWindowStart + 7 * 24 * 60 * 60 * 1000,
+      });
       return false;
     });
     if (limitTripped) {
@@ -137,7 +142,7 @@ export const notifyWishlistResolved = onCall(
     const recipientUid = item.ownerUid;
 
     // Self-ping guard: a parent acting on their own wishlist item returns
-    // the silent `no_tokens` skip without invoking FCM.
+    // the silent skip without invoking FCM.
     if (recipientUid === callerUid) {
       logger.info('notifyWishlistResolved: skip', {
         kind: KIND,
@@ -147,8 +152,9 @@ export const notifyWishlistResolved = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason: 'no_tokens',
       });
-      return { sent: 0 as const, reason: 'no_tokens' as const };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
 
     const recipientPrivateSnap = await db.doc(`userPrivate/${recipientUid}`).get();
@@ -161,8 +167,9 @@ export const notifyWishlistResolved = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason: 'no_tokens',
       });
-      return { sent: 0 as const, reason: 'no_tokens' as const };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
     const recipientPrivate = (readSnap(recipientPrivateSnap) ?? {}) as {
       familyId?: unknown;
@@ -184,8 +191,9 @@ export const notifyWishlistResolved = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason: 'opted_out',
       });
-      return { sent: 0 as const, reason: 'opted_out' as const };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
 
     const tokenSnaps = await db.collection(`userPrivate/${recipientUid}/fcmTokens`).get();
@@ -198,8 +206,9 @@ export const notifyWishlistResolved = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason: 'no_tokens',
       });
-      return { sent: 0 as const, reason: 'no_tokens' as const };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
 
     const tokenEntries: Array<{ tokenHash: string; token: string }> = [];
@@ -222,8 +231,9 @@ export const notifyWishlistResolved = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason: 'no_tokens',
       });
-      return { sent: 0 as const, reason: 'no_tokens' as const };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
 
     const tokens = tokenEntries.map((entry) => entry.token);
@@ -247,8 +257,9 @@ export const notifyWishlistResolved = onCall(
         successCount: 0,
         cleanedTokenCount: 0,
         durationMs: Date.now() - startedAt,
+        skipReason: 'send_failed',
       });
-      return { sent: 0 as const, reason: 'send_failed' as const };
+      return { sent: 0 as const, cleaned: 0 as const };
     }
 
     const responses = result.responses ?? [];
