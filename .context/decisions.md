@@ -25,6 +25,130 @@ pointing to the new one. The history is the value.
 
 ---
 
+## ADR-0015 — `rateLimits/{kind}__{callerUid}` collection: purpose, shape, retention
+
+**Status:** Accepted (codified in PR D, retroactively documented here)
+**Date:** 2026-06-11
+**Decider(s):** orchestrator + privacy-reviewer (BLOCK during PR D round-1
+review); user signs by merging this memory PR.
+
+**Context:** PR C introduced (and PR D extended to all 7 notify-callables)
+a per-caller rate limit (M36) implemented as a single Firestore doc per
+`(kind, callerUid)` pair. The collection was added without a recorded
+ADR; privacy-reviewer blocked PR D until purpose + retention were
+documented. This ADR codifies the existing implementation so future
+readers know what the docs are for and when they age out.
+
+**Decision:** A top-level Firestore collection `rateLimits` with doc id
+shape `{kind}__{callerUid}` and field shape:
+
+```ts
+{
+  count: number,            // invocations within the current window
+  windowStartMs: number,    // epoch ms when the current window started
+  expiresAt: number,        // epoch ms when this doc may be deleted (windowStartMs + 7d)
+}
+```
+
+- Purpose: M36 — per-caller rate limit on every chargeable notify-
+  callable. Reading + incrementing the count inside `db.runTransaction`
+  prevents concurrent invocations from both observing `count = N` and
+  both writing `count = N+1` (security-reviewer pin during PR C).
+- Residency: `northamerica-northeast1` (inherits the project's default;
+  same as `chores`, `users`, etc.).
+- Retention: 7 days after `windowStartMs`. The `expiresAt` field is
+  written on every `tx.set(...)` so a Firestore TTL policy on the
+  field will reclaim the doc automatically once it has been idle for
+  one window-plus-buffer. Activation command (operator runbook):
+
+  ```sh
+  gcloud firestore fields ttls update expiresAt \
+    --collection-group=rateLimits \
+    --enable-ttl --project="$FIREBASE_PROJECT_ID"
+  ```
+
+  Re-run for the staging and production projects.
+- Access: server-side only via Admin SDK. `firestore.rules` denies all
+  client read/list/write on `rateLimits/*` — verified by
+  `test/rules/rateLimits.test.ts` in the rules-emulator suite.
+- PI classification: low. The doc id embeds a `callerUid` (a system
+  identifier), but no PI fields are written. The collection still
+  appears in `threat-model.md §1.2` so the inventory is complete.
+
+**Rationale:** Per-caller doc-shape was the cheapest viable rate-limit
+primitive on Firestore (no Redis, no external KV); the doc id keys on
+both the callable kind and the caller, so a single user cannot exhaust
+their cap on `notifyChoreApproved` and starve `notifyTodoCreated`. The
+7-day TTL was chosen long enough that an inactive user does not get
+"reset" on every new window (which would defeat the cap) but short
+enough that an idle UID does not accumulate forever. The Firestore TTL
+policy makes the retention an infrastructure invariant — the
+application code does not need to schedule a sweep.
+
+**Reversibility:** Low cost to revisit. Changing the window or the cap
+is a per-callable constant edit. Migrating off Firestore to Redis would
+be a meaningful undertaking but the threat surface is unchanged.
+
+**Consequences:**
+- (+) Per-callable rate limits work as designed; multi-recipient
+  fan-outs count as ONE invocation against the caller's cap.
+- (+) Privacy-clean: no doc payload field is PI; the doc id's
+  `callerUid` is the same identifier already present on every other
+  user-owned doc.
+- (+) Operator workload bounded — the TTL is a one-time policy
+  toggle, not a recurring sweep.
+- (-) Operator MUST activate the TTL policy before merge ships to
+  prod; otherwise docs accumulate. Tracked in the operator pre-
+  deploy checklist.
+
+**Compliance check:** PI inventory in `threat-model.md §1.2` updated
+to list `rateLimits`. No new subprocessor; no cross-border transfer
+beyond what ADR-0013 already disclosed.
+
+---
+
+## 2026-06-11 — Drop `reason` from notify-callable response shape (privacy hardening)
+
+**Context:** PR C's M39 mitigation declared the callable response
+shape as `{ sent: number, cleaned: number }` on success and
+`{ sent: 0, reason: 'opted_out' | 'no_tokens' | 'send_failed' }` on
+non-error skip. PR D added six more callables that inherited this
+shape. Privacy-reviewer found (BLOCK 1+2) that a caller can flip a
+recipient's preference toggle, observe whether `reason` flips from
+`'opted_out'` to `'no_tokens'`, and infer aggregate preference state
+of other family members — a real PIPEDA enumeration oracle, more
+acute for under-13 recipients (Quebec Law 25 sensitive-info
+baseline).
+
+**Decision:** Drop `reason` from the callable response shape across
+all 7 callables. Every skip and FCM-throw branch now returns
+`{ sent: 0, cleaned: 0 }`. The skip classification is preserved
+server-side via a new M38 allow-listed log field `skipReason`
+(`'opted_out' | 'no_tokens' | 'send_failed'`) so ops debugging is
+unimpaired.
+
+**Rationale:** The client is fire-and-forget (ADR-0014); it never
+consumes the response. The `reason` field had operational value only
+in dev / ops, which the structured log already covers. Dropping it
+from the response removes the enumeration oracle at zero functional
+cost.
+
+**Reversibility:** High — the response shape can be widened later if
+a real client consumer needs the discrimination, but doing so
+re-introduces the oracle and would need its own privacy review.
+
+**Consequences:** (+) Privacy posture strictly better; consistent
+contract across all notify-callables; client type narrows to
+`{ sent: number; cleaned: number }`. (-) PR C's response shape is a
+breaking change for any external consumer (none today; the callable
+is invoked only by the SPA which we updated in lockstep).
+
+**Compliance check:** M38 log allow-list grows by one field
+(`skipReason`); no new PI surface. M39 prose in `threat-model.md`
+updated alongside this ADR.
+
+---
+
 ## ADR-0014 — Push notifications: HTTPS-callable trigger (rejected Firestore trigger)
 
 **Status:** Proposed (depends on ADR-0013 acceptance)
