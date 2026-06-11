@@ -96,6 +96,67 @@ vi.mock('firebase/firestore', () => ({
   runTransaction: (...a: [unknown, (tx: unknown) => Promise<void>]) => runTransactionMock(...a),
 }));
 
+// --- PR C: firebase/functions httpsCallable mock --------------------------
+//
+// approveChore is augmented to fire-and-forget the `notifyChoreApproved`
+// callable AFTER runTransaction resolves. The mock returns a stub callable
+// the test can drive (resolve OR reject) so we can pin:
+//   - the callable is invoked at MOST ONCE per approveChore call
+//   - it is invoked AFTER the transaction's tx.update/tx.set ops land
+//   - a callable rejection does NOT bubble up to the caller
+//   - the only payload field is `{ choreId }` (no kid uid, no amount, etc.)
+//
+// `httpsCallable(functions, 'notifyChoreApproved')` returns the function the
+// implementer invokes — we capture both the registration AND every call.
+interface CallableCall {
+  // The order in which this callable fired RELATIVE to the txn ops. We push
+  // a synthetic 'callable' entry to txnOps so the order assertions below can
+  // distinguish "callable fired AFTER all txn ops" from any other ordering.
+  payload: Record<string, unknown>;
+}
+let httpsCallableCalls: CallableCall[];
+let callableShouldReject: boolean;
+let callableRejection: unknown;
+
+const callableFnMock = vi.fn(async (data: Record<string, unknown>) => {
+  httpsCallableCalls.push({ payload: data });
+  // Push a marker so the chronological order vs txnOps can be asserted.
+  txnOps.push({
+    op: 'set',
+    ref: { __collection: '__callable__', __id: 'notifyChoreApproved' },
+    data,
+  });
+  if (callableShouldReject) {
+    // Reject with whatever the test configured (default: a plain Error).
+    throw callableRejection ?? new Error('emulated callable failure');
+  }
+  return { data: { sent: 1, failed: 0 } };
+});
+
+const httpsCallableMock = vi.fn((_functions: unknown, name: string) => {
+  // The implementer's call is `httpsCallable(functions, 'notifyChoreApproved')`.
+  // Return our stub regardless of name so a typo in the name shows up
+  // in the assertion below rather than a missing-mock error.
+  if (name !== 'notifyChoreApproved') {
+    // Surface a deterministic failure — the implementer must spell the
+    // callable name correctly.
+    return async () => {
+      throw new Error(`unexpected httpsCallable name: ${name}`);
+    };
+  }
+  return callableFnMock;
+});
+
+// getFunctions / Functions are optional surfaces the implementer might use
+// to instantiate a per-region functions handle. We stub them to no-ops so
+// the import resolves.
+const getFunctionsMock = vi.fn(() => ({ __functions: true }));
+
+vi.mock('firebase/functions', () => ({
+  httpsCallable: (...a: [unknown, string]) => httpsCallableMock(...a),
+  getFunctions: (...a: unknown[]) => getFunctionsMock(...a),
+}));
+
 // Imported AFTER mocks are registered.
 import {
   ALL_MEMBERS_TAB_ID,
@@ -158,6 +219,9 @@ beforeEach(() => {
   txnOps = [];
   addShouldReject = false;
   updateShouldReject = false;
+  httpsCallableCalls = [];
+  callableShouldReject = false;
+  callableRejection = undefined;
   choreDocData = {
     status: 'complete',
     assignedTo: 'uid-member-a',
@@ -671,5 +735,143 @@ describe('money constants', () => {
     expect(typeof MONEY_INVALID_INDICATOR).toBe('string');
     expect(MONEY_INVALID_INDICATOR.length).toBeGreaterThan(0);
     expect(MONEY_INVALID_INDICATOR).not.toMatch(/\$/);
+  });
+});
+
+// =====================================================================
+// PR C — approveChore client wiring to notifyChoreApproved callable
+// (threat-model §A.10 C-T20 + brief C2).
+//
+// AFTER the existing runTransaction resolves, approveChore fires the
+// notify-callable fire-and-forget. The callable's failure does NOT undo
+// the approve — the tx side effects (balance, ledger, status) MUST
+// already have landed before the callable is ever invoked.
+//
+// These tests FAIL today: approveChore does not invoke httpsCallable.
+// The implementer wires it in PR C2.
+// =====================================================================
+
+describe('approveChore — PR C: invokes notifyChoreApproved callable AFTER tx resolves', () => {
+  it('calls httpsCallable with the EXACT name "notifyChoreApproved"', async () => {
+    await approveChore({ db }, 'chore-1', 'uid-parent-a');
+    // At least one httpsCallable() lookup must have happened with the
+    // canonical name. The mock returns a stub function for that name only;
+    // a typo would surface in the next assertion below.
+    expect(httpsCallableMock).toHaveBeenCalled();
+    const namesUsed = httpsCallableMock.mock.calls.map((c) => c[1]);
+    expect(namesUsed).toContain('notifyChoreApproved');
+  });
+
+  it('invokes the callable EXACTLY ONCE per approveChore call', async () => {
+    await approveChore({ db }, 'chore-1', 'uid-parent-a');
+    expect(httpsCallableCalls).toHaveLength(1);
+  });
+
+  it('passes ONLY { choreId } to the callable — NEVER the kid uid, amount, or any chore PI', async () => {
+    await approveChore({ db }, 'chore-1', 'uid-parent-a');
+    const { payload } = httpsCallableCalls[0]!;
+    expect(payload).toEqual({ choreId: 'chore-1' });
+    // Defense in depth — pin that none of these PI fields leaked in:
+    expect(payload).not.toHaveProperty('assignedTo');
+    expect(payload).not.toHaveProperty('dollarValue');
+    expect(payload).not.toHaveProperty('amount');
+    expect(payload).not.toHaveProperty('title');
+    expect(payload).not.toHaveProperty('familyId');
+    expect(payload).not.toHaveProperty('recipientUid');
+    expect(payload).not.toHaveProperty('uid');
+  });
+
+  it('invokes the callable AFTER all transaction ops have landed (order assertion)', async () => {
+    await approveChore({ db }, 'chore-1', 'uid-parent-a');
+    // The mock pushes a `__callable__` marker into txnOps the moment the
+    // callable is invoked. Its index must be STRICTLY GREATER than every
+    // real-tx-op index (chore status flip, balance increment, ledger doc).
+    const callableIdx = txnOps.findIndex((o) => o.ref.__collection === '__callable__');
+    const txOpIdxs = txnOps
+      .map((o, i) => ({ o, i }))
+      .filter(({ o }) => o.ref.__collection !== '__callable__')
+      .map(({ i }) => i);
+    expect(callableIdx, 'a callable invocation marker must be present').toBeGreaterThanOrEqual(0);
+    for (const i of txOpIdxs) {
+      expect(
+        callableIdx,
+        'the callable MUST fire AFTER every tx op (fire-and-forget post-tx)',
+      ).toBeGreaterThan(i);
+    }
+  });
+
+  it('does NOT invoke the callable when the transaction aborts (chore not complete)', async () => {
+    choreDocData = { ...choreDocData, status: 'approved' };
+    await expect(approveChore({ db }, 'chore-1', 'uid-parent-a')).rejects.toBeInstanceOf(
+      ChoreActionError,
+    );
+    expect(httpsCallableCalls, 'no callable on aborted approve').toHaveLength(0);
+  });
+
+  it('does NOT invoke the callable when the transaction itself throws (mapped to generic error)', async () => {
+    runTransactionMock.mockImplementationOnce(async () => {
+      throw new Error('emulated-firestore-failure');
+    });
+    await expect(approveChore({ db }, 'chore-1', 'uid-parent-a')).rejects.toThrow(
+      CHORE_PARENT_GENERIC_ERROR,
+    );
+    expect(httpsCallableCalls).toHaveLength(0);
+  });
+});
+
+describe('approveChore — PR C: callable failure is silent (in-app inbox is source of truth, ADR-0014)', () => {
+  it('does NOT throw to the caller when the callable rejects', async () => {
+    callableShouldReject = true;
+    callableRejection = new Error('FCM is unavailable');
+    // Must resolve — the approve has already landed; the push is non-essential.
+    await expect(approveChore({ db }, 'chore-1', 'uid-parent-a')).resolves.toBeUndefined();
+  });
+
+  it('the chore-flip, balance increment, and ledger doc ALL land even when the callable rejects', async () => {
+    callableShouldReject = true;
+    callableRejection = new Error('FCM throws');
+    await approveChore({ db }, 'chore-1', 'uid-parent-a');
+    // Filter out the synthetic '__callable__' marker.
+    const realOps = txnOps.filter((o) => o.ref.__collection !== '__callable__');
+    const choreFlip = realOps.find(
+      (o) => o.op === 'update' && o.ref.__collection === 'chores',
+    );
+    const balUpdate = realOps.find(
+      (o) => o.op === 'update' && o.ref.__collection === 'users',
+    );
+    const ledger = realOps.find((o) => o.op === 'set' && o.ref.__collection === 'transactions');
+    expect(choreFlip, 'chore status flip must persist regardless of callable outcome').toBeDefined();
+    expect(choreFlip!.data.status).toBe('approved');
+    expect(balUpdate, 'balance increment must persist regardless of callable outcome').toBeDefined();
+    expect(balUpdate!.data.allowanceBalance).toEqual({ __increment: 3 });
+    expect(ledger, 'ledger doc must persist regardless of callable outcome').toBeDefined();
+  });
+
+  it('a SYNCHRONOUS throw from httpsCallable (not an async rejection) is also swallowed', async () => {
+    // Cover the second failure mode: getFunctions() / httpsCallable() throws
+    // at lookup time, before the callable is even invoked. The approve must
+    // still resolve.
+    httpsCallableMock.mockImplementationOnce(() => {
+      throw new Error('sync init failure (e.g. functions not initialized)');
+    });
+    await expect(approveChore({ db }, 'chore-1', 'uid-parent-a')).resolves.toBeUndefined();
+    // The chore flip + balance + ledger still happened.
+    const realOps = txnOps.filter((o) => o.ref.__collection !== '__callable__');
+    expect(realOps.filter((o) => o.ref.__collection === 'chores')).toHaveLength(1);
+    expect(realOps.filter((o) => o.ref.__collection === 'users')).toHaveLength(1);
+    expect(realOps.filter((o) => o.ref.__collection === 'transactions')).toHaveLength(1);
+  });
+
+  it('the rejected callable does NOT surface the raw provider error to the caller (M39)', async () => {
+    callableShouldReject = true;
+    callableRejection = Object.assign(new Error('messaging/internal-error RAW'), {
+      code: 'functions/internal',
+    });
+    // No throw expected. If a future regression DID throw, ensure the
+    // surfaced message would still be generic, not the raw text.
+    await approveChore({ db }, 'chore-1', 'uid-parent-a').catch((e: Error) => {
+      expect(e.message).not.toMatch(/messaging\/internal-error/);
+      expect(e.message).not.toMatch(/RAW/);
+    });
   });
 });

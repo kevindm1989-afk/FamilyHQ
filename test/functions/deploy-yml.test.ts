@@ -1,20 +1,19 @@
 /**
- * Deploy-workflow assertions — PR A, threat-model §A.10 A-T8, A-T9 +
- * design §12 A4.
+ * Deploy-workflow assertions — PR A (A-T8, A-T9) + PR C (C-T19).
  *
  * PR #84 lesson (lessons.md 2026-06-08 #1): mixing tier-gated services
  * (Functions) with always-on services (Firestore rules) in one --only flag
  * creates a billing-plan trap. The Functions deploy MUST be its own
  * flag-gated step.
  *
- * MUST FAIL today: `.github/workflows/deploy.yml` does not yet contain the
- * `deploy-functions` job. The implementer adds it during A4.
- *
- *   - A-T8: the deploy-functions step's `--only` list is EXACTLY
- *     `functions:billingKillSwitch` in PR A (nothing else, no second
- *     comma-separated entry).
+ *   - A-T8 (UPDATED for PR C): the deploy-functions step's `--only` list is
+ *     now EXACTLY `functions:billingKillSwitch,functions:notifyChoreApproved`.
+ *     The kill-switch MUST precede the notify-callable in the comma list so
+ *     the cap gates the chargeable function from second 0.
  *   - A-T9: the existing `--only firestore:rules,firestore:indexes` deploy
- *     line is UNCHANGED from before this PR.
+ *     line is UNCHANGED.
+ *   - C-T19 (new): the kill-switch literal MUST appear at the START of the
+ *     functions `--only` list (kill-switch deploys first).
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
@@ -29,7 +28,7 @@ function readDeployYml(): string {
   return readFileSync(DEPLOY_YML_PATH, 'utf8');
 }
 
-describe('A-T8: deploy-functions step exists, is flag-gated, and --only is EXACTLY functions:billingKillSwitch', () => {
+describe('A-T8 (PR C update): deploy-functions step exists, is flag-gated, and --only is EXACTLY functions:billingKillSwitch,functions:notifyChoreApproved', () => {
   it('contains a job/step named deploy-functions (the new, flag-gated functions deploy)', () => {
     const yml = readDeployYml();
     // The job name is `deploy-functions` per PR A acceptance criterion A4;
@@ -60,17 +59,51 @@ describe('A-T8: deploy-functions step exists, is flag-gated, and --only is EXACT
     expect(inputBlock![0]).toMatch(/default:\s*false/);
   });
 
-  it('its firebase deploy --only list is EXACTLY functions:billingKillSwitch (no other entries in PR A)', () => {
+  it('its firebase deploy --only list is EXACTLY functions:billingKillSwitch,functions:notifyChoreApproved in PR C', () => {
     const yml = readDeployYml();
     // Find every `firebase deploy --only <list>` line and inspect any list
     // that mentions `functions:`. There must be exactly one such line,
-    // and its value must be exactly `functions:billingKillSwitch`.
+    // and its value must include BOTH functions in the exact order:
+    // kill-switch first (so the cap gates the chargeable callable from
+    // second 0), notify-callable second.
     const onlyLines = [...yml.matchAll(/firebase\s+deploy[\s\S]*?--only\s+([^\s\\\n]+)/g)].map(
       (m) => m[1]!,
     );
     const functionsLines = onlyLines.filter((l) => l.includes('functions:'));
     expect(functionsLines).toHaveLength(1);
-    expect(functionsLines[0]).toBe('functions:billingKillSwitch');
+    expect(functionsLines[0]).toBe('functions:billingKillSwitch,functions:notifyChoreApproved');
+  });
+
+  it('C-T19: in the --only list, `billingKillSwitch` precedes `notifyChoreApproved` (kill-switch first)', () => {
+    const yml = readDeployYml();
+    const onlyLines = [...yml.matchAll(/firebase\s+deploy[\s\S]*?--only\s+([^\s\\\n]+)/g)].map(
+      (m) => m[1]!,
+    );
+    const fnLine = onlyLines.find((l) => l.includes('functions:'));
+    expect(fnLine, 'a functions deploy --only line must exist').toBeDefined();
+    const killSwitchPos = fnLine!.indexOf('billingKillSwitch');
+    const notifyPos = fnLine!.indexOf('notifyChoreApproved');
+    expect(
+      killSwitchPos,
+      'billingKillSwitch must appear in the --only list',
+    ).toBeGreaterThanOrEqual(0);
+    expect(notifyPos, 'notifyChoreApproved must appear in the --only list').toBeGreaterThanOrEqual(
+      0,
+    );
+    expect(
+      killSwitchPos,
+      'kill-switch MUST be listed before notifyChoreApproved so the cap gates the chargeable callable from second 0',
+    ).toBeLessThan(notifyPos);
+  });
+
+  it('C-T19: the --only list STARTS with `functions:billingKillSwitch,` (no leading entry)', () => {
+    const yml = readDeployYml();
+    const onlyLines = [...yml.matchAll(/firebase\s+deploy[\s\S]*?--only\s+([^\s\\\n]+)/g)].map(
+      (m) => m[1]!,
+    );
+    const fnLine = onlyLines.find((l) => l.includes('functions:'));
+    expect(fnLine).toBeDefined();
+    expect(fnLine!.startsWith('functions:billingKillSwitch,')).toBe(true);
   });
 
   it('does NOT bundle functions: with firestore: in the same --only list (PR #84 lesson)', () => {
