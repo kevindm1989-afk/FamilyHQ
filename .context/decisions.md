@@ -25,6 +25,68 @@ pointing to the new one. The history is the value.
 
 ---
 
+## ADR-0016 — Scheduled push trigger: `onSchedule` v2, exempting time-driven sends from ADR-0014
+
+**Status:** Proposed (HUMAN GATE — user signs by merging this memory PR)
+**Date:** 2026-06-11
+**Decider(s):** architect (proposed); threat-modeler (endorsed, §A.18); user (approval pending)
+
+**Context:** PR F ships event reminders and birthday alerts firing at 8am
+family-local. ADR-0014 mandates client-callable triggers; there is no client
+running at 8am, so PR F is the first server-initiated send. The trigger
+options: (A) `onSchedule` v2 (deploy-managed Cloud Scheduler job →
+OIDC-authenticated HTTP invocation), (B) explicit Cloud Scheduler → Pub/Sub
+topic → `onMessagePublished` (the `billingKillSwitch` shape), (C) per-family
+scheduler jobs.
+
+**Decision drivers:** IAM surface, operator runbook burden, testability,
+region pinning (`northamerica-northeast1`), cost (3 free scheduler jobs),
+precedent for future scheduled work.
+
+**Options considered:**
+- **(A) chosen** — deploy-managed job, no Pub/Sub topic to IAM-audit; single
+  positive invoker pin (M45); handler is a plain async function for unit
+  tests.
+- **(B) rejected** — adds a publishable topic (M41-analog publisher audit), a
+  manually-created job (runbook drift), and an attacker-influenceable message
+  payload, for no benefit; the kill-switch uses Pub/Sub only because Cloud
+  Billing pushes there natively. Threat-modeler endorsement: payload-ignoring
+  is strictly stronger than payload validation.
+- **(C) rejected** — job count scales with families; per-job pricing past 3
+  free.
+
+**Decision:** Option A. Two functions (`notifyEventReminders`,
+`notifyBirthdays`), hourly UTC cron, Montreal region, payload ignored;
+idempotency via `scheduledSends/{kind}__{sourceId}__{yyyymmdd}` markers
+(at-most-once — marker `create()`d BEFORE send); per-family-per-day fan-out
+cap of 10/kind.
+
+**Why this is exempt from ADR-0014, not a reversal:** ADR-0014's rationale is
+that a user action's `runTransaction` is the natural exactly-once trigger
+point. Time-driven sends have no user action — the exact case ADR-0014's
+reversibility note reserved ("server-driven digests, scheduled reminders").
+Standing rule: **action-driven → callable; time-driven → onSchedule.**
+ADR-0014 remains authoritative for all action-driven notifications.
+
+**Reversibility:** Medium — swapping to route B is a per-function change;
+markers, prefs, tokens, bodies all carry over unchanged.
+
+**Consequences:** (+) smallest IAM surface; free dashboard coverage via
+`notify*` naming; $0 at MVP and 10x (2 of 3 free scheduler jobs; ~1.4k
+invocations/mo; family-scan reads ~4.8k/day MVP). (−) at-most-once means rare
+dropped reminders (accepted; push is non-essential); family scan hits a
+read-quota cliff at ~1,000+ families (then add an indexed tz-bucket field);
+3rd+ future scheduled job costs ~$0.10/mo.
+
+**Compliance check:** No new subprocessor touching PI — Cloud Scheduler
+payload is empty and ignored. Residency: function + Firestore stay in
+Montreal. `timezone` (quasi-location signal, family-granularity) stays on the
+family doc, banned from logs (M38 extension, M50). Recipient membership
+evaluated at fire time, never cached (M51). Full threat model: §A.18
+(T7.1-T7.8, M45-M52).
+
+---
+
 ## ADR-0015 — `rateLimits/{kind}__{callerUid}` collection: purpose, shape, retention
 
 **Status:** Accepted (codified in PR D, retroactively documented here)

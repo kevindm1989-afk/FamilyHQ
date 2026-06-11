@@ -628,6 +628,9 @@ FCM Admin), and is classified accordingly below.
 | DF15 | Push delivery | FCM → Apple APNs / Mozilla autopush / Android-FCM transport → device | TLS 1.2+ | vague body + click-target URL (rendered on lock-screen / OS shelf) | **TB6 (NEW)** — cross-border for APNs (US) and Mozilla (US/EU) |
 | DF16 | Budget alert | Cloud Billing → Pub/Sub `billing-budget-alerts` → `billingKillSwitch` | internal | costAmount, budgetAmount, project metadata (no PI) | internal — no PI surface |
 | DF17 | Billing detach | `billingKillSwitch` (kill-switch SA) → Cloud Billing `updateBillingInfo` | internal, SA auth | project ID + empty `billingAccountName` | internal — no PI surface |
+| DF18 | Scheduler tick (PR F) | Cloud Scheduler → `notifyEventReminders` / `notifyBirthdays` | OIDC-authenticated HTTPS (Google-internal) | none consumed — handler ignores payload (M46) | **TB7 (NEW)** — no PI |
+| DF19 | Hourly sweep (PR F) | Function (runtime SA) → Firestore: ALL `families`, then per matched family `events`/`birthdays`, `users`, `userPrivate` (prefs), `fcmTokens` | Admin SDK, **bypasses rules** | familyId, timezone (quasi-location), event dates, birthday `monthDay`/`type`, prefs, tokens (credential) | inside trusted context — **FIRST code that legitimately iterates across tenants in one invocation**; isolation is code-enforced (M47), not rule-enforced |
+| DF20 | Dedupe marker write (PR F) | Function → Firestore `scheduledSends/{kind}__{sourceId}__{yyyymmdd}` | Admin SDK | kind, familyId, sourceId, localDay, counts — **no names/titles/PI** | server-only store; deny-all to clients (M48) |
 
 ### A.2 New stores — classification, residency, retention (extends §1.2)
 
@@ -639,6 +642,9 @@ FCM Admin), and is classified accordingly below.
 | `userPrivate/{uid}/iosPwaHintDismissedAt` (field) | low (timestamp) | Montreal | life of account | account deletion |
 | FCM message in transit at Google FCM | vague body + token (credential) | global Google FCM (CB3) | not at rest in FCM beyond delivery TTL | provider-controlled |
 | Push payload at APNs / Mozilla / Android-FCM transport | vague body + opaque device handle | US (APNs), US/EU (Mozilla autopush), global (Android FCM) | provider-controlled, transport-only | provider-controlled |
+| `scheduledSends/{kind}__{sourceId}__{yyyymmdd}` (PR F) | low (ids + counts + family-local day; doc id predictable to family insiders — see T7.4) | `northamerica-northeast1` | **7 days** via `expiresAt` Firestore TTL (ADR-0015 pattern; operator activates, F12) | TTL (server-side); deny-all client access |
+| `families.timezone` (field, PR F) | **quasi-location PI, family-granularity** (IANA zone ≈ region/city; coarser than IP geo). Purpose: scheduling 8am-local delivery. Deliberately family-level, not per-user — correct minimization | same | life of family; delete with family closure | real delete with `families` doc; parent-editable (F1 rule) |
+| `notificationPreferences.categories.{eventReminders,birthdays}` (PR F) | low (booleans) | same | life of account | as existing prefs row |
 
 **PI-purpose check for new fields:**
 - `fcmTokens.token`: required to deliver push to a specific device.
@@ -673,6 +679,14 @@ FCM Admin), and is classified accordingly below.
   - **Google LLC (Android FCM transport)** — already disclosed as part of Firebase.
   Flag for the privacy lawyer (see F11 and human gates) — APNs and Mozilla autopush may need explicit subprocessor disclosure in the privacy policy. Do NOT auto-decide.
 - **Cross-border:** Yes (CB3 + CB4). See §A.7.
+
+#### TB7 — Cloud Scheduler → Cloud Run (onSchedule OIDC HTTP invocation) — PR F
+
+- **What crosses:** an invocation signal only. The CloudEvent payload is IGNORED by both handlers (M46); all inputs are derived from the server clock + Firestore.
+- **Authentication:** deploy-managed Cloud Scheduler job invokes the function's Cloud Run service with an OIDC token; authorization is the service's `roles/run.invoker` IAM policy (M45). There is no `context.auth`, no App Check — M32/M35 caller derivation does NOT apply on this boundary.
+- **Asymmetry vs TB2:** an attacker crossing TB7 gains no data path (handler reads nothing from the request) — only an unscheduled sweep, which markers (M48) reduce to a read-cost event. The residual attack on this boundary is **invocation amplification** (T7.1/T7.5), not disclosure.
+- **PI:** none crosses. Cloud Scheduler is a new Google-platform service but NOT a PI subprocessor (human-gate item, design §14.10.7 — for the record only).
+- **Runtime identity:** default 2nd-gen runtime SA (Firestore + FCM scope per M33). NOT the kill-switch SA. M33 negative assertions must be re-verified after deploy (two new services).
 
 ---
 
@@ -994,9 +1008,25 @@ PIPEDA s.10.1 trigger is RROSH (real risk of significant harm). Quebec Law 25 pa
 - E-T5. iOS-PWA banner: iOS UA + `navigator.standalone === true` → banner NEVER shows.
 - E-T6. Dashboard config asserts the four required series: invocations/kind, success ratio, token cleanups, kill-switch invocations.
 
-**PR F — Scheduled events (deferred fast-follow, separate ADR)**
-- Threat-modeler will re-engage when PR F's design lands; expect new threats around: Cloud Scheduler IAM, time-window-based recipient selection (privacy: who is in the family at the moment the scheduler fires), and digest body shape (digests are likely PI-vague-resistant — separate ADR per design §7 cliffs).
-- Placeholder: any scheduled-trigger callable MUST re-use M32 (App Check is N/A for Pub/Sub-triggered functions; M41-style topic-publisher restriction applies instead), M34, M35 (re-derive familyId server-side), M37, M38.
+**PR F — Scheduled events (design landed 2026-06-11; threat model in §A.18)**
+Threat-modeler re-engaged on the architect's §14 design (push-notifications-design.md). Verdict: APPROVED WITH REQUIRED CHANGES — the five gate conditions are folded into the F-task acceptance criteria (see §A.18 trailer). The acceptance tests below are the test-writer's spec; F-T4, F-T8, F-T13 are blocking/security-critical.
+
+- F-T1 (M46). Invoke each handler with `new Proxy({}, { get() { throw new Error('payload-read'); } })` as the event → full sweep completes identically to `event = undefined`; any property access fails the test.
+- F-T2 (M46). Firestore mock throws while processing family 1 of 3 → handler resolves (never rejects); families 2–3 still processed; one structured warn with `familyId` only.
+- F-T3 (M46). Static assertion: `onSchedule` options for both functions contain the retry-disabled setting; CI grep/AST.
+- F-T4 (M47) **[BLOCKING]**. Two-family fixture, both at local hour 8, each with one same-day event and tokened recipients → messaging mock called exactly once per family; family A's call contains exactly A's tokens, zero of B's, and vice versa.
+- F-T5 (M47). Recipient whose `userPrivate.familyId` ≠ loop family → skipped + warned (allow-listed fields only), sweep continues, no token read for that recipient (replicates C-T8 contract).
+- F-T6 (M48). Marker exists for `{kind}__{sourceId}__{yyyymmdd}` → no send, `markerSkipCount` incremented; marker absent → `create()` happens BEFORE the messaging call (mock call-order assertion).
+- F-T7 (M48). Marker created, FCM send throws → no retry, no marker delete, `skipReason:'send_failed'` logged; re-invocation sends nothing (at-most-once pinned).
+- F-T8 (M48) **[BLOCKING — security-relevant]**. Rules emulator: authenticated parent (and member, and unauthenticated) get/list/create/update/delete on `scheduledSends/{predictable-id}` → ALL DENIED. The create-deny is the suppression defense (T7.4) — never reclassify as hygiene.
+- F-T9 (M49). 11 same-day events in one family → exactly 10 markers + 10 sends in `date` order; one warn `{kind, familyId, droppedCount: 1}`.
+- F-T10 (M50). Invalid/absent `timezone` → `America/Toronto` fallback used; warn payload contains `familyId` and NOT the tz string; M38 AST test fails on any `timezone` or `localDay` log key.
+- F-T11 (M50). Rules emulator: member updates `families.timezone` → denied; same-family parent → allowed; cross-family parent → denied.
+- F-T12 (M51). Recipient `isActive:false` at sweep time → zero token reads, zero sends for them; same fixture with `isActive:true` → receives. Prefs flipped off → skipped.
+- F-T13 (M51/M47) **[BLOCKING]**. Family-B event never reaches family-A recipients even when both match hour 8 in the same invocation (cross-product assertion over the F-T4 fixture, per-kind).
+- F-T14 (M52). M34 scan passes over the three new constants (`eventReminder`, `birthdayToday`, `anniversaryToday`); test list explicitly enumerates them; a deliberately templated `birthdayToday` fixture fails the scan.
+- F-T15 (M52). Feb-29 birthday in a non-leap year matched by the Feb-28 sweep; marker id uses the actual sweep `yyyymmdd` (no double-fire on Feb 28 + 29 in leap years).
+- F-T16 (M45, runbook — manual, not CI). `gcloud run services get-iam-policy` on both services shows invoker = exactly the recorded scheduler principal; `allUsers`/`allAuthenticatedUsers` absent; `gcloud scheduler jobs list` shows exactly 2 jobs; M33 runtime-SA negative bindings re-verified.
 
 ---
 
@@ -1090,3 +1120,59 @@ The architect's design is a draft; threat-modeler authority to flag changes befo
 
 After test-writer, the orchestrator routes to implementer for PR A only (kill-switch + scaffold), then re-engages threat-modeler + security-reviewer if any of the human-gate items (§A.13) change the design before PR B.
 
+
+---
+
+### A.18 PR F — Scheduled-push STRIDE (TB7 / DF19 / scheduledSends), threats T7.x, mitigations M45–M52
+
+Threat-modeler verdict on the architect's §14 design (2026-06-11): **APPROVED WITH
+REQUIRED CHANGES** — five gate conditions, listed in the trailer below, folded into
+the F-task acceptance criteria before any implementation.
+
+#### Threats
+
+- **T7.1 (Spoofing/DoS)** — `run.invoker` drift exposes the Cloud Run URL: a forged invocation cannot leak or misdirect data (payload ignored, markers dedupe) but each call burns a full `families` scan (~100 reads MVP, ~1,000 at 10x). Scripted, that exhausts the 50k/day read quota and walks the project toward the kill-switch — taking ALL push down. *L: low · I: med-high · Priority: med-high.* **M45.**
+- **T7.2 (Info disclosure/EoP)** — cross-family leakage inside the sweep loop. This is the first code that holds family A's and family B's tokens in one process. A batching/interleaving bug (shared token buffer across family iterations, marker keyed without date, helper closure capturing the wrong `familyId`) sends family A's "Event reminder" — fact-of-existence + click URL — to family B's devices. Vague body caps the content, but signaling a foreign family's calendar activity to strangers' lock screens is still a child-adjacent confidentiality event. *L: med (new code shape) · I: high · Priority: HIGH.* **M47.**
+- **T7.3 (Info disclosure)** — `timezone` (quasi-location) leaks via logs: the invalid-tz warn path is the obvious temptation. *L: med · I: low-med.* **M50.**
+- **T7.4 (Tampering/DoS)** — marker poisoning as a suppression primitive: the marker id `{kind}__{sourceId}__{yyyymmdd}` is **fully predictable to a family insider** (members read own-family `events`/`birthdays` ids). If the `scheduledSends` deny-all rule ever regresses, any member can pre-create tomorrow's marker and silently suppress a parent's reminder. The deny-all rule is therefore security-relevant, not hygiene. *L: low · I: low-med.* **M48.**
+- **T7.5 (DoS)** — sweep amplification from inside: a thrown handler triggers scheduler retry; a per-family throw aborts the remaining families (availability unfairness) or re-runs the scan. Markers make re-sends no-ops but reads re-burn every retry; combined with hourly cadence this is the cheapest path to the $5 kill-switch and F-PN-15 (every Blaze feature down). *L: med · I: high · Priority: HIGH.* **M46 + M49.**
+- **T7.6 (Spoofing/stale authority)** — removed/deactivated member receives a family push fired by the scheduler (no caller-context to gate). *L: low · I: low (vague body).* **M51** — fire-time evaluation closes this to sub-invocation race width.
+- **T7.7 (Info disclosure)** — M34 surface for the two new kinds: event titles and birthday `name` ("Grandma Helen") are PI sitting one template-literal away from a lock screen. B10 breach classification applies unchanged. *L: med · I: high if regressed.* **M52.**
+- **T7.8 (Repudiation)** — no actor uid exists for scheduled sends; disputes ("why did my phone ping at 8am?") must be reconstructable. *L: low · I: low.* Covered: marker docs (`sentAt`, `recipientCount`) + the design §14.7 summary log are the audit record; no new mitigation.
+
+#### Mitigations (testable — F-T series in §A.10 maps 1:1)
+
+- **M45 — Scheduler invoker: positive pin, not just negative.** For each function's Cloud Run service, the `roles/run.invoker` policy contains **exactly** the expected deploy-managed scheduler principal and nothing else; AND `allUsers`/`allAuthenticatedUsers` absent. Runbook F12 lists the exact `gcloud run services get-iam-policy` command and the expected full member string captured at first deploy.
+- **M46 — Payload-ignoring + never-throw handler contract.** Handler (a) never reads the event argument, (b) never rejects (per-family try/catch; warn + continue), (c) declares retry disabled (`retryCount: 0` or platform equivalent) in the `onSchedule` options — mirroring `billingKillSwitch`'s never-throw posture.
+- **M47 — Per-family isolation by construction.** One `sendEachForMulticast` per family-kind; the token buffer is scoped inside the per-family helper call (`sendCategoryPushToFamily` takes `familyId` and derives everything internally); every recipient's `userPrivate.familyId` re-checked against the loop's family before token read (M35.7 analog, skip+warn never throw); marker `familyId` equals loop family.
+- **M48 — Marker-before-send dedupe + deny-all `scheduledSends`.** `ref.create()` precedes send; `ALREADY_EXISTS` → silent skip. Client get/list/create/update/delete all denied — **the create-deny test is security-relevant (suppression defense, T7.4)**. TTL 7d on `expiresAt`; date-suffixed ids make TTL-latency irrelevant to dedupe correctness.
+- **M49 — Bounded sweep volume.** Cap 10 markers per family per kind per day (deterministic ordering: events `date` asc, birthdays `createdAt` asc); overflow dropped + one structured warn `{kind, familyId, droppedCount}`; `timeoutSeconds: 300`; `familiesScanned` logged every invocation so the dashboard exposes scan-volume anomalies; kill-switch remains the hard backstop.
+- **M50 — Timezone containment.** `timezone` and `localDay` on the M38 FORBIDDEN log-field list; the invalid-tz fallback warn carries `familyId` only, never the invalid value; rules: parent-only write, string ≤50; sweep falls back to `America/Toronto` on absent/invalid.
+- **M51 — Fire-time recipient evaluation.** Membership (`isActive`), prefs, and tokens are read inside the sweep, never cached across invocations; recipients query filters `isActive == true`; per-recipient prefs gate is `pushEnabled && categories.<key>`.
+- **M52 — M34 extension.** Three new constants (`eventReminder`, `birthdayToday`, `anniversaryToday`) added to the explicit M34 test list; existing forbidden-substring/template/length/freeze scan covers them; `data.url` stays `/notifications`; birthday `name`, event `title`, `note`, and "turning N" never enter the payload.
+
+#### Architect Q&A (the seven handoff questions, abridged)
+
+1. Negative invoker assertion alone is INSUFFICIENT — require the positive pin (M45).
+2. Payload-ignoring contract holds ONLY paired with never-throw + retry-off (M46(b)(c)); forged invocation then reduces to read-cost.
+3. M35.7 re-check is necessary but NOT sufficient against batching bugs — F-T4 + F-T5 + F-T13 + the M47 structural constraint together close it.
+4. `families.timezone` = quasi-location PI, family granularity, low sensitivity; member readability acceptable; M38 log ban is the right primary control; family-level (not per-user) is correct minimization.
+5. Fire-time reads close the removed-member window to sub-invocation race width (accepted); fail-closed on `isActive` flips, no grace handling.
+6. `scheduledSends` deny-all + TTL sufficient WITH the create-deny test flagged security-relevant.
+7. At-most-once is the right posture; marker poisoning is the one real suppression vector and it requires a rules regression — F-T8 staying green is the defense. At-least-once would be worse (duplicate sends train muting; crash-looping re-fan-out).
+
+#### Gate conditions (REQUIRED CHANGES — fold into F-task acceptance criteria)
+
+1. F12 acceptance: negative invoker assertion → **positive pin** per M45 (record the exact principal at first staging deploy).
+2. F7/F8 acceptance: add the **never-throw + retry-disabled contract** (M46) — per-family try/catch, handler never rejects, explicit retry-off in `onSchedule` options.
+3. F2's deny-all tests **reclassified security-relevant** (suppression primitive, T7.4) — keep "no autonomous merge."
+4. F3 acceptance: pin the **isolation-by-construction shape** (M47) — all per-family state lives inside `sendCategoryPushToFamily`; F-T4/F-T13 are blocking tests for F7/F8.
+5. ADR-0016's rejection of the Pub/Sub shape is **endorsed** — payload-ignoring is strictly stronger than payload validation; TB7's OIDC invoker surface is the only new exposure and M45 closes it.
+
+#### Top 5 PR F risks (ordered)
+
+1. T7.2 cross-family leakage in the sweep loop — M47 / F-T4 / F-T13.
+2. T7.5 sweep amplification → kill-switch trip — M46 / M49.
+3. T7.7 PI in the two new body kinds — M52 (B10 notifiable if regressed).
+4. T7.1 invoker drift — M45.
+5. T7.4 marker-suppression via rules regression — M48 / F-T8.
