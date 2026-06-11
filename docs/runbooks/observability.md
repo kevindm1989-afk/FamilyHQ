@@ -114,14 +114,20 @@ log-based metric that does NOT exist by default. Create it once per project:
 ```bash
 gcloud logging metrics create notify_callable_cleaned_token_count \
   --description="Sum of cleanedTokenCount across notify-* callables (M37 stale-token cleanup events)." \
-  --log-filter='resource.type="cloud_function" AND
-                resource.labels.function_name=~"^notify" AND
+  --log-filter='resource.type="cloud_run_revision" AND
+                resource.labels.service_name=~"^notify" AND
                 jsonPayload.cleanedTokenCount>0' \
   --value-extractor='EXTRACT(jsonPayload.cleanedTokenCount)' \
   --metric-descriptor-metric-kind=DELTA \
   --metric-descriptor-value-type=INT64 \
   --project="$FIREBASE_PROJECT_ID"
 ```
+
+The notify-* callables are Cloud Functions v2 (Cloud Run-backed), so the
+log filter pins `resource.type="cloud_run_revision"` and uses
+`resource.labels.service_name` (lowercase). A gen-1 `cloud_function`
+filter would silently match zero events — the dashboard's other widgets
+use the matching gen-2 metric surface.
 
 Why a custom metric and not a logs-based count: the cleanup events emit a
 `cleanedTokenCount` field with the *number* of tokens cleaned per invocation

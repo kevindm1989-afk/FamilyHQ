@@ -205,15 +205,18 @@ describe('E-T6 series 1: invocations per callable kind', () => {
 
     const matchesMetric = candidates.some((w) => {
       const text = asText(w);
-      const usesExecutionCount =
-        text.includes('cloudfunctions.googleapis.com/function/execution_count') ||
-        text.includes('run.googleapis.com/request_count');
-      const groupsByFunctionName = /function_name/.test(text) || /service_name/.test(text);
-      return usesExecutionCount && groupsByFunctionName;
+      // The notify-* callables ship as Cloud Functions v2 (Cloud Run-backed).
+      // The correct metric is `run.googleapis.com/request_count` with
+      // `resource.type="cloud_run_revision"` and `resource.label.service_name`
+      // — see second-opinion-reviewer's PR E Concern 1.
+      const usesGen2Metric = text.includes('run.googleapis.com/request_count');
+      const usesGen2ResourceType = text.includes('cloud_run_revision');
+      const groupsByServiceName = /service_name/.test(text);
+      return usesGen2Metric && usesGen2ResourceType && groupsByServiceName;
     });
     expect(
       matchesMetric,
-      'the invocations-per-kind widget must use the Cloud Functions execution_count metric (or v2 request_count) AND group by function/service name',
+      'the invocations-per-kind widget must use the gen-2 metric run.googleapis.com/request_count + resource.type cloud_run_revision + group by service_name (notify-* callables are Cloud Functions v2)',
     ).toBe(true);
   });
 });
@@ -293,14 +296,16 @@ describe('E-T6 series 4: kill-switch invocations', () => {
 
     const matchesKillSwitch = candidates.some((w) => {
       const text = asText(w);
-      // Filter must pin function_name == billingKillSwitch (or a v2
-      // service_name equivalent). The exact filter operator may vary
-      // (= , ==, regex), so we look for the function name as a literal.
-      return /billingKillSwitch/.test(text);
+      // Filter must pin the function — gen-2 Cloud Run service names are
+      // lowercase by convention (camelCase camelCase → lowercase), so we
+      // accept either the camelCase function-name form (gen-1) OR the
+      // lowercase service-name form (gen-2). Both must be the same
+      // identifier modulo case.
+      return /billingKillSwitch|billingkillswitch/i.test(text);
     });
     expect(
       matchesKillSwitch,
-      'the kill-switch widget must filter on function_name (or service_name) == "billingKillSwitch"',
+      'the kill-switch widget must filter on the billingKillSwitch / billingkillswitch identifier',
     ).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState, type ReactElement } from 'react';
+import { useCallback, useId, useState, type ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 
 // ---------------------------------------------------------------------------
@@ -137,21 +137,13 @@ export function IosPwaHintBanner(): ReactElement | null {
     setSessionDismissed(true);
   }, []);
 
-  // WCAG 2.1.2: any element that can hold focus or attention must be
-  // dismissible with Escape. Document-level so a screen-reader user pressing
-  // Escape from anywhere closes it.
-  useEffect(() => {
-    if (!visible) return;
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        handleDismiss();
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return (): void => {
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [visible, handleDismiss]);
+  // Note: there is no document-level Escape handler here. A non-modal banner
+  // does not trap focus, so WCAG 2.1.2 does not require Escape-to-dismiss;
+  // the visible Dismiss button is sufficient. A previous iteration attached
+  // a document-level keydown listener and collided with BottomSheet +
+  // OnboardingTour Escape handlers — pressing Escape to close a modal also
+  // persisted the 30-day banner dismissal, a WCAG 3.2.5 "change on request"
+  // failure. Removed per accessibility-specialist BLOCK 2.
 
   if (!visible) return null;
 
@@ -169,14 +161,15 @@ export function IosPwaHintBanner(): ReactElement | null {
     >
       <div className="flex items-start justify-between gap-12">
         <div className="flex-1">
-          <p id={titleId} className="text-bodyBold font-bold text-ink">
+          <h2 id={titleId} className="text-bodyBold font-bold text-ink">
             {t('notifications.iosPwaHint.title')}
-          </p>
+          </h2>
           <p className="mt-4 text-meta text-ink2">{t('notifications.iosPwaHint.body')}</p>
         </div>
         <button
           type="button"
           onClick={handleDismiss}
+          aria-label={t('notifications.iosPwaHint.dismissA11y')}
           className="inline-flex min-h-tap min-w-tap shrink-0 items-center justify-center rounded-control bg-surface-card px-12 text-label font-semibold text-brand hover:bg-surface-line2 active:bg-surface-line focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
         >
           {t('common.dismiss')}

@@ -17,15 +17,15 @@
                 "plotType": "LINE",
                 "minAlignmentPeriod": "60s",
                 "targetAxis": "Y1",
-                "legendTemplate": "${resource.labels.function_name}",
+                "legendTemplate": "${resource.labels.service_name}",
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"cloudfunctions.googleapis.com/function/execution_count\" AND resource.type=\"cloud_function\" AND resource.label.function_name=monitoring.regex.full_match(\"^notify.*\")",
+                    "filter": "metric.type=\"run.googleapis.com/request_count\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=monitoring.regex.full_match(\"^notify.*\")",
                     "aggregation": {
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_RATE",
                       "crossSeriesReducer": "REDUCE_SUM",
-                      "groupByFields": ["resource.label.function_name"]
+                      "groupByFields": ["resource.label.service_name"]
                     }
                   }
                 }
@@ -50,25 +50,25 @@
                 "plotType": "LINE",
                 "minAlignmentPeriod": "60s",
                 "targetAxis": "Y1",
-                "legendTemplate": "${resource.labels.function_name}",
+                "legendTemplate": "${resource.labels.service_name}",
                 "timeSeriesQuery": {
                   "timeSeriesFilterRatio": {
                     "numerator": {
-                      "filter": "metric.type=\"cloudfunctions.googleapis.com/function/execution_count\" AND resource.type=\"cloud_function\" AND resource.label.function_name=monitoring.regex.full_match(\"^notify.*\") AND metric.label.status=\"ok\"",
+                      "filter": "metric.type=\"run.googleapis.com/request_count\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=monitoring.regex.full_match(\"^notify.*\") AND metric.label.response_code_class=\"2xx\"",
                       "aggregation": {
                         "alignmentPeriod": "60s",
                         "perSeriesAligner": "ALIGN_RATE",
                         "crossSeriesReducer": "REDUCE_SUM",
-                        "groupByFields": ["resource.label.function_name"]
+                        "groupByFields": ["resource.label.service_name"]
                       }
                     },
                     "denominator": {
-                      "filter": "metric.type=\"cloudfunctions.googleapis.com/function/execution_count\" AND resource.type=\"cloud_function\" AND resource.label.function_name=monitoring.regex.full_match(\"^notify.*\")",
+                      "filter": "metric.type=\"run.googleapis.com/request_count\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=monitoring.regex.full_match(\"^notify.*\")",
                       "aggregation": {
                         "alignmentPeriod": "60s",
                         "perSeriesAligner": "ALIGN_RATE",
                         "crossSeriesReducer": "REDUCE_SUM",
-                        "groupByFields": ["resource.label.function_name"]
+                        "groupByFields": ["resource.label.service_name"]
                       }
                     }
                   }
@@ -96,15 +96,15 @@
                 "plotType": "LINE",
                 "minAlignmentPeriod": "60s",
                 "targetAxis": "Y1",
-                "legendTemplate": "${resource.labels.function_name}",
+                "legendTemplate": "${resource.labels.service_name}",
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"logging.googleapis.com/user/notify_callable_cleaned_token_count\" AND resource.type=\"cloud_function\" AND jsonPayload.cleanedTokenCount>0",
+                    "filter": "metric.type=\"logging.googleapis.com/user/notify_callable_cleaned_token_count\" AND resource.type=\"cloud_run_revision\"",
                     "aggregation": {
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_RATE",
                       "crossSeriesReducer": "REDUCE_SUM",
-                      "groupByFields": ["resource.label.function_name"]
+                      "groupByFields": ["resource.label.service_name"]
                     }
                   }
                 }
@@ -131,12 +131,12 @@
                 "legendTemplate": "billingKillSwitch",
                 "timeSeriesQuery": {
                   "timeSeriesFilter": {
-                    "filter": "metric.type=\"cloudfunctions.googleapis.com/function/execution_count\" AND resource.type=\"cloud_function\" AND resource.label.function_name=\"billingKillSwitch\"",
+                    "filter": "metric.type=\"run.googleapis.com/request_count\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"billingkillswitch\"",
                     "aggregation": {
                       "alignmentPeriod": "60s",
                       "perSeriesAligner": "ALIGN_RATE",
                       "crossSeriesReducer": "REDUCE_SUM",
-                      "groupByFields": ["resource.label.function_name"]
+                      "groupByFields": ["resource.label.service_name"]
                     }
                   }
                 }

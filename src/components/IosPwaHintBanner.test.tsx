@@ -436,7 +436,14 @@ describe('F15: dismiss persists 30 days via localStorage.iosPwaHintDismissedAt',
 // Accessibility — keyboard, focus, motion, ARIA.
 // ===========================================================================
 describe('a11y: keyboard + reduced motion + landmark', () => {
-  it('Escape dismisses the banner from anywhere in the document', async () => {
+  it('Escape does NOT dismiss the banner (non-modal — Escape collision avoidance, a11y BLOCK 2)', async () => {
+    // A non-modal banner does not trap focus; WCAG 2.1.2 only requires
+    // Escape to release a trap. Attaching a document-level Escape handler
+    // would collide with BottomSheet + OnboardingTour Escape handlers —
+    // pressing Escape to close a modal would also persist the 30-day
+    // banner dismissal (a WCAG 3.2.5 "change on request" failure).
+    // Confirmed in the a11y review: the visible Dismiss button is
+    // sufficient; document-level Escape was removed.
     stubNavigator({ userAgent: UA_IOS_IPHONE_SAFARI, standalone: false, maxTouchPoints: 5 });
     stubNotification('default');
     const Banner = await loadBanner();
@@ -453,7 +460,13 @@ describe('a11y: keyboard + reduced motion + landmark', () => {
 
     expect(
       screen.queryByRole('region', { name: /home screen|écran d.accueil/i }),
-      'Escape key must dismiss the banner (no keyboard trap, WCAG 2.1.2)',
+      'Escape key must NOT dismiss the banner (avoids collision with modal Escape handlers)',
+    ).not.toBe(null);
+    // Storage MUST NOT be written by an Escape press — that would create a
+    // hidden 30-day suppression the user never asked for.
+    expect(
+      window.localStorage.getItem('iosPwaHintDismissedAt'),
+      'localStorage MUST NOT be written by Escape',
     ).toBe(null);
   });
 
