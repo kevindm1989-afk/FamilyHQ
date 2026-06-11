@@ -85,7 +85,6 @@
             "thresholds": [
               {
                 "value": 0.95,
-                "color": "YELLOW",
                 "direction": "BELOW",
                 "label": "SLO floor 95%"
               }
@@ -167,7 +166,6 @@
             "thresholds": [
               {
                 "value": 0,
-                "color": "RED",
                 "direction": "ABOVE",
                 "label": "Any kill-switch invocation is an operational alert"
               }
