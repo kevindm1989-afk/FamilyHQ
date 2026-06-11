@@ -186,38 +186,16 @@ export const billingKillSwitch = onMessagePublished(
       return;
     }
 
-    // Idempotency: read current billing state first. If already detached
-    // (billingEnabled === false), do nothing. This handles Pub/Sub
-    // at-least-once redelivery and re-firing alerts inside the same period.
-    let currentlyEnabled: boolean;
-    try {
-      const info = await cloudbilling.projects.getBillingInfo({
-        name: PROJECT_NAME,
-      });
-      currentlyEnabled = info?.data?.billingEnabled === true;
-    } catch {
-      // Generic message + structured payload — NEVER pass the raw error
-      // object: googleapis errors can carry credentials/tokens in nested
-      // `errorInfo`/`config` fields (see threat-model §A.4.3).
-      logger.error('billingKillSwitch: getBillingInfo call failed', {
-        action: 'get_billing_info_failed',
-        projectName: PROJECT_NAME,
-        budgetAmount,
-        costAmount,
-      });
-      return;
-    }
-
-    if (!currentlyEnabled) {
-      logger.info('billingKillSwitch: project already detached — no-op (idempotent)', {
-        action: 'already_detached',
-        projectName: PROJECT_NAME,
-        budgetAmount,
-        costAmount,
-      });
-      return;
-    }
-
+    // Idempotency: the Cloud Billing `updateBillingInfo` API is naturally
+    // idempotent — calling `updateBillingInfo({billingAccountName: ''})`
+    // on an already-detached project is a no-op success. We rely on that
+    // instead of a `getBillingInfo` pre-check. Reading first would require
+    // `billing.resourceAssociations.get` on the project, which
+    // `roles/billing.projectManager` does NOT include — granting just to
+    // satisfy a redundant pre-check would broaden the kill-switch SA's
+    // scope beyond M33b's minimum. (Operator-debug, 2026-06-11: the
+    // pre-check threw 403 on first deploy because of the missing read
+    // perm; the API's own idempotency is the right contract anyway.)
     try {
       await cloudbilling.projects.updateBillingInfo({
         name: PROJECT_NAME,
