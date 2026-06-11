@@ -2,9 +2,9 @@
   "name": "@familyhq/functions",
   "private": true,
   "version": "0.0.0",
-  "description": "Family HQ Cloud Functions (Node 20, 2nd gen, northamerica-northeast1). Workspace is intentionally separated from the SPA so the firebase-functions / firebase-admin SDKs never bloat the client bundle.",
+  "description": "Family HQ Cloud Functions (Node 22, 2nd gen, northamerica-northeast1). Workspace is intentionally separated from the SPA so the firebase-functions / firebase-admin SDKs never bloat the client bundle.",
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "lib/index.js",
   "type": "module",
@@ -16,12 +16,12 @@
   "_test_writer_note": "PR A scope: only test scripts + dependency surface are wired now. The implementer adds build artifacts (functions/lib/) when implementing A1/A2. Keep firebase-functions and firebase-admin OUT of the root package.json — the SPA must not transitively depend on them.",
   "dependencies": {
     "@google-cloud/billing": "^4.4.0",
-    "firebase-admin": "^12.7.0",
-    "firebase-functions": "^5.1.1",
+    "firebase-admin": "^13.10.0",
+    "firebase-functions": "^7.2.5",
     "googleapis": "^144.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.16.5",
+    "@types/node": "^22.19.21",
     "typescript": "5.4.5",
     "vitest": "^4.1.8"
   }

@@ -58,7 +58,7 @@ export default tseslint.config(
     },
   },
   {
-    // Cloud Functions workspace source — runs on Node 20 in
+    // Cloud Functions workspace source — runs on Node 22 in
     // `northamerica-northeast1`, NOT in the browser. Needs node globals
     // (`Buffer`, `process`) and the Functions runtime context. The
     // workspace also typechecks via `cd functions && npx tsc --noEmit`
