@@ -482,9 +482,13 @@ purpose-of-collection for `userAgent` — threat-modeler pushback #2).**
      if `assignedTo`'s familyId != caller.familyId (cross-tenant defense in
      depth).
   5. if recipient's `notificationPreferences.myChoreResolved == false`,
-     return `{ sent: 0, reason: 'opted_out' }` and STOP.
+     return `{ sent: 0, cleaned: 0 }` and STOP. (Skip classification
+     `skipReason: 'opted_out'` lands in the server log per M38 —
+     callable response itself is opaque per the M39 revision in PR D;
+     see decisions.md "2026-06-11 — Drop `reason` from notify-callable
+     response shape".)
   6. read recipient's `fcmTokens` subcollection; if empty, return
-     `{ sent: 0, reason: 'no_tokens' }`.
+     `{ sent: 0, cleaned: 0 }` (server log carries `skipReason: 'no_tokens'`).
   7. send via `sendEachForMulticast` with constants:
      `title: NOTIF_TITLES.allowanceUpdate` and
      `body: NOTIF_BODIES.choreApproved`.

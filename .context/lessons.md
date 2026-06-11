@@ -21,6 +21,80 @@ Append newest on top. Be specific — vague lessons don't prevent anything.
 
 ## Entries
 
+## 2026-06-11 — When orchestrating a fan-out brief, paraphrasing the spec is how spec divergence enters the codebase — cite design + threat-model lines verbatim
+
+**Symptom:** PR D shipped `notifyTodoCreated` / `notifyTodoCompleted`
+as SINGLE-recipient callables (assignee for created, creator for
+completed). Design D6/D7 (push-notifications-design.md:576-592) AND
+threat-model D-T4 (threat-model.md:980) explicitly specify these as
+BROADCAST-to-family-except-actor. The test-writer agent wrote the
+exact tests my brief asked for; the implementer agent wrote the exact
+callables those tests pinned. Both agents faithfully followed my
+brief — and the brief silently diverged from the spec.
+
+**Root cause:** I paraphrased the design in the test-writer brief
+("recipient = assignee", "recipient = creator") instead of quoting
+the design line verbatim ("Recipients = every active member of the
+family EXCEPT the creator/completer"). The agents had no way to
+catch the drift because they were briefed off my paraphrase, not the
+source.
+
+**Fix:** Restructured both callables to mirror `notifyBoardPost`
+(family-member query, exclude actor, aggregate tokens, ONE multicast).
+Updated body strings to design-exact wording. Updated tests to
+broadcast happy paths. Caught by second-opinion-reviewer; would have
+shipped silently otherwise.
+
+**Prevention:** When briefing a fan-out agent (test-writer,
+implementer) on something that mirrors a design or threat-model
+acceptance criterion, **quote the criterion verbatim** in the brief
+— path + line number + literal acceptance text. Do not paraphrase
+"recipients are X" or "category is Y" from memory; copy the bullet.
+The orchestrator's job is to translate intent into work, not to be a
+lossy compression layer over the spec. Corollary: every spec
+divergence flagged by second-opinion is a brief defect, not an agent
+defect — score the brief's fidelity against the spec, not the
+output's fidelity against the brief.
+
+## 2026-06-11 — A discriminable `reason` on a callable response leaks recipient preference state — drop it from the response, keep it in the server log
+
+**Symptom:** PR D shipped six new notify-callables that inherited PR C's
+M39 skip-shape `{ sent: 0, reason: 'opted_out' | 'no_tokens' |
+'send_failed' }`. Privacy-reviewer found that a caller can flip a
+recipient's `notificationPreferences.<category>` toggle and observe
+whether the response `reason` flips from `'opted_out'` to `'no_tokens'`,
+exfiltrating aggregate preference state of OTHER family members. For
+multi-recipient kinds (board-post, chore-submitted, wishlist-requested)
+this leaks aggregate family state; for single-recipient kinds
+(chore-approved, wishlist-resolved) it leaks the specific recipient's
+opt-in state — most acute when the recipient is a child (Quebec Law 25
+sensitive-info baseline).
+
+**Root cause (the seam):** the `reason` field had operational value only
+in dev / ops debugging, but it lived on the public response. The
+fire-and-forget client (per ADR-0014) never consumes it. The
+discriminator's existence on the response was the disclosure
+mechanism, not its value — even if a sophisticated caller never
+looks at it, the distinguishability is the oracle.
+
+**Fix:** dropped `reason` from the response across all 7 notify-
+callables. Every skip / FCM-throw branch now returns
+`{ sent: 0, cleaned: 0 }`. The reason classification is preserved
+server-side via a new M38 allow-listed log field `skipReason`. The
+SPA's TypeScript response annotations narrowed from
+`{ sent; cleaned?; reason? }` to `{ sent; cleaned }`. Threat-model
+T5.6b documents the new constraint; ADR-0015 records the change.
+
+**Prevention:** When a Cloud Function's response carries a
+discriminator field, ask BEFORE shipping: "what about the recipient
+could the caller infer by toggling something and watching the
+discriminator?" If anything sensitive (preference state, doc
+existence, role) discriminates the branches, push the discrimination
+into a server-only log field. The response shape gets the union
+collapse; ops debugging gets the field. The privacy reviewer is the
+right person to pin this — always loop them in on any callable
+response that has more than one shape.
+
 ## 2026-06-09 — Widening a discriminated union beats splitting collections; defer the field rename, document the alias
 
 **Symptom:** The wishlist redemption feature needed to add a
