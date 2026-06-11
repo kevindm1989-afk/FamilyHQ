@@ -33,6 +33,7 @@ import {
   updateDoc,
   type Firestore,
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   MONEY_MAX_CENTS,
   type RecurrenceFrequency,
@@ -223,6 +224,25 @@ export async function approveChore(
   } catch {
     // Never surface a raw Firebase code / PII (or the chore id) to the caller.
     throw new ChoreActionError(CHORE_PARENT_GENERIC_ERROR);
+  }
+  // PR C2: fire-and-forget the notifyChoreApproved callable AFTER the
+  // transaction's side effects (status flip, balance increment, ledger
+  // doc) have already landed. The callable's failure must NEVER undo the
+  // approve — push is non-essential (ADR-0014); the in-app inbox is the
+  // source of truth. Both a sync throw at `httpsCallable(...)` lookup
+  // time AND an async rejection from the callable invocation are
+  // swallowed here; M39 keeps any raw provider text out of the surface.
+  // The payload is EXACTLY `{ choreId }` — no kid uid, no amount, no
+  // chore title (the server re-derives everything it needs).
+  try {
+    const fns = getFunctions();
+    const fn = httpsCallable<{ choreId: string }, { sent: number; failed: number }>(
+      fns,
+      'notifyChoreApproved',
+    );
+    await fn({ choreId });
+  } catch {
+    // Intentionally swallowed — see comment above. No re-throw, no toast.
   }
 }
 

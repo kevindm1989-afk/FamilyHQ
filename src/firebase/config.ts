@@ -14,6 +14,7 @@
  * the implementer + test-writer. This module only wires the SDK.
  */
 import { initializeApp, type FirebaseOptions } from 'firebase/app';
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { getAuth, connectAuthEmulator, type Auth } from 'firebase/auth';
 import {
   initializeFirestore,
@@ -23,6 +24,7 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import { getStorage, connectStorageEmulator, type FirebaseStorage } from 'firebase/storage';
+import { isPushNotificationsEnabled } from '../features/notifications/featureFlag';
 
 const firebaseConfig: FirebaseOptions = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -34,6 +36,37 @@ const firebaseConfig: FirebaseOptions = {
 };
 
 export const app = initializeApp(firebaseConfig);
+
+// App Check (PR C / threat-model M32). Initialised at module-load so any
+// subsequent FCM Admin-SDK-bound callable (notifyChoreApproved, the PR D
+// notify-*) gets a fresh attestation token attached automatically by the
+// firebase/functions SDK. Gated by `VITE_FCM_ENABLED` so a Spark-tier
+// deploy without notify-callables doesn't pay for the reCAPTCHA round-
+// trip. If `VITE_FCM_ENABLED='true'` but the site key is unset OR
+// initializeAppCheck throws (operator mis-configuration, malformed key,
+// CSP blocking the reCAPTCHA frame), we swallow the failure and continue
+// SPA boot. The server-side `enforceAppCheck: true` gate fails closed on
+// the callable — a missing App Check token on the callable is a feature
+// degradation (no pushes) rather than a hard SPA boot crash, per
+// security-reviewer Finding 1.
+if (isPushNotificationsEnabled()) {
+  const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+  if (typeof siteKey === 'string' && siteKey.length > 0) {
+    try {
+      initializeAppCheck(app, {
+        provider: new ReCaptchaEnterpriseProvider(siteKey),
+        isTokenAutoRefreshEnabled: true,
+      });
+    } catch {
+      // Fail closed on App Check init — the server-side callable will
+      // reject the unattested request, which is the correct posture per
+      // M32. We deliberately do NOT log the underlying error because
+      // initializeAppCheck can surface site-key fragments in its
+      // diagnostic message; the operator can detect the misconfig from
+      // the callable's failure rate in the dashboard.
+    }
+  }
+}
 
 export const auth: Auth = getAuth(app);
 

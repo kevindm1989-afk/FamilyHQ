@@ -400,11 +400,21 @@ jobs:
       - name: Audit functions workspace for high-severity CVEs (M40)
         run: npm --prefix functions audit --omit=dev --audit-level=high
 
-      - name: Deploy functions:billingKillSwitch
-        # EXACT --only list — `functions:billingKillSwitch` and NOTHING ELSE
-        # in PR A. Adding another function later means appending to this
-        # same --only list in the same PR; NEVER mix functions: with
-        # firestore: or storage: or hosting in any single --only flag.
+      - name: Deploy functions (billingKillSwitch + notifyChoreApproved)
+        # EXACT --only list — billingKillSwitch is listed FIRST as
+        # documentation-of-precedence, but firebase-tools deploys all
+        # functions in this --only list in PARALLEL; the comma order is
+        # NOT a sequencing guarantee (second-opinion review #9). The
+        # operational guarantee is provided EXTERNALLY:
+        # billingKillSwitch was deployed in PR A and has been live since
+        # well before this chargeable callable was even merged. By the
+        # time this step runs, the kill-switch is already running in
+        # production and the project-level $5 cap is in place. Listing
+        # both functions here so the deploy step is idempotent on
+        # re-runs (an unchanged kill-switch revision is a no-op).
+        #
+        # NEVER mix functions: with firestore: or storage: or hosting in
+        # any single --only flag.
         #
         # The kill-switch SA must already be provisioned per
         # docs/runbooks/billing-killswitch.md before this step runs.
@@ -426,7 +436,7 @@ jobs:
           chmod 600 "$SA_PATH"
           GOOGLE_APPLICATION_CREDENTIALS="$SA_PATH" \
             npx firebase deploy \
-              --only functions:billingKillSwitch \
+              --only functions:billingKillSwitch,functions:notifyChoreApproved \
               --project "$PROJECT_ID" \
               --non-interactive
           rm -f "$SA_PATH"
