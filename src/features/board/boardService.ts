@@ -20,6 +20,7 @@ import {
   serverTimestamp,
   type Firestore,
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { Post, Role } from '../../lib/types';
 
 /** A post enriched with its document id for list rendering + delete. */
@@ -60,26 +61,45 @@ export interface CreatePostInput {
  * field). Trims surrounding whitespace; rejects empty/whitespace-only content
  * with a BoardActionError BEFORE any write. Maps any Firestore failure to
  * POST_GENERIC_ERROR (no raw error / PII surfaced).
+ *
+ * Returns the new doc id so PR D5's fire-and-forget `notifyBoardPost`
+ * callable can address the server-side push by post id.
  */
-export async function createPost(deps: { db: Firestore }, input: CreatePostInput): Promise<void> {
+export async function createPost(deps: { db: Firestore }, input: CreatePostInput): Promise<string> {
   const content = input.content.trim();
   if (content.length === 0) {
     // Reject before any write — empty/whitespace-only content is never stored.
     throw new BoardActionError();
   }
 
+  let postId: string;
   try {
-    await addDoc(collection(deps.db, POSTS_COLLECTION), {
+    const ref = await addDoc(collection(deps.db, POSTS_COLLECTION), {
       content,
       authorId: input.authorId,
       authorName: input.authorName,
       familyId: input.familyId,
       createdAt: serverTimestamp(),
     });
+    postId = ref.id;
   } catch {
     // Never surface a raw Firebase code / PII to the caller.
     throw new BoardActionError();
   }
+  // PR D5: fire-and-forget the notifyBoardPost callable AFTER the write.
+  // The callable's failure must NEVER undo the post creation — push is
+  // non-essential (ADR-0014); the in-app inbox is the source of truth.
+  try {
+    const fns = getFunctions();
+    const fn = httpsCallable<
+      { postId: string },
+      { sent: number; cleaned?: number; reason?: string }
+    >(fns, 'notifyBoardPost');
+    await fn({ postId });
+  } catch {
+    // Intentionally swallowed.
+  }
+  return postId;
 }
 
 /**

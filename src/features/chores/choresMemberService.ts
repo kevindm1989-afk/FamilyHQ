@@ -21,6 +21,7 @@
  * analysable by Tailwind's JIT, so the rule would never be emitted.
  */
 import { doc, updateDoc, type Firestore } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { Chore, ChoreStatus } from '../../lib/types';
 
 /** A chore enriched with its document id for list rendering + mark-complete. */
@@ -55,6 +56,25 @@ export async function markComplete(deps: { db: Firestore }, choreId: string): Pr
   } catch {
     // Never surface a raw Firebase code / PII (or the chore id) to the caller.
     throw new ChoreActionError();
+  }
+  // PR D1: fire-and-forget the notifyChoreSubmitted callable AFTER the
+  // transactional write has landed. The callable's failure must NEVER
+  // undo the mark-complete — push is non-essential (ADR-0014); the
+  // in-app inbox is the source of truth. Both a sync throw at
+  // `httpsCallable(...)` lookup time AND an async rejection from the
+  // callable invocation are swallowed here; M39 keeps any raw provider
+  // text out of the surface. The payload is EXACTLY `{ choreId }` — no
+  // kid uid, no amount, no chore title (the server re-derives
+  // everything it needs).
+  try {
+    const fns = getFunctions();
+    const fn = httpsCallable<
+      { choreId: string },
+      { sent: number; cleaned?: number; reason?: string }
+    >(fns, 'notifyChoreSubmitted');
+    await fn({ choreId });
+  } catch {
+    // Intentionally swallowed — push is fire-and-forget.
   }
 }
 

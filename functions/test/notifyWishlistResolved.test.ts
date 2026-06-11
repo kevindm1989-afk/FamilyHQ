@@ -1089,7 +1089,14 @@ describe(`WV-T19b: success log includes canonical fields with kind="${KIND}"`, (
     await invoke({ auth: { uid: CALLER_UID }, data: { itemId: ITEM_ID } });
     const serialized = JSON.stringify(loggerInfoMock.mock.calls).toLowerCase();
     expect(serialized).not.toContain(TOKEN_VALUE_GOOD.toLowerCase());
-    for (const sub of ['lego', '$499', '499.99', 'dollar', 'too expensive', 'wishlist']) {
+    // NOTE: 'wishlist' is intentionally NOT in this forbidden list. The M38
+    // log payload structurally requires `kind: "wishlistResolved"` (the
+    // `kind` string is the M38 allow-listed identifier and is also used in
+    // the rateLimits/{kind}__{uid} doc path). A serialized log payload
+    // therefore contains the substring "wishlist" by construction. The PI
+    // we must block is the item NAME, any PRICE (amount/dollar), and the
+    // free-text deniedReason — those are still asserted.
+    for (const sub of ['lego', '$499', '499.99', 'dollar', 'too expensive']) {
       expect(serialized).not.toContain(sub.toLowerCase());
     }
   });

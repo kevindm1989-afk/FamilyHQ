@@ -400,7 +400,7 @@ jobs:
       - name: Audit functions workspace for high-severity CVEs (M40)
         run: npm --prefix functions audit --omit=dev --audit-level=high
 
-      - name: Deploy functions (billingKillSwitch + notifyChoreApproved)
+      - name: Deploy functions (billingKillSwitch + notify-callables)
         # EXACT --only list — billingKillSwitch is listed FIRST as
         # documentation-of-precedence, but firebase-tools deploys all
         # functions in this --only list in PARALLEL; the comma order is
@@ -436,7 +436,7 @@ jobs:
           chmod 600 "$SA_PATH"
           GOOGLE_APPLICATION_CREDENTIALS="$SA_PATH" \
             npx firebase deploy \
-              --only functions:billingKillSwitch,functions:notifyChoreApproved \
+              --only functions:billingKillSwitch,functions:notifyChoreApproved,functions:notifyChoreSubmitted,functions:notifyWishlistRequested,functions:notifyWishlistResolved,functions:notifyBoardPost,functions:notifyTodoCreated,functions:notifyTodoCompleted \
               --project "$PROJECT_ID" \
               --non-interactive
           rm -f "$SA_PATH"

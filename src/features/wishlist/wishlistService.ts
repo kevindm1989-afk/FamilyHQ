@@ -31,8 +31,32 @@ import {
   type Firestore,
   type Transaction as FirestoreTx,
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { wishlistItemConverter } from '../../lib/converters';
 import { MONEY_MAX_CENTS, type WishlistItem, type WishlistStatus } from '../../lib/types';
+
+/**
+ * Fire-and-forget invocation of a server-side notification callable (PR D).
+ * The push surface is non-essential (ADR-0014); a callable failure or a
+ * missing Functions runtime must NEVER undo the transactional write that
+ * preceded it. Both a sync throw at `httpsCallable(...)` lookup AND an
+ * async rejection from the invocation are swallowed.
+ */
+async function fireAndForgetNotify(
+  name: 'notifyWishlistRequested' | 'notifyWishlistResolved',
+  itemId: string,
+): Promise<void> {
+  try {
+    const fns = getFunctions();
+    const fn = httpsCallable<
+      { itemId: string },
+      { sent: number; cleaned?: number; reason?: string }
+    >(fns, name);
+    await fn({ itemId });
+  } catch {
+    // Intentionally swallowed.
+  }
+}
 
 const COLLECTION = 'wishlistItems';
 const USERS_COLLECTION = 'users';
@@ -175,6 +199,7 @@ export async function requestRedemption(deps: { db: Firestore }, itemId: string)
   } catch {
     throw new WishlistActionError();
   }
+  await fireAndForgetNotify('notifyWishlistRequested', itemId);
 }
 
 /** Owner cancels their own request: requested → wishing. */
@@ -207,6 +232,7 @@ export async function denyRedemption(
   } catch {
     throw new WishlistActionError();
   }
+  await fireAndForgetNotify('notifyWishlistResolved', itemId);
 }
 
 /**
@@ -284,6 +310,7 @@ export async function approveRedemption(deps: { db: Firestore }, itemId: string)
     if (err instanceof WishlistActionError) throw err;
     throw new WishlistActionError();
   }
+  await fireAndForgetNotify('notifyWishlistResolved', itemId);
 }
 
 /** Pure helper for the screen — sum of pending request amounts. */

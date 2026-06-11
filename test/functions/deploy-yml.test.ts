@@ -6,10 +6,17 @@
  * creates a billing-plan trap. The Functions deploy MUST be its own
  * flag-gated step.
  *
- *   - A-T8 (UPDATED for PR C): the deploy-functions step's `--only` list is
- *     now EXACTLY `functions:billingKillSwitch,functions:notifyChoreApproved`.
- *     The kill-switch MUST precede the notify-callable in the comma list so
- *     the cap gates the chargeable function from second 0.
+ *   - A-T8 (UPDATED for PR D): the deploy-functions step's `--only` list
+ *     enumerates the kill-switch + all seven notify-callables shipped to
+ *     date — billingKillSwitch (PR A), notifyChoreApproved (PR C), and
+ *     the six PR D callables (notifyChoreSubmitted, notifyWishlistRequested,
+ *     notifyWishlistResolved, notifyBoardPost, notifyTodoCreated,
+ *     notifyTodoCompleted). The kill-switch MUST precede every chargeable
+ *     callable in the comma list (documentation-of-precedence; the actual
+ *     operational guarantee is that the kill-switch was deployed in PR A
+ *     and has been live since well before any subsequent push-callable
+ *     was merged — firebase-tools deploys this --only list in parallel,
+ *     not serially).
  *   - A-T9: the existing `--only firestore:rules,firestore:indexes` deploy
  *     line is UNCHANGED.
  *   - C-T19 (new): the kill-switch literal MUST appear at the START of the
@@ -28,7 +35,7 @@ function readDeployYml(): string {
   return readFileSync(DEPLOY_YML_PATH, 'utf8');
 }
 
-describe('A-T8 (PR C update): deploy-functions step exists, is flag-gated, and --only is EXACTLY functions:billingKillSwitch,functions:notifyChoreApproved', () => {
+describe('A-T8 (PR D update): deploy-functions step exists, is flag-gated, and --only enumerates kill-switch + 7 notify-callables shipped to date', () => {
   it('contains a job/step named deploy-functions (the new, flag-gated functions deploy)', () => {
     const yml = readDeployYml();
     // The job name is `deploy-functions` per PR A acceptance criterion A4;
@@ -59,19 +66,23 @@ describe('A-T8 (PR C update): deploy-functions step exists, is flag-gated, and -
     expect(inputBlock![0]).toMatch(/default:\s*false/);
   });
 
-  it('its firebase deploy --only list is EXACTLY functions:billingKillSwitch,functions:notifyChoreApproved in PR C', () => {
+  it('its firebase deploy --only list enumerates kill-switch + all 7 notify-callables (PR A + PR C + PR D), exactly once each, in the canonical order', () => {
     const yml = readDeployYml();
     // Find every `firebase deploy --only <list>` line and inspect any list
     // that mentions `functions:`. There must be exactly one such line,
-    // and its value must include BOTH functions in the exact order:
-    // kill-switch first (so the cap gates the chargeable callable from
-    // second 0), notify-callable second.
+    // and its value must enumerate the kill-switch first (documentation-
+    // of-precedence — see header comment for the operational reality) plus
+    // every notify-callable shipped to date. New callables shipped in
+    // future PRs append to the END of the list; never prepend (the kill-
+    // switch entry stays first).
     const onlyLines = [...yml.matchAll(/firebase\s+deploy[\s\S]*?--only\s+([^\s\\\n]+)/g)].map(
       (m) => m[1]!,
     );
     const functionsLines = onlyLines.filter((l) => l.includes('functions:'));
     expect(functionsLines).toHaveLength(1);
-    expect(functionsLines[0]).toBe('functions:billingKillSwitch,functions:notifyChoreApproved');
+    expect(functionsLines[0]).toBe(
+      'functions:billingKillSwitch,functions:notifyChoreApproved,functions:notifyChoreSubmitted,functions:notifyWishlistRequested,functions:notifyWishlistResolved,functions:notifyBoardPost,functions:notifyTodoCreated,functions:notifyTodoCompleted',
+    );
   });
 
   it('C-T19: in the --only list, `billingKillSwitch` precedes `notifyChoreApproved` (kill-switch first)', () => {

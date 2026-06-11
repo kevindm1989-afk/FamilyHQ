@@ -22,8 +22,32 @@ import {
   updateDoc,
   type Firestore,
 } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { todoConverter } from '../../lib/converters';
 import type { Todo } from '../../lib/types';
+
+/**
+ * Fire-and-forget invocation of a server-side todo notification callable
+ * (PR D6 + D7). Push is non-essential (ADR-0014); a callable failure or
+ * missing Functions runtime must NEVER undo the transactional write. Both
+ * a sync throw at `httpsCallable(...)` lookup AND an async rejection from
+ * the invocation are swallowed.
+ */
+async function fireAndForgetTodoNotify(
+  name: 'notifyTodoCreated' | 'notifyTodoCompleted',
+  todoId: string,
+): Promise<void> {
+  try {
+    const fns = getFunctions();
+    const fn = httpsCallable<
+      { todoId: string },
+      { sent: number; cleaned?: number; reason?: string }
+    >(fns, name);
+    await fn({ todoId });
+  } catch {
+    // Intentionally swallowed.
+  }
+}
 
 const TODOS_COLLECTION = 'todos';
 
@@ -114,6 +138,7 @@ export async function createTodo(deps: { db: Firestore }, input: CreateTodoInput
     ...(input.dueDate !== undefined && input.dueDate !== '' ? { dueDate: input.dueDate } : {}),
   };
 
+  let todoId: string;
   try {
     const ref = await addDoc(
       collection(deps.db, TODOS_COLLECTION).withConverter(todoConverter),
@@ -123,10 +148,12 @@ export async function createTodo(deps: { db: Firestore }, input: CreateTodoInput
       // is unchanged.
       body as unknown as Todo,
     );
-    return ref.id;
+    todoId = ref.id;
   } catch {
     throw new TodoActionError();
   }
+  await fireAndForgetTodoNotify('notifyTodoCreated', todoId);
+  return todoId;
 }
 
 export interface UpdateTodoInput {
@@ -208,6 +235,11 @@ export async function setTodoCompletion(
     } as unknown as { [k: string]: number | boolean });
   } catch {
     throw new TodoActionError();
+  }
+  // Fire the completion push only on the true → false unwind is a noop;
+  // the kid un-completing their own todo shouldn't ping anyone.
+  if (isCompleted) {
+    await fireAndForgetTodoNotify('notifyTodoCompleted', todoId);
   }
 }
 
