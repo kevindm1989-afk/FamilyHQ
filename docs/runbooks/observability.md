@@ -29,9 +29,13 @@ needs to triage push-notifications + cost-cap incidents at a glance:
    (M37). A 100+ spike in an hour suggests mass token invalidation (a
    common signal: the Firebase project's FCM key got rotated, or APNs
    revoked our certificate).
-4. **Billing kill-switch invocations** — `billingKillSwitch` function
-   execution count. Per ADR-0013 the kill-switch only runs when the
-   monthly cost cap fired. **Any non-zero rate here is an incident.**
+4. **Billing kill-switch detach events** — counts actual detach
+   attempts via the `billing_killswitch_detach_count` log-based metric
+   (§4.2). Filters on `jsonPayload.action ∈ {billing_detached,
+   update_billing_info_failed}` so routine Cloud Billing budget-update
+   pings (which invoke the function but exit with `below_threshold`)
+   stay invisible. **Any non-zero rate here is an incident** — the cap
+   actually fired.
 
 ADR-0013 documents the kill-switch design; ADR-0015 documents the
 notification observability surface (M37 cleanup logs, M38 structured-log
@@ -172,7 +176,7 @@ Four widgets must render:
 - "Notify-callable invocations by kind"
 - "Notify-callable success ratio by kind"
 - "FCM stale-token cleanups per kind"
-- "Billing kill-switch invocations"
+- "Billing kill-switch detach events"
 
 If the cleanups widget shows "No data," confirm the log-based metric in §4
 exists in the same project.
@@ -235,6 +239,57 @@ To update the filter or description without re-creating, use
 `gcloud logging metrics update notify_callable_cleaned_token_count
 --config-from-file=...`.
 
+### 4.2 Create the log-based metric `billing_killswitch_detach_count`
+
+The "Billing kill-switch detach events" dashboard widget + the
+`kill-switch-invoked.json` alert policy both depend on this metric.
+It counts ACTUAL detach events (the kill-switch crossed the cap and
+called `updateBillingInfo`), NOT routine Cloud Billing budget-update
+Pub/Sub messages (which invoke the function but exit early with
+`action=below_threshold`).
+
+The original PR #115 alert filtered on raw `request_count` and
+flooded the operator inbox with `[ALERT]→[RESOLVED]` cycles every
+~5-20 minutes — one per routine budget-update ping. The fix here is
+to count only the structured-log lines that the kill-switch emits
+on actual detach attempts:
+
+```bash
+cat > /tmp/killswitch-detach-metric.yaml <<'EOF'
+filter: |
+  resource.type="cloud_run_revision" AND
+  resource.labels.service_name="billingkillswitch" AND
+  (jsonPayload.action="billing_detached" OR jsonPayload.action="update_billing_info_failed")
+description: Counter for actual kill-switch detach attempts (success OR failure). Routine below_threshold no-op invocations are NOT counted. Drives the kill-switch-invoked alert policy + the Billing kill-switch detach events dashboard widget.
+metricDescriptor:
+  metricKind: DELTA
+  valueType: INT64
+  unit: "1"
+EOF
+
+gcloud logging metrics create billing_killswitch_detach_count \
+  --config-from-file=/tmp/killswitch-detach-metric.yaml \
+  --project="$FIREBASE_PROJECT_ID"
+```
+
+**Why a counter (INT64), not a DISTRIBUTION:** unlike the cleanup
+metric (which extracts a per-event `cleanedTokenCount` value), the
+detach metric is purely categorical — we just count log entries.
+INT64 counter metrics do NOT require a `valueExtractor` and are
+compared directly to a literal numeric threshold (no
+`ALIGN_PERCENTILE_*` workaround needed).
+
+**Both `action` values matter:** `billing_detached` is the success
+path (the cap fired AND we stopped billing). `update_billing_info_failed`
+is the failure path (the cap fired but the detach API call failed —
+arguably WORSE because billing is still live). Either fires the
+alert; the operator triages from the log message.
+
+After creation, the dashboard's "Billing kill-switch detach events"
+widget will show "No data" until the FIRST real cap breach. That is
+the correct steady-state. A non-zero point here means investigate
+right away.
+
 ---
 
 ## 5. Alert policies
@@ -247,11 +302,18 @@ MQL). The three policies ship as review-gated JSON in
 `infra/monitoring/alert-policies/`, schema-gated by
 `test/observability/alert-policies-schema.test.ts`:
 
-- **`kill-switch-invoked.json`** — kill-switch invocation count > 0 in any
-  5-minute window → page the operator immediately (severity `CRITICAL`).
-  ADR-0013 §6 specifies the kill-switch only runs on a real cap breach, so
-  any invocation is an incident — investigate the associated billing alert
-  in the same window. Runbook: `docs/runbooks/billing-killswitch.md`.
+- **`kill-switch-invoked.json`** — fires on actual detach events (not
+  on raw kill-switch invocations). Queries the `billing_killswitch_detach_count`
+  log-based metric (§4.2) — counts only log lines where
+  `jsonPayload.action ∈ {billing_detached, update_billing_info_failed}`.
+  Threshold: `> 0` in any 5-minute window → page the operator
+  immediately (severity `CRITICAL`). ADR-0013's "kill-switch only runs
+  on a real cap breach" framing was the original assumption — the
+  reality (caught 2026-06-16, see lessons.md) is that Cloud Billing
+  publishes routine budget-update Pub/Sub messages throughout the day,
+  each of which invokes the function. The detach-only metric is the
+  actionable signal. Runbook: `docs/runbooks/billing-killswitch.md`.
+  **PREREQUISITE:** §4.2 must be run before this policy can fire.
 - **`notify-success-ratio-low.json`** — notify-callable success ratio
   (2xx / all requests) < 0.95 over 15 minutes → operational alert (Slack
   `#familyhq-ops`, no pager; severity `WARNING`). Likely causes: FCM

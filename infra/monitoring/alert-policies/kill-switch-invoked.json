@@ -1,15 +1,15 @@
 {
-  "displayName": "Billing kill-switch invoked (cost cap fired)",
+  "displayName": "Billing kill-switch DETACHED billing (cost cap actually fired)",
   "documentation": {
-    "content": "Any invocation of the `billingkillswitch` Cloud Run service means the project's $5 monthly cost cap fired (ADR-0013): the budget Pub/Sub topic delivered a cap-breach message and the kill-switch ran to detach billing. This is page-worthy - there is no benign rate for this metric.\n\nImmediate actions:\n1. Check the billing alert / budget notification in the SAME time window (Console -> Billing -> Budgets & alerts) to confirm the cap breach that triggered it.\n2. Confirm whether billing was actually detached and which service drove the spend.\n3. Follow the runbook: docs/runbooks/billing-killswitch.md (recovery + re-attach procedure).\n\nDashboard: 'Billing kill-switch invocations' widget in infra/monitoring/dashboard.json (docs/runbooks/observability.md section 1, series 4).",
+    "content": "The `billingkillswitch` function ran AND made the detach API call. This is the actual cap-breach event: the project's $5/mo budget was exceeded, the kill-switch invoked `cloudbilling.projects.updateBillingInfo({billingAccountName: ''})`, and billing is now detached (success: `action=billing_detached`) OR the detach attempt failed (`action=update_billing_info_failed`, arguably worse - cap fired but could not be stopped). Either is page-worthy.\n\nWhat this policy is NOT alerting on: routine Cloud Billing budget-update Pub/Sub messages (Cloud Billing publishes these throughout the day on every billing-data refresh, not only on cap-breach). Each routine message invokes the kill-switch function, but the function exits early with `action=below_threshold` - no detach, no incident. The original PR #115 alert (request_count > 0) treated every invocation as a breach and flooded the operator inbox; this policy filters on the actual detach event via a log-based metric instead. See `.context/lessons.md` 2026-06-16 entry for the bug pattern.\n\nImmediate actions:\n1. Open the Billing console (Console -> Billing -> Budgets & alerts) and confirm the budget-cap breach in the same time window.\n2. Identify which Google Cloud service drove the spend that crossed the cap.\n3. Follow `docs/runbooks/billing-killswitch.md` for the recovery + re-attach procedure.\n\nPrerequisite: this policy queries the user-defined log-based metric `billing_killswitch_detach_count` (counter, kind DELTA / valueType INT64). The metric MUST exist in the project before the policy can fire data; see `docs/runbooks/observability.md` section 4.2 for the create command.\n\nDashboard: 'Billing kill-switch detach events' widget in infra/monitoring/dashboard.json (docs/runbooks/observability.md section 1, series 4).",
     "mimeType": "text/markdown"
   },
   "combiner": "OR",
   "conditions": [
     {
-      "displayName": "billingkillswitch request count > 0 over 5 minutes",
+      "displayName": "billing_killswitch_detach_count > 0 over 5 minutes",
       "conditionThreshold": {
-        "filter": "metric.type=\"run.googleapis.com/request_count\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"billingkillswitch\"",
+        "filter": "metric.type=\"logging.googleapis.com/user/billing_killswitch_detach_count\" AND resource.type=\"cloud_run_revision\"",
         "aggregations": [
           {
             "alignmentPeriod": "300s",

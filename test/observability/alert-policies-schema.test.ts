@@ -168,20 +168,28 @@ describe.each(POLICY_FILES)('alert policy %s — sanity & required shape', (file
 // ---------------------------------------------------------------------------
 // Per-policy condition shape — the part each alert actually promises.
 // ---------------------------------------------------------------------------
-describe('kill-switch-invoked.json — pins the billingkillswitch service', () => {
-  it('some condition filter references the billingkillswitch identifier (gen-2 Cloud Run service name)', () => {
+describe('kill-switch-invoked.json — fires on the detach-action log event, not raw invocations', () => {
+  it('some condition filter references the billing_killswitch_detach_count log-based metric', () => {
+    // Operationally: routine Cloud Billing budget-update messages also
+    // invoke the kill-switch function (it exits early with
+    // `action=below_threshold`). The PR #115 condition fired on raw
+    // request_count > 0 and flooded the operator inbox. The detach-only
+    // log-based metric is the actionable signal — incremented only when
+    // the function logs `action: 'billing_detached'` (or
+    // 'update_billing_info_failed', arguably worse).
     const policy = loadPolicy('kill-switch-invoked.json');
-    const matches = conditionsOf(policy).some((c) => /billingkillswitch/i.test(asText(c)));
+    const matches = conditionsOf(policy).some((c) =>
+      /billing_killswitch_detach_count/.test(asText(c)),
+    );
     expect(
       matches,
-      'the kill-switch policy must filter on the billingkillswitch / billingKillSwitch identifier',
+      'the kill-switch policy must filter on the billing_killswitch_detach_count log-based metric (runbook §4.2 creates it)',
     ).toBe(true);
   });
 
-  it('queries the gen-2 request_count metric on cloud_run_revision (the kill-switch is Cloud Functions v2 / Cloud Run-backed)', () => {
+  it('queries the gen-2 cloud_run_revision resource type (the kill-switch is Cloud Functions v2 / Cloud Run-backed)', () => {
     const policy = loadPolicy('kill-switch-invoked.json');
     const text = asText(policy.conditions);
-    expect(text).toContain('run.googleapis.com/request_count');
     expect(text).toContain('cloud_run_revision');
   });
 });
