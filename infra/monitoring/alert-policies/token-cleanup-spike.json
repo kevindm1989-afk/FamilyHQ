@@ -1,20 +1,20 @@
 {
   "displayName": "FCM stale-token cleanup spike (>100 per hour)",
   "documentation": {
-    "content": "The notify-* callables cleaned more than 100 stale FCM tokens in an hour (sum of the `cleanedTokenCount` log field, M37). Potential incident (Slack #familyhq-ops), not a page.\n\nMass token invalidation usually means an external dependency changed:\n- The Firebase project's FCM key was rotated.\n- APNs revoked our certificate.\n- The app shipped a major version that all clients re-registered through.\n\nPrerequisite: this policy queries the user-defined log-based metric `logging.googleapis.com/user/notify_callable_cleaned_token_count` (DISTRIBUTION) - it must exist in the project first; see docs/runbooks/observability.md section 4 for the create command. The aligner is ALIGN_SUM (sums every extracted cleanedTokenCount value in the window into a single number) because ALIGN_DELTA on a DISTRIBUTION metric yields a distribution, which a threshold condition cannot compare.\n\nRunbook: docs/runbooks/observability.md (section 1, series 3).",
+    "content": "The notify-* callables cleaned more than 100 stale FCM tokens in an hour (p99 of the `cleanedTokenCount` log field, M37). Potential incident (Slack #familyhq-ops), not a page.\n\nMass token invalidation usually means an external dependency changed:\n- The Firebase project's FCM key was rotated.\n- APNs revoked our certificate.\n- The app shipped a major version that all clients re-registered through.\n\nPrerequisite: this policy queries the user-defined log-based metric `logging.googleapis.com/user/notify_callable_cleaned_token_count` (DISTRIBUTION) - it must exist in the project first; see docs/runbooks/observability.md section 4 for the create command.\n\nThe aligner is ALIGN_PERCENTILE_99. GCP rejects DISTRIBUTION->scalar comparisons unless the aligner explicitly collapses the distribution: 'a time series of type DISTRIBUTION cannot be compared directly to a literal numeric threshold without first converting to a scalar via an explicit aligner such as ALIGN_PERCENTILE_50/95/99'. ALIGN_SUM was rejected at create time (verified 2026-06-16 against gcloud alpha monitoring policies create). Using p99 catches a single big spike, which is what we want operationally - if any cleanup event in the hour cleaned more than 100 tokens, the alert fires.\n\nRunbook: docs/runbooks/observability.md (section 1, series 3).",
     "mimeType": "text/markdown"
   },
   "combiner": "OR",
   "conditions": [
     {
-      "displayName": "sum(cleanedTokenCount) > 100 over 3600s",
+      "displayName": "p99(cleanedTokenCount) > 100 over 3600s",
       "conditionThreshold": {
         "filter": "metric.type=\"logging.googleapis.com/user/notify_callable_cleaned_token_count\" AND resource.type=\"cloud_run_revision\"",
         "aggregations": [
           {
             "alignmentPeriod": "3600s",
-            "perSeriesAligner": "ALIGN_SUM",
-            "crossSeriesReducer": "REDUCE_SUM"
+            "perSeriesAligner": "ALIGN_PERCENTILE_99",
+            "crossSeriesReducer": "REDUCE_MAX"
           }
         ],
         "comparison": "COMPARISON_GT",
