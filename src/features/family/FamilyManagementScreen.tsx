@@ -27,7 +27,7 @@ import { Avatar, Badge, BottomSheet, EmptyState, Skeleton } from '../../componen
 import { ToastViewport } from '../../app/ToastViewport';
 import { useToast } from '../../hooks/useToast';
 import type { Role, UserWithId } from '../../lib/types';
-import { NAME_MAX_LENGTH } from './familyManagementService';
+import { NAME_MAX_LENGTH, TIMEZONE_OPTIONS } from './familyManagementService';
 import {
   MONEY_INVALID_INDICATOR,
   formatMoney,
@@ -67,6 +67,21 @@ export interface FamilyManagementScreenProps {
    * button per row.
    */
   onRevokeInvite?: (inviteId: string) => Promise<void>;
+  /**
+   * F13 — current family timezone (IANA string, e.g. `'America/Toronto'`).
+   * Optional because the family doc may not have it set on legacy data; the
+   * screen falls back to the default for display. `| undefined` is explicit
+   * so TS's `exactOptionalPropertyTypes` accepts an explicit-undefined value
+   * from the route layer (the family-doc subscription resolves to undefined
+   * for legacy docs).
+   */
+  timezone?: string | undefined;
+  /**
+   * F13 — parent-only: change the family timezone. When omitted the row is
+   * not rendered (the route does not wire the callback for non-parents,
+   * mirroring the rules' `isParent()` gate).
+   */
+  onSetTimezone?: ((timezone: string) => Promise<void>) | undefined;
 }
 
 interface RenameTarget {
@@ -104,6 +119,8 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
     onCreateInvite,
     pendingInvites,
     onRevokeInvite,
+    timezone,
+    onSetTimezone,
   } = props;
   const { showToast } = useToast();
 
@@ -477,6 +494,15 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
             />
           </>
         )}
+
+        {/* F13 — parent-only family settings (timezone). The route layer
+            already restricts /family to parents, but the UI also gates on
+            viewer.role and the presence of the onSetTimezone callback so a
+            future non-parent embed (or a defensive non-parent viewer) cannot
+            invoke a write the server rule would deny. */}
+        {viewer.role === 'parent' && onSetTimezone && (
+          <TimezoneSection currentTimezone={timezone} onSetTimezone={onSetTimezone} />
+        )}
       </div>
 
       {renameTarget && (
@@ -809,5 +835,106 @@ function ConfirmDeactivateSheet(props: ConfirmDeactivateSheetProps): ReactElemen
         </div>
       </div>
     </BottomSheet>
+  );
+}
+
+interface TimezoneSectionProps {
+  /** Current `families.timezone` value (may be undefined for legacy docs). */
+  currentTimezone: string | undefined;
+  /** Save handler — service writes EXACTLY `{ timezone }`. */
+  onSetTimezone: (timezone: string) => Promise<void>;
+}
+
+/**
+ * IANA strings contain `/` and `_` — i18next's default keySeparator is `.`
+ * so a `/` in a leaf key is still safe (treated as part of the leaf), but
+ * `_` collides with i18next's `_` plural / context suffix in some configs.
+ * A short stable identifier keeps the locale files readable AND independent
+ * of any i18next default change.
+ */
+const TIMEZONE_LABEL_KEYS: Record<string, string> = {
+  'America/Toronto': 'toronto',
+  'America/Vancouver': 'vancouver',
+  'America/Edmonton': 'edmonton',
+  'America/Halifax': 'halifax',
+  'America/St_Johns': 'stJohns',
+};
+
+/**
+ * F13 — family timezone picker. Renders a labelled `<select>` with the
+ * Canadian shortlist plus the family's current value (when it's outside
+ * the shortlist) prefixed by "(current)" so a parent is never trapped on
+ * a legacy / non-shortlist value. Change immediately calls onSetTimezone;
+ * the in-flight guard mirrors the rename / deactivate pattern (single
+ * write per change, generic toast on failure).
+ */
+function TimezoneSection(props: TimezoneSectionProps): ReactElement {
+  const { t } = useTranslation();
+  const { currentTimezone, onSetTimezone } = props;
+  const { showToast } = useToast();
+  const selectId = useId();
+  const helpId = useId();
+  // The display value is the current timezone when present, otherwise the
+  // PR F bootstrap default. The screen NEVER lies about the saved state —
+  // an undefined `currentTimezone` means the family doc has no field; we
+  // show the universal default visually so the parent's first save aligns
+  // with the runtime fallback (M50 — `'America/Toronto'`).
+  const displayValue = currentTimezone ?? 'America/Toronto';
+  // A legacy / off-shortlist value gets a synthetic "(current)" option at
+  // the top so the parent can keep it. Architect mandate: never trap on a
+  // non-shortlist value.
+  const isShortlisted = (TIMEZONE_OPTIONS as readonly string[]).includes(displayValue);
+  const [pending, setPending] = useState(false);
+
+  const handleChange = (next: string): void => {
+    if (pending) return;
+    if (next === displayValue) return;
+    setPending(true);
+    void onSetTimezone(next)
+      .then(() => {
+        showToast(t('family.settings.toast.timezoneUpdated'));
+      })
+      .catch(() => {
+        showToast(t('family.toast.generic'));
+      })
+      .finally(() => {
+        setPending(false);
+      });
+  };
+
+  return (
+    <section
+      aria-labelledby={`${selectId}-heading`}
+      className="flex flex-col gap-8 rounded-card border border-surface-line bg-surface-card p-16"
+    >
+      <h2 id={`${selectId}-heading`} className="text-title font-bold text-ink">
+        {t('family.settings.heading')}
+      </h2>
+      <label htmlFor={selectId} className="text-label font-semibold text-ink-2">
+        {t('family.settings.timezoneLabel')}
+      </label>
+      <select
+        id={selectId}
+        value={displayValue}
+        aria-describedby={helpId}
+        disabled={pending}
+        onChange={(e) => handleChange(e.target.value)}
+        className="min-h-tap min-w-tap rounded-control border border-surface-line bg-surface-card px-12 text-body text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus disabled:opacity-60"
+      >
+        {!isShortlisted && (
+          <option value={displayValue}>
+            {t('family.settings.timezoneCurrent', { value: displayValue })}
+          </option>
+        )}
+        {TIMEZONE_OPTIONS.map((tz) => (
+          <option key={tz} value={tz}>
+            {t(`family.settings.timezoneName.${TIMEZONE_LABEL_KEYS[tz]}`)}
+          </option>
+        ))}
+      </select>
+      <p id={helpId} className="text-meta text-ink-mute">
+        {t('family.settings.timezoneHelp')}
+      </p>
+    </section>
   );
 }

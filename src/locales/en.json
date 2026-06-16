@@ -711,6 +711,22 @@
       "deactivated": "Member deactivated.",
       "reactivated": "Member reactivated.",
       "generic": "Something went wrong. Please try again."
+    },
+    "settings": {
+      "heading": "Family settings",
+      "timezoneLabel": "Family timezone",
+      "timezoneHelp": "Used to schedule morning notifications at the right local hour.",
+      "timezoneCurrent": "{{value}} (current)",
+      "timezoneName": {
+        "toronto": "Eastern Time — Toronto (Ontario, Quebec)",
+        "vancouver": "Pacific Time — Vancouver (British Columbia)",
+        "edmonton": "Mountain Time — Edmonton (Alberta, Saskatchewan, NWT)",
+        "halifax": "Atlantic Time — Halifax (Maritimes)",
+        "stJohns": "Newfoundland Time — St. John’s"
+      },
+      "toast": {
+        "timezoneUpdated": "Family timezone updated."
+      }
     }
   },
 

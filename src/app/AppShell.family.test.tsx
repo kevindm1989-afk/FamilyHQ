@@ -131,6 +131,12 @@ vi.mock('../features/family/usePendingFamilyInvites', () => ({
     refresh: vi.fn(),
   }),
 }));
+// F13 — family doc subscription. Mock to a settled "no doc yet" state so the
+// screen falls back to the universal default timezone (M50) for display.
+// Existing assertions on members / sections are unaffected.
+vi.mock('../features/family/useFamilyDoc', () => ({
+  useFamilyDoc: () => ({ family: null, loading: false }),
+}));
 vi.mock('../features/allowance/useAllowanceHistory', () => ({
   useAllowanceHistory: () => ({
     transactions: [],
