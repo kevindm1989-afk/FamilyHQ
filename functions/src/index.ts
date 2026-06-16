@@ -17,3 +17,8 @@ export { notifyWishlistResolved } from './notifyWishlistResolved.js';
 export { notifyBoardPost } from './notifyBoardPost.js';
 export { notifyTodoCreated } from './notifyTodoCreated.js';
 export { notifyTodoCompleted } from './notifyTodoCompleted.js';
+// PR F — onSchedule v2 scheduled-push functions (ADR-0016). Both
+// `notify*` names ride the existing `^notify` Cloud Monitoring filter
+// (docs/runbooks/observability.md) for zero-dashboard-change deploy.
+export { notifyEventReminders } from './notifyEventReminders.js';
+export { notifyBirthdays } from './notifyBirthdays.js';

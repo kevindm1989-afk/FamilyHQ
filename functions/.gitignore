@@ -1,3 +1,7 @@
 node_modules
-lib
+# Anchored to functions/ root — was previously bare `lib` which matched
+# every nested directory named `lib` (PR F's shared helper lives at
+# functions/src/lib/). `/lib` matches only the TypeScript build output
+# at functions/lib/ that this rule was meant to ignore.
+/lib
 *.log

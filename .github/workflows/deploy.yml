@@ -442,7 +442,7 @@ jobs:
           chmod 600 "$SA_PATH"
           GOOGLE_APPLICATION_CREDENTIALS="$SA_PATH" \
             npx firebase deploy \
-              --only functions:billingKillSwitch,functions:notifyChoreApproved,functions:notifyChoreSubmitted,functions:notifyWishlistRequested,functions:notifyWishlistResolved,functions:notifyBoardPost,functions:notifyTodoCreated,functions:notifyTodoCompleted \
+              --only functions:billingKillSwitch,functions:notifyChoreApproved,functions:notifyChoreSubmitted,functions:notifyWishlistRequested,functions:notifyWishlistResolved,functions:notifyBoardPost,functions:notifyTodoCreated,functions:notifyTodoCompleted,functions:notifyEventReminders,functions:notifyBirthdays \
               --project "$PROJECT_ID" \
               --non-interactive
           rm -f "$SA_PATH"

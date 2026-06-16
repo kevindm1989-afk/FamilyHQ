@@ -27,6 +27,16 @@ export interface Family {
   familyName: string;
   createdBy: string; // founding parent uid
   createdAt: number;
+  /**
+   * IANA timezone string (e.g. `'America/Toronto'`, `'America/Vancouver'`).
+   * Read by PR F's scheduled push functions to compute "8am family-local"
+   * delivery. Optional for backwards-compatibility with families created
+   * before PR F; the sweep handlers fall back to `'America/Toronto'` when
+   * absent (M50 quasi-location containment — neither the absent value nor
+   * the invalid value is ever logged). Parent-editable; rules cap at 50
+   * chars. F13 will surface this in a settings UI.
+   */
+  timezone?: string;
 }
 
 /**
