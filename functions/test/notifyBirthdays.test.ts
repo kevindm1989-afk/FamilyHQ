@@ -645,17 +645,21 @@ describe('F-T2 (birthdays, M46(b)): one family throws → handler resolves; othe
 // ===========================================================================
 
 describe('F-T3 (birthdays, M46(c)): onSchedule options declare retry disabled', () => {
-  it('options include retryConfig.retryCount === 0 OR retryConfig.maxRetries === 0', async () => {
+  it('options include retryCount: 0 (or tolerant equivalent — flat or nested)', async () => {
+    // firebase-functions v2 ScheduleOptions uses flat `retryCount` (see
+    // notifyEventReminders.test.ts F-T3 for the SDK-type reference).
+    // Accept the nested shapes too as a defense against future SDK
+    // renames — the SAFETY contract M46(c) is "retry is disabled", not a
+    // specific field name.
     await invokeSweep().catch(() => undefined);
     expect(onScheduleMock).toHaveBeenCalledTimes(1);
     const opts = (captured.options ?? {}) as Record<string, unknown>;
-    const retryConfig = opts.retryConfig as
-      | { retryCount?: unknown; maxRetries?: unknown }
-      | undefined;
-    const ok = retryConfig?.retryCount === 0 || retryConfig?.maxRetries === 0;
+    const flatRetryCount = opts.retryCount;
+    const nested = opts.retryConfig as { retryCount?: unknown; maxRetries?: unknown } | undefined;
+    const ok = flatRetryCount === 0 || nested?.retryCount === 0 || nested?.maxRetries === 0;
     expect(
       ok,
-      `F-T3 violation: onSchedule options must contain retryConfig.retryCount===0 OR retryConfig.maxRetries===0; got ${JSON.stringify(opts.retryConfig)}`,
+      `F-T3 violation: onSchedule options must declare retry disabled — flat retryCount === 0 OR retryConfig.retryCount === 0 OR retryConfig.maxRetries === 0; got retryCount=${JSON.stringify(opts.retryCount)} retryConfig=${JSON.stringify(opts.retryConfig)}`,
     ).toBe(true);
   });
 
