@@ -39,6 +39,79 @@ allow-list).
 
 ---
 
+## 0. Operator prerequisites — first deploy of PR F's scheduled functions
+
+If you have NEVER deployed PR F's `onSchedule` v2 functions
+(`notifyEventReminders`, `notifyBirthdays`) to a project before, the
+deploy SA cannot bootstrap the prerequisites on its own. You will
+hit a four-step cascade of failures on the first attempt. Bundle
+the four operator gates here BEFORE triggering the deploy and the
+cascade collapses to a single one-time setup.
+
+Captured 2026-06-16 from the PR F first-deploy attempt sequence
+(see `.context/lessons.md` "Server-trigger feature: first deploy
+will fail four times in a predictable cascade").
+
+### 0.1 Enable the two new Google Cloud APIs
+
+```bash
+gcloud services enable cloudscheduler.googleapis.com pubsub.googleapis.com \
+  --project="$FIREBASE_PROJECT_ID"
+```
+
+Why both: `onSchedule` v2 needs Cloud Scheduler for the cron job
+and lazily provisions Pub/Sub for the scheduler→function plumbing.
+Enabling both up front avoids two sequential operator gates.
+
+### 0.2 Grant the deploy SA Cloud Scheduler admin
+
+The deploy SA already has the bindings for Hosting + Firestore +
+Functions + Eventarc + Pub/Sub. Cloud Scheduler is the new
+permission PR F adds.
+
+```bash
+gcloud projects add-iam-policy-binding "$FIREBASE_PROJECT_ID" \
+  --member="serviceAccount:{DEPLOY_SA}" \
+  --role="roles/cloudscheduler.admin" \
+  --condition=None
+```
+
+Use the deploy SA email tied to `FIREBASE_SERVICE_ACCOUNT` in
+GitHub Actions secrets (find via
+`gcloud iam service-accounts list --project=$FIREBASE_PROJECT_ID
+--format='value(email,displayName)'` and pick the one with
+"firebase-adminsdk" or "github-actions-deploy" in the name).
+
+### 0.3 Verify both gates
+
+```bash
+gcloud services list --enabled --project="$FIREBASE_PROJECT_ID" \
+  --filter='config.name:(cloudscheduler.googleapis.com OR pubsub.googleapis.com)' \
+  --format='value(config.name)'
+
+gcloud projects get-iam-policy "$FIREBASE_PROJECT_ID" \
+  --flatten='bindings[].members' \
+  --filter='bindings.role:roles/cloudscheduler.admin' \
+  --format='value(bindings.members)'
+```
+
+Expected: both services listed, the deploy SA email returned.
+
+### 0.4 Confirm the SDK option shape (CI catches but worth knowing)
+
+`firebase-functions` v2 `ScheduleOptions` exposes retry options
+**flat** on the options object: `retryCount?: number` directly,
+NOT nested under `retryConfig`. PR F learned this the hard way —
+the local vitest mock accepted the nested shape; tsc in the CI
+deploy job did not. If a future scheduled function lands with
+`retryConfig: {...}`, expect `error TS2769: Object literal may
+only specify known properties, and 'retryConfig' does not exist
+in type 'ScheduleOptions'`.
+
+Reference: `functions/node_modules/firebase-functions/lib/v2/providers/scheduler.d.ts`.
+
+---
+
 ## 2. Prerequisites
 
 | Token | Where it comes from | Notes |

@@ -21,6 +21,29 @@ Append newest on top. Be specific — vague lessons don't prevent anything.
 
 ## Entries
 
+## 2026-06-16 — Server-trigger feature: first deploy will fail four times in a predictable cascade — bundle the operator gates into the design doc
+
+**Symptom:** PR F (scheduled push) needed four separate deploy attempts after merge, each surfacing a different operator-side gate that the deploy SA couldn't bootstrap on its own:
+
+1. `npm --prefix functions run build` (tsc) failed on `retryConfig: { retryCount: 0 }` — firebase-functions v2's `ScheduleOptions` exposes `retryCount` FLAT, not nested. The local vitest mock for `firebase-functions/v2/scheduler` accepts any options shape, so the type error only surfaced in CI's tsc pass (not in the SPA verifier's `tsc` pass — that one only covers `src/**`).
+2. `Permissions denied enabling cloudscheduler.googleapis.com` — the `onSchedule` v2 codepath needs the Cloud Scheduler API enabled on the project before the FIRST deploy that uses a scheduled function. The deploy SA lacks `serviceusage.services.enable`, so a project owner must enable it via the Console or `gcloud services enable`.
+3. (Same as #2 for `pubsub.googleapis.com`.) `onSchedule` v2 lazily provisions Pub/Sub for the scheduler→function plumbing.
+4. `cloudscheduler.jobs.update HTTP 403` — even with the API enabled, the deploy SA needs `roles/cloudscheduler.admin` (or the narrower `jobsEditor`) on the project to create the Cloud Scheduler job rows. The kill-switch in PR A used Pub/Sub (not scheduler), so this role was never granted; PR F is the first need.
+
+**Root cause:** the architect's design doc named the trigger architecture but did not enumerate the OPERATOR gates required to land it on a fresh project. The threat-modeler's M45 acceptance asked for the runbook commands but not the preconditions. So every gate surfaced as a deploy failure rather than a pre-deploy checklist.
+
+**Fix (this PR D run):** added a §0 "Operator prerequisites" section to `docs/runbooks/observability.md` listing the four gates with their gcloud commands. Next operator follows that checklist before the first scheduled-function deploy and the cascade is one step instead of four iterations.
+
+**Prevention:** When a feature adds a NEW Google Cloud product to the deploy surface (Cloud Scheduler, Cloud Storage, Cloud Tasks, BigQuery, Vertex AI, etc.), the architect's design doc MUST include an "Operator prerequisites" subsection with:
+  - APIs to enable (`gcloud services enable <api>` lines).
+  - IAM roles the deploy SA needs (with the precise `roles/*` strings).
+  - Any one-time resource bootstrapping (Pub/Sub topics, Cloud Scheduler jobs that aren't auto-created, etc.).
+  - Verification commands the operator runs to confirm each gate before triggering CI.
+
+The threat-modeler then references this section in the relevant M-mitigation (M45-analog "positive invoker pin" had the right shape — extend the same pattern to API + IAM gates).
+
+Corollary precedent: PR A's kill-switch had the same cascade (9 APIs + 4 actAs bindings + 3 service-agent bindings + 2 run.invoker bindings + 1 tokenCreator). That work eventually landed in `docs/runbooks/billing-killswitch.md` §0a-§0e. PR F should have looked at that pattern and applied it to Cloud Scheduler from the start.
+
 ## 2026-06-11 — When orchestrating a fan-out brief, paraphrasing the spec is how spec divergence enters the codebase — cite design + threat-model lines verbatim
 
 **Symptom:** PR D shipped `notifyTodoCreated` / `notifyTodoCompleted`
