@@ -395,12 +395,26 @@ service cloud.firestore {
     // read: an active member of THAT family (M24/P8).
     // update: a parent of THAT family (rename). delete: never from client.
     match /families/{familyId} {
+      // PR F1 — optional `timezone` field (IANA string, ≤ 50 chars). When
+      // an update touches `timezone`, the value MUST be a string ≤ 50
+      // chars. We do NOT enforce IANA-shape validation at the rules layer
+      // (rules can't load a tz database); the runtime sweep falls back to
+      // `America/Toronto` on invalid values (M50). An update that does
+      // NOT touch `timezone` passes this validator trivially. Members
+      // cannot trigger this branch — they fail the outer parent-only
+      // `update` rule first.
+      function timezoneFieldValid() {
+        return !('timezone' in request.resource.data)
+          || (request.resource.data.timezone is string
+              && request.resource.data.timezone.size() <= 50);
+      }
       allow create: if isSignedIn()
         && request.auth.uid == request.resource.data.createdBy
         && !callerExists();
       allow get: if isActive() && callerFamily() == familyId;
       allow list: if false;
-      allow update: if isParent() && callerFamily() == familyId;
+      allow update: if isParent() && callerFamily() == familyId
+        && timezoneFieldValid();
       allow delete: if false;
     }
 
@@ -1143,6 +1157,27 @@ service cloud.firestore {
       // can't delete other members' items.
       allow delete: if isActive() && sameFamily(resource)
                     && (isWishlistOwner() || isParent());
+    }
+
+    // --- scheduledSends (server-only, PR F dedupe markers) -----------------
+    //
+    // The scheduled-push functions (notifyEventReminders, notifyBirthdays)
+    // write `{kind}__{sourceId}__{yyyymmdd}` dedupe markers here via the
+    // Admin SDK (which bypasses these rules). Client get/list/create/update/
+    // delete are ALL denied — and the CREATE-DENY is the load-bearing
+    // suppression defense for T7.4: the marker id is FULLY PREDICTABLE to
+    // a family insider (members read own-family events/birthdays ids), so
+    // if a member could create a marker, they could pre-poison tomorrow's
+    // id and silently suppress a parent's reminder. The deny-all is
+    // therefore security-relevant, not hygiene. Never relax to
+    // `allow create: if X` without privacy-reviewer + threat-modeler
+    // sign-off. Pinned by test/rules/scheduledSends.test.ts (F-T8).
+    //
+    // The 7-day TTL on `expiresAt` is enforced server-side by Firestore
+    // TTL (runbook F12 activates it via `gcloud firestore fields ttls
+    // update`); the TTL is OUT OF SCOPE of these rules.
+    match /scheduledSends/{markerId} {
+      allow read, write: if false;
     }
 
     // --- rateLimits (server-only, push-notifications rate limit) -----------

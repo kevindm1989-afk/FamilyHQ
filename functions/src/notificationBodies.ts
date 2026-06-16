@@ -67,6 +67,28 @@ export const NOTIFICATION_BODIES = Object.freeze({
     title: 'To-do completed',
     body: "Something on your family's to-do list was finished.",
   }),
+  // PR F — three new scheduled-push constants. Each is verbatim per
+  // design §14.5 and threat-model M52. Vague-by-default: no event title,
+  // no birthday name, no "turning N" age, no anniversary specifics. The
+  // M34 forbidden-substring scan (name|wishlist|amount|balance|dollar|kid|
+  // child|parent|email|title|body) is run against every value at CI time
+  // (test/functions/notification-bodies-pr-f.test.ts F-T14 + the existing
+  // test/functions/notification-bodies-no-pi.test.ts blanket scan). Each
+  // body is < 80 chars to fit the lock-screen budget. The word "birthday"
+  // and "anniversary" are generic category words (not PI — the PERSON
+  // is never named).
+  eventReminder: Object.freeze({
+    title: 'Event reminder',
+    body: 'An event is on your family calendar today. Open Family HQ.',
+  }),
+  birthdayToday: Object.freeze({
+    title: 'Birthday today',
+    body: 'Someone special has a birthday today. Open Family HQ.',
+  }),
+  anniversaryToday: Object.freeze({
+    title: 'Anniversary today',
+    body: 'There is an anniversary today. Open Family HQ.',
+  }),
 }) satisfies Readonly<Record<string, NotificationBody>>;
 
 export type NotificationKind = keyof typeof NOTIFICATION_BODIES;
@@ -76,3 +98,11 @@ export type NotificationKind = keyof typeof NOTIFICATION_BODIES;
 // `mod.choreApproved` directly OR via `mod.NOTIFICATION_BODIES.choreApproved`.
 // Both shapes are valid against the test's tolerance branch.
 export const choreApproved = NOTIFICATION_BODIES.choreApproved;
+
+// PR F top-level named exports — same dual-resolution shape as choreApproved
+// above. The PR F constants-test (notification-bodies-pr-f.test.ts) probes
+// both `mod.<key>` and `mod.NOTIFICATION_BODIES[<key>]`; pinning both makes
+// either access pattern stable for the implementer tree downstream.
+export const eventReminder = NOTIFICATION_BODIES.eventReminder;
+export const birthdayToday = NOTIFICATION_BODIES.birthdayToday;
+export const anniversaryToday = NOTIFICATION_BODIES.anniversaryToday;

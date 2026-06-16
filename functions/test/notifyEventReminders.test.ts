@@ -157,10 +157,26 @@ const collectionListMock = vi.fn(
         if (op === '==' && fieldValue !== value) pass = false;
         if (op === '!=' && fieldValue === value) pass = false;
         const strCmp = typeof fieldValue === 'string' && typeof value === 'string';
-        if (op === '>=' && !(strCmp ? fieldValue >= (value as string) : (fieldValue as number) >= (value as number))) pass = false;
-        if (op === '<=' && !(strCmp ? fieldValue <= (value as string) : (fieldValue as number) <= (value as number))) pass = false;
-        if (op === '<' && !(strCmp ? fieldValue < (value as string) : (fieldValue as number) < (value as number))) pass = false;
-        if (op === '>' && !(strCmp ? fieldValue > (value as string) : (fieldValue as number) > (value as number))) pass = false;
+        if (
+          op === '>=' &&
+          !(strCmp ? fieldValue >= (value as string) : (fieldValue as number) >= (value as number))
+        )
+          pass = false;
+        if (
+          op === '<=' &&
+          !(strCmp ? fieldValue <= (value as string) : (fieldValue as number) <= (value as number))
+        )
+          pass = false;
+        if (
+          op === '<' &&
+          !(strCmp ? fieldValue < (value as string) : (fieldValue as number) < (value as number))
+        )
+          pass = false;
+        if (
+          op === '>' &&
+          !(strCmp ? fieldValue > (value as string) : (fieldValue as number) > (value as number))
+        )
+          pass = false;
       }
       if (!pass) continue;
       const segs = path.split('/');
@@ -274,7 +290,11 @@ vi.mock('firebase-admin/firestore', () => ({
     delete: () => ({ __sentinel: 'fieldDelete' }),
   },
   Timestamp: {
-    now: () => ({ toMillis: () => FIXED_NOW, seconds: Math.floor(FIXED_NOW / 1000), nanoseconds: 0 }),
+    now: () => ({
+      toMillis: () => FIXED_NOW,
+      seconds: Math.floor(FIXED_NOW / 1000),
+      nanoseconds: 0,
+    }),
     fromMillis: (ms: number) => ({
       toMillis: () => ms,
       seconds: Math.floor(ms / 1000),
@@ -538,11 +558,7 @@ describe('F-T1 (M46(a)): handler IGNORES the event payload', () => {
           const parent = node.parent;
           if (parent && ts.isPropertyAssignment(parent) && parent.name === node) {
             // key position — fine
-          } else if (
-            parent &&
-            ts.isPropertyAccessExpression(parent) &&
-            parent.name === node
-          ) {
+          } else if (parent && ts.isPropertyAccessExpression(parent) && parent.name === node) {
             // foo.event — fine (not reading the parameter)
           } else {
             const { line } = sf.getLineAndCharacterOfPosition(node.getStart());
@@ -562,10 +578,7 @@ describe('F-T1 (M46(a)): handler IGNORES the event payload', () => {
         node.arguments.length >= 2
       ) {
         const handler = node.arguments[1];
-        if (
-          handler &&
-          (ts.isArrowFunction(handler) || ts.isFunctionExpression(handler))
-        ) {
+        if (handler && (ts.isArrowFunction(handler) || ts.isFunctionExpression(handler))) {
           if (handler.body) checkBody(handler.body);
         }
       }
@@ -574,9 +587,7 @@ describe('F-T1 (M46(a)): handler IGNORES the event payload', () => {
 
     visit(sf);
     if (hits.length > 0) {
-      const report = hits
-        .map((h) => `  - line ${h.line}: ${h.text}`)
-        .join('\n');
+      const report = hits.map((h) => `  - line ${h.line}: ${h.text}`).join('\n');
       throw new Error(
         `F-T1 (M46(a)) violation: handler body references the \`event\` identifier — must ignore the payload entirely (rename param to \`_event\` or omit it):\n${report}`,
       );
@@ -641,7 +652,12 @@ describe('F-T2 (M46(b)): handler resolves even when one family throws; other fam
     let eventsCalls = 0;
     const realImpl = collectionListMock.getMockImplementation();
     collectionListMock.mockImplementation(
-      async (prefix: string, whereClauses?: QueryClause[], orderBys?: QueryOrder[], limitN?: number) => {
+      async (
+        prefix: string,
+        whereClauses?: QueryClause[],
+        orderBys?: QueryOrder[],
+        limitN?: number,
+      ) => {
         if (prefix === 'events') {
           eventsCalls += 1;
           if (eventsCalls === 1) {
@@ -669,10 +685,7 @@ describe('F-T2 (M46(b)): handler resolves even when one family throws; other fam
     ).toBeGreaterThanOrEqual(2);
 
     // A structured warn for the failed family must exist.
-    expect(
-      loggerWarnMock,
-      'a structured warn must fire for the failed family',
-    ).toHaveBeenCalled();
+    expect(loggerWarnMock, 'a structured warn must fire for the failed family').toHaveBeenCalled();
   });
 });
 
@@ -719,7 +732,7 @@ describe('F-T3 (M46(c)): onSchedule options declare retry disabled', () => {
 // ===========================================================================
 
 describe('F-T4 (M47) [BLOCKING]: two families at hour 8 each get exactly their own tokens — no token leak', () => {
-  it('exactly ONE multicast per family, each containing ONLY that family\'s tokens', async () => {
+  it("exactly ONE multicast per family, each containing ONLY that family's tokens", async () => {
     seedFamilyA();
     seedFamilyB();
     await invokeSweep();
@@ -761,7 +774,7 @@ describe('F-T4 (M47) [BLOCKING]: two families at hour 8 each get exactly their o
 // ===========================================================================
 
 describe('F-T5 (M47): recipient with userPrivate.familyId ≠ loop family is SKIPPED + warned', () => {
-  it('the corrupt recipient\'s tokens are never read; multicast continues for the rest', async () => {
+  it("the corrupt recipient's tokens are never read; multicast continues for the rest", async () => {
     seedFamilyA();
     // Corrupt the kid's userPrivate familyId so it does NOT match family A.
     docStore.set(`userPrivate/${KID_A_UID}`, {
@@ -776,7 +789,7 @@ describe('F-T5 (M47): recipient with userPrivate.familyId ≠ loop family is SKI
     const [msg] = sendEachForMulticastMock.mock.calls[0] as [{ tokens: string[] }];
     expect(
       msg.tokens,
-      `kid\'s token must not be in the multicast (familyId mismatch — skipped); got: ${JSON.stringify(msg.tokens)}`,
+      `kid's token must not be in the multicast (familyId mismatch — skipped); got: ${JSON.stringify(msg.tokens)}`,
     ).toEqual([TOKEN_VALUE_PARENT_A]);
   });
 
@@ -1107,7 +1120,7 @@ describe('F-T12 (M51): isActive=false at sweep time → no token read, no send f
     const [msg] = sendEachForMulticastMock.mock.calls[0] as [{ tokens: string[] }];
     expect(
       msg.tokens,
-      `deactivated recipient kid\'s token must not be in multicast; got: ${JSON.stringify(msg.tokens)}`,
+      `deactivated recipient kid's token must not be in multicast; got: ${JSON.stringify(msg.tokens)}`,
     ).not.toContain(TOKEN_VALUE_KID_A);
     expect(msg.tokens).toContain(TOKEN_VALUE_PARENT_A);
   });
@@ -1154,10 +1167,7 @@ describe('F-T13 (M51/M47) [BLOCKING]: family-B event NEVER reaches family-A reci
     await invokeSweep();
 
     const calls = sendEachForMulticastMock.mock.calls as Array<[{ tokens: string[] }]>;
-    expect(
-      calls.length,
-      `expected 2 multicasts (one per family); got ${calls.length}`,
-    ).toBe(2);
+    expect(calls.length, `expected 2 multicasts (one per family); got ${calls.length}`).toBe(2);
 
     const tokenToFamily: Record<string, string> = {
       [TOKEN_VALUE_PARENT_A]: FAMILY_A,
@@ -1174,27 +1184,20 @@ describe('F-T13 (M51/M47) [BLOCKING]: family-B event NEVER reaches family-A reci
       ).toBe(1);
     }
 
-    const bCall = calls
-      .map(([m]) => m.tokens)
-      .find((t) => t.includes(TOKEN_VALUE_PARENT_B));
+    const bCall = calls.map(([m]) => m.tokens).find((t) => t.includes(TOKEN_VALUE_PARENT_B));
     expect(bCall, 'family B multicast must exist').toBeDefined();
-    expect(
-      bCall,
-      'family B multicast must NOT contain family A parent token',
-    ).not.toContain(TOKEN_VALUE_PARENT_A);
-    expect(
-      bCall,
-      'family B multicast must NOT contain family A kid token',
-    ).not.toContain(TOKEN_VALUE_KID_A);
+    expect(bCall, 'family B multicast must NOT contain family A parent token').not.toContain(
+      TOKEN_VALUE_PARENT_A,
+    );
+    expect(bCall, 'family B multicast must NOT contain family A kid token').not.toContain(
+      TOKEN_VALUE_KID_A,
+    );
 
-    const aCall = calls
-      .map(([m]) => m.tokens)
-      .find((t) => t.includes(TOKEN_VALUE_PARENT_A));
+    const aCall = calls.map(([m]) => m.tokens).find((t) => t.includes(TOKEN_VALUE_PARENT_A));
     expect(aCall, 'family A multicast must exist').toBeDefined();
-    expect(
-      aCall,
-      'family A multicast must NOT contain family B token',
-    ).not.toContain(TOKEN_VALUE_PARENT_B);
+    expect(aCall, 'family A multicast must NOT contain family B token').not.toContain(
+      TOKEN_VALUE_PARENT_B,
+    );
   });
 
   it('every scheduledSends marker.familyId equals the loop family (M47)', async () => {
@@ -1247,14 +1250,12 @@ describe('F-T-EXTRA: happy path body & off-hour skip', () => {
     expect(msg.notification.body).not.toContain('${');
     // The vague body never references the seeded event title/description.
     const lower = JSON.stringify(msg.notification).toLowerCase();
-    expect(
-      lower,
-      'event title must NEVER appear in the outbound FCM payload',
-    ).not.toContain('soccer');
-    expect(
-      lower,
-      'event description must NEVER appear in the outbound FCM payload',
-    ).not.toContain('coach');
+    expect(lower, 'event title must NEVER appear in the outbound FCM payload').not.toContain(
+      'soccer',
+    );
+    expect(lower, 'event description must NEVER appear in the outbound FCM payload').not.toContain(
+      'coach',
+    );
   });
 
   it('Vancouver family (PT 05:00 at FIXED_NOW — not hour 8) does NOT receive a multicast', async () => {

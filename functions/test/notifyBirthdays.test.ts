@@ -149,10 +149,26 @@ const collectionListMock = vi.fn(
         if (op === '==' && fieldValue !== value) pass = false;
         if (op === '!=' && fieldValue === value) pass = false;
         const strCmp = typeof fieldValue === 'string' && typeof value === 'string';
-        if (op === '>=' && !(strCmp ? fieldValue >= (value as string) : (fieldValue as number) >= (value as number))) pass = false;
-        if (op === '<=' && !(strCmp ? fieldValue <= (value as string) : (fieldValue as number) <= (value as number))) pass = false;
-        if (op === '<' && !(strCmp ? fieldValue < (value as string) : (fieldValue as number) < (value as number))) pass = false;
-        if (op === '>' && !(strCmp ? fieldValue > (value as string) : (fieldValue as number) > (value as number))) pass = false;
+        if (
+          op === '>=' &&
+          !(strCmp ? fieldValue >= (value as string) : (fieldValue as number) >= (value as number))
+        )
+          pass = false;
+        if (
+          op === '<=' &&
+          !(strCmp ? fieldValue <= (value as string) : (fieldValue as number) <= (value as number))
+        )
+          pass = false;
+        if (
+          op === '<' &&
+          !(strCmp ? fieldValue < (value as string) : (fieldValue as number) < (value as number))
+        )
+          pass = false;
+        if (
+          op === '>' &&
+          !(strCmp ? fieldValue > (value as string) : (fieldValue as number) > (value as number))
+        )
+          pass = false;
       }
       if (!pass) continue;
       const segs = path.split('/');
@@ -265,7 +281,11 @@ vi.mock('firebase-admin/firestore', () => ({
     delete: () => ({ __sentinel: 'fieldDelete' }),
   },
   Timestamp: {
-    now: () => ({ toMillis: () => FIXED_NOW, seconds: Math.floor(FIXED_NOW / 1000), nanoseconds: 0 }),
+    now: () => ({
+      toMillis: () => FIXED_NOW,
+      seconds: Math.floor(FIXED_NOW / 1000),
+      nanoseconds: 0,
+    }),
     fromMillis: (ms: number) => ({
       toMillis: () => ms,
       seconds: Math.floor(ms / 1000),
@@ -587,7 +607,12 @@ describe('F-T2 (birthdays, M46(b)): one family throws → handler resolves; othe
     let birthdaysCalls = 0;
     const realImpl = collectionListMock.getMockImplementation();
     collectionListMock.mockImplementation(
-      async (prefix: string, whereClauses?: QueryClause[], orderBys?: QueryOrder[], limitN?: number) => {
+      async (
+        prefix: string,
+        whereClauses?: QueryClause[],
+        orderBys?: QueryOrder[],
+        limitN?: number,
+      ) => {
         if (prefix === 'birthdays') {
           birthdaysCalls += 1;
           if (birthdaysCalls === 1) {
@@ -648,7 +673,7 @@ describe('F-T3 (birthdays, M46(c)): onSchedule options declare retry disabled', 
 // ===========================================================================
 
 describe('F-T4 (birthdays, M47) [BLOCKING]: per-family token isolation', () => {
-  it('exactly ONE multicast per family; each contains ONLY that family\'s tokens', async () => {
+  it("exactly ONE multicast per family; each contains ONLY that family's tokens", async () => {
     seedFamilyA();
     seedFamilyB();
     await invokeSweep();
@@ -730,9 +755,15 @@ describe('F-T6 (birthdays, M48): marker create() BEFORE send; marker present →
       (s) => s.startsWith('create:scheduledSends/') && s.includes(BIRTHDAY_A_ID),
     );
     const sendIdx = callOrder.indexOf('send');
-    expect(createIdx, `marker create must fire; got ${JSON.stringify(callOrder)}`).toBeGreaterThanOrEqual(0);
+    expect(
+      createIdx,
+      `marker create must fire; got ${JSON.stringify(callOrder)}`,
+    ).toBeGreaterThanOrEqual(0);
     expect(sendIdx, 'send must fire').toBeGreaterThanOrEqual(0);
-    expect(createIdx, `marker create must precede send; got create=${createIdx}, send=${sendIdx}`).toBeLessThan(sendIdx);
+    expect(
+      createIdx,
+      `marker create must precede send; got create=${createIdx}, send=${sendIdx}`,
+    ).toBeLessThan(sendIdx);
   });
 
   it('marker present: no send', async () => {
@@ -992,8 +1023,7 @@ describe('F-T14 (M52): anniversary fixture fires under same sweep with anniversa
         anniversaryToday?: { title: string; body: string };
         NOTIFICATION_BODIES?: Record<string, { title: string; body: string }>;
       };
-      const entry =
-        mod.anniversaryToday ?? mod.NOTIFICATION_BODIES?.['anniversaryToday'];
+      const entry = mod.anniversaryToday ?? mod.NOTIFICATION_BODIES?.['anniversaryToday'];
       if (entry) constants = { anniversaryToday: entry };
     } catch {
       /* fall through — body assertion below catches it */
@@ -1016,10 +1046,9 @@ describe('F-T14 (M52): anniversary fixture fires under same sweep with anniversa
 
     // Privacy: the anniversary name must never appear in the outbound payload.
     const serialized = JSON.stringify(msg.notification).toLowerCase();
-    expect(
-      serialized,
-      'anniversary name must NEVER appear in the FCM payload (M52)',
-    ).not.toContain('xyzzy');
+    expect(serialized, 'anniversary name must NEVER appear in the FCM payload (M52)').not.toContain(
+      'xyzzy',
+    );
   });
 
   it('a birthday-type fixture uses the birthdayToday body (not anniversaryToday)', async () => {
@@ -1050,10 +1079,9 @@ describe('F-T14 (M52): anniversary fixture fires under same sweep with anniversa
       expect(msg.notification.title).toBe(constants['birthdayToday']!.title);
       expect(msg.notification.body).toBe(constants['birthdayToday']!.body);
       // It must NOT be the anniversary body.
-      expect(
-        msg.notification.title,
-        'birthday push must NOT use anniversaryToday body',
-      ).not.toBe(constants['anniversaryToday']!.title);
+      expect(msg.notification.title, 'birthday push must NOT use anniversaryToday body').not.toBe(
+        constants['anniversaryToday']!.title,
+      );
     }
     // Privacy: the birthday name "Helen-Grandma-XYZZY" must never appear.
     const serialized = JSON.stringify(msg.notification).toLowerCase();

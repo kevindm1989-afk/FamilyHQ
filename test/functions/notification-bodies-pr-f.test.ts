@@ -118,10 +118,10 @@ describe('F-T14 (M52): the three PR F constants exist and pass the M34 scan', ()
       const entry = getEntry(mod, key) as Record<string, unknown> | undefined;
       expect(entry).toBeDefined();
       const keys = Object.keys(entry ?? {}).sort();
-      expect(
-        keys,
-        `${key} must have exactly {title, body}; got ${JSON.stringify(keys)}`,
-      ).toEqual(['body', 'title']);
+      expect(keys, `${key} must have exactly {title, body}; got ${JSON.stringify(keys)}`).toEqual([
+        'body',
+        'title',
+      ]);
     });
 
     it(`${key} title + body are each < 80 characters (lock-screen budget, M34)`, async () => {

@@ -94,6 +94,16 @@ const M38_LOG_ALLOWLIST: ReadonlySet<string> = new Set([
   // Generic
   'timestamp',
   'errorCode',
+  // PR F — scheduled-push (notifyEventReminders / notifyBirthdays) fields
+  // per design §14.7 + threat-model §A.18 / F9. `timezone` and `localDay`
+  // are EXPLICITLY FORBIDDEN (quasi-location PI — M50) and stay off this
+  // list; they live as in-handler locals only. Test pins this via the
+  // companion F-T10 AST scan on the source files.
+  'familiesScanned',
+  'familiesMatched',
+  'sourceCount',
+  'markerSkipCount',
+  'droppedCount',
 ]);
 
 // Forbidden-substring check (case-insensitive). If a key contains any of

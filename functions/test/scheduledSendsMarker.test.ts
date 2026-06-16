@@ -35,7 +35,9 @@ const HELPER_PATH = resolve(__dirname, '../src/lib/scheduledSendsMarker.ts');
 const HELPER_PATH_ALT = resolve(__dirname, '../src/scheduledSendsMarker.ts');
 
 const helperExists = existsSync(HELPER_PATH) || existsSync(HELPER_PATH_ALT);
-const HELPER_RELPATH = existsSync(HELPER_PATH) ? '../src/lib/scheduledSendsMarker.js' : '../src/scheduledSendsMarker.js';
+const HELPER_RELPATH = existsSync(HELPER_PATH)
+  ? '../src/lib/scheduledSendsMarker.js'
+  : '../src/scheduledSendsMarker.js';
 
 async function loadHelper(): Promise<Record<string, unknown> | null> {
   if (!helperExists) return null;
@@ -110,7 +112,7 @@ describe('scheduledSends marker helper — optional extraction contract', () => 
   );
 
   it.runIf(helperExists)(
-    'sendFn() throws → marker is NOT deleted; error PROPAGATES (per-family try/catch is the caller\'s job)',
+    "sendFn() throws → marker is NOT deleted; error PROPAGATES (per-family try/catch is the caller's job)",
     async () => {
       const mod = await loadHelper();
       const markAndSendOnce = (mod?.markAndSendOnce ?? mod?.default) as

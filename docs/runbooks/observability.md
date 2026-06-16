@@ -280,3 +280,115 @@ If you find drift (console edits that aren't in the repo), reconcile by
 re-applying the JSON — that is the rollback. If the console edit was a
 genuine improvement, port it into the JSON and open the PR; never just
 "leave it in the console."
+
+---
+
+## 7. PR F — Scheduled-push invoker pin (M45, F12 acceptance — MANUAL, not CI)
+
+The two PR F functions (`notifyEventReminders`, `notifyBirthdays`) are
+`onSchedule` v2; the deploy-managed Cloud Scheduler job invokes them over
+OIDC-authenticated HTTP. Threat-model T7.1 is the `run.invoker` drift
+attack — a forged invocation can't leak data (payload is ignored, markers
+dedupe), but each call burns a full `families` scan and walks the project
+toward the $5 kill-switch. **M45 closes this with a POSITIVE invoker pin:
+each service's `roles/run.invoker` member set must contain EXACTLY the
+recorded scheduler principal — and nothing else.** A negative-only
+assertion (`allUsers` absent) is INSUFFICIENT per the threat-modeler's
+2026-06-11 verdict (§A.18 gate condition #1).
+
+This is a manual operator step run after the FIRST deploy of PR F, then
+re-verified on every subsequent deploy of these two functions. It is NOT
+CI-gated — the principal string is captured from the live Cloud Run IAM
+policy after the first staging deploy and recorded in operator notes.
+
+### 7.1 Capture the deploy-managed invoker principal (first staging deploy only)
+
+```sh
+# Set once per shell.
+export PROJECT_ID="$(jq -r '.projects.default' .firebaserc)"
+export REGION="northamerica-northeast1"
+
+# Capture the IAM policy from each Cloud Run service that backs the two
+# scheduled functions. The service names are lower-case versions of the
+# function names (Firebase 2nd-gen naming convention).
+gcloud run services get-iam-policy notifyeventreminders \
+  --region="$REGION" --project="$PROJECT_ID" \
+  --format='json(bindings)' | tee /tmp/invoker-eventreminders.json
+
+gcloud run services get-iam-policy notifybirthdays \
+  --region="$REGION" --project="$PROJECT_ID" \
+  --format='json(bindings)' | tee /tmp/invoker-birthdays.json
+```
+
+Record the principal string under `roles/run.invoker` in operator notes
+(it is typically of the form
+`serviceAccount:<project-number>@gcp-sa-pubsub.iam.gserviceaccount.com` or
+the project's deploy-managed scheduler SA). The recorded string is the
+expected value for every subsequent re-deploy.
+
+### 7.2 Negative + positive assertions (re-run on every deploy)
+
+```sh
+for SVC in notifyeventreminders notifybirthdays; do
+  echo "=== $SVC ==="
+  POLICY="$(gcloud run services get-iam-policy "$SVC" \
+    --region="$REGION" --project="$PROJECT_ID" --format=json)"
+  # NEGATIVE — `allUsers` / `allAuthenticatedUsers` must NOT appear.
+  if echo "$POLICY" | jq -e '
+        .bindings[]? | select(.role=="roles/run.invoker")
+        | .members[]? | select(. == "allUsers" or . == "allAuthenticatedUsers")' \
+       > /dev/null; then
+    echo "FAIL: public invoker exposure on $SVC — see threat-model T7.1 (M45)"
+    exit 1
+  fi
+  # POSITIVE — exactly the recorded principal under roles/run.invoker.
+  MEMBERS="$(echo "$POLICY" | jq -r '.bindings[]?
+    | select(.role=="roles/run.invoker") | .members[]?' | sort -u)"
+  echo "$SVC invoker members:"
+  echo "$MEMBERS"
+  echo "Compare against the recorded principal in operator notes. If it differs,"
+  echo "investigate before continuing — silent drift here is the T7.1 attack."
+done
+```
+
+### 7.3 Scheduler job count + kill-switch interplay
+
+`onSchedule` deploys ONE Cloud Scheduler job per function. After the PR F
+deploy there must be EXACTLY 2 jobs in the project's scheduler region:
+
+```sh
+gcloud scheduler jobs list --project="$PROJECT_ID" \
+  --location="$REGION" \
+  --filter='name~firebase-schedule-(notifyEventReminders|notifyBirthdays)'
+```
+
+If the kill-switch fires (`billingKillSwitch` detaches billing), BOTH
+scheduled jobs will error every tick until billing is re-attached. Pause
+them to silence the error noise during the incident:
+
+```sh
+gcloud scheduler jobs pause firebase-schedule-notifyEventReminders \
+  --location="$REGION" --project="$PROJECT_ID"
+gcloud scheduler jobs pause firebase-schedule-notifyBirthdays \
+  --location="$REGION" --project="$PROJECT_ID"
+
+# Resume after the kill-switch incident is resolved + billing is re-attached:
+gcloud scheduler jobs resume firebase-schedule-notifyEventReminders \
+  --location="$REGION" --project="$PROJECT_ID"
+gcloud scheduler jobs resume firebase-schedule-notifyBirthdays \
+  --location="$REGION" --project="$PROJECT_ID"
+```
+
+### 7.4 Activate the `scheduledSends` TTL (one-time per environment)
+
+```sh
+# 7-day TTL on the `expiresAt` field — ADR-0015 pattern. Idempotent.
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=scheduledSends \
+  --enable-ttl \
+  --project="$PROJECT_ID"
+```
+
+The TTL is OUT OF SCOPE of `test/rules/scheduledSends.test.ts` (which
+covers the client deny-all); the runbook step above is the operator's
+responsibility per design §14.4 + ADR-0015.
