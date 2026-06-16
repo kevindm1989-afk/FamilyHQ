@@ -191,10 +191,12 @@ MQL). The three policies ship as review-gated JSON in
   all clients re-registered through). **Prerequisite:** the log-based metric
   from §4 must exist first — the policy queries
   `logging.googleapis.com/user/notify_callable_cleaned_token_count`. The
-  aligner is `ALIGN_SUM` (not `ALIGN_DELTA`): on a DISTRIBUTION metric,
-  `ALIGN_DELTA` yields a distribution, which a threshold condition cannot
-  compare; `ALIGN_SUM` collapses every extracted value in the window to one
-  number.
+  aligner is `ALIGN_PERCENTILE_99` with `crossSeriesReducer: REDUCE_MAX`. GCP
+  rejects DISTRIBUTION→scalar comparisons unless the aligner explicitly
+  collapses the distribution to a scalar — `ALIGN_SUM` and `ALIGN_DELTA` are
+  both rejected at create time. `ALIGN_PERCENTILE_99` keeps the
+  operational intent (any single hour where the p99 cleanup-event size
+  crossed 100 fires the alert).
 
 ### Provisioning
 
