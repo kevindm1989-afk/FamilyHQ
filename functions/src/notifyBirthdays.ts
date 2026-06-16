@@ -29,6 +29,7 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { NOTIFICATION_BODIES } from './notificationBodies.js';
+import { localHourAndDay, DEFAULT_TIMEZONE } from './lib/localHourAndDay.js';
 
 if (getApps().length === 0) {
   initializeApp();
@@ -37,7 +38,7 @@ if (getApps().length === 0) {
 const KIND = 'birthday';
 const CATEGORY_KEY = 'birthdays';
 const REGION = 'northamerica-northeast1';
-const DEFAULT_TIMEZONE = 'America/Toronto';
+// DEFAULT_TIMEZONE imported from ./lib/localHourAndDay.js — shared helper.
 const FAN_OUT_CAP = 10;
 const FCM_STALE_TOKEN_CODES: ReadonlySet<string> = new Set([
   'messaging/registration-token-not-registered',
@@ -71,42 +72,6 @@ function readSnap(snap: unknown): Record<string, unknown> | undefined {
     return candidate.data as Record<string, unknown>;
   }
   return undefined;
-}
-
-function localHourAndDay(
-  nowMs: number,
-  tz: string,
-): { hour: number; day: string; usedFallback: boolean } {
-  function compute(zone: string): { hour: number; day: string } {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: zone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    }).formatToParts(new Date(nowMs));
-    const lookup: Record<string, string> = {};
-    for (const part of parts) {
-      if (part.type !== 'literal') lookup[part.type] = part.value;
-    }
-    const year = lookup['year'] ?? '1970';
-    const month = lookup['month'] ?? '01';
-    const dayOfMonth = lookup['day'] ?? '01';
-    const hourStr = lookup['hour'] ?? '00';
-    return {
-      hour: Number.parseInt(hourStr, 10),
-      day: `${year}-${month}-${dayOfMonth}`,
-    };
-  }
-  try {
-    const result = compute(tz);
-    return { ...result, usedFallback: false };
-  } catch {
-    const fallback = compute(DEFAULT_TIMEZONE);
-    return { ...fallback, usedFallback: true };
-  }
 }
 
 /**
@@ -389,10 +354,14 @@ export const notifyBirthdays = onSchedule(
       }
     }
 
+    // M38 sweep summary — use `familiesScanned` (PR F allow-list addition)
+    // not `recipientCount`. Avoids the semantic-drift the reviewer flagged
+    // (concern 2): reusing recipientCount for a families-count silently
+    // mixes dashboard series.
     logger.info('notifyBirthdays: sweep complete', {
       kind: KIND,
       actorUid: null,
-      recipientCount: familiesScanned,
+      familiesScanned,
       successCount,
       cleanedTokenCount,
       durationMs: Date.now() - startedAt,

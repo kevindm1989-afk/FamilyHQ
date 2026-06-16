@@ -95,6 +95,12 @@ export async function signUpFoundingParent(
       familyName: input.familyName,
       createdBy: uid,
       createdAt,
+      // PR F (ADR-0016): family-local "8am" delivery for scheduled push
+      // (event reminders + birthdays) reads families.timezone. Default
+      // every new family to America/Toronto; the F13 settings UI lets a
+      // parent change it later. The PR F sweep also falls back to this
+      // value at runtime when the field is missing (older families).
+      timezone: 'America/Toronto',
     });
     // Privacy finding 2: the family-readable users doc carries NO email. Adult
     // email [PI] lives on the per-subject userPrivate/{uid} doc, written in this

@@ -54,6 +54,7 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { NOTIFICATION_BODIES } from './notificationBodies.js';
+import { localHourAndDay, DEFAULT_TIMEZONE } from './lib/localHourAndDay.js';
 
 if (getApps().length === 0) {
   initializeApp();
@@ -65,7 +66,7 @@ const REGION = 'northamerica-northeast1';
 // §14.2 — until the F13 family-settings UI ships, every family defaults to
 // America/Toronto. An absent or invalid `families.timezone` falls back to
 // this value at sweep time (M50). No backfill migration required.
-const DEFAULT_TIMEZONE = 'America/Toronto';
+// DEFAULT_TIMEZONE imported from ./lib/localHourAndDay.js — shared helper.
 // §14.6 — per-family per-day per-kind fan-out cap. Earliest 10 sent
 // (events by `date` asc); rest dropped + warn. Kill-switch is the hard
 // backstop.
@@ -116,49 +117,6 @@ function readSnap(snap: unknown): Record<string, unknown> | undefined {
     return candidate.data as Record<string, unknown>;
   }
   return undefined;
-}
-
-/**
- * Returns `{ hour, day }` (local hour 0-23 + local date `YYYY-MM-DD`) for
- * `nowMs` in IANA zone `tz`. On invalid tz, returns the same shape resolved
- * in `DEFAULT_TIMEZONE` with `usedFallback: true`. The caller logs only
- * `{ kind, familyId }` on `usedFallback` — the invalid tz string is NEVER
- * logged (M50 / §A.18 T7.3 — quasi-location containment).
- */
-function localHourAndDay(
-  nowMs: number,
-  tz: string,
-): { hour: number; day: string; usedFallback: boolean } {
-  function compute(zone: string): { hour: number; day: string } {
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: zone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    }).formatToParts(new Date(nowMs));
-    const lookup: Record<string, string> = {};
-    for (const part of parts) {
-      if (part.type !== 'literal') lookup[part.type] = part.value;
-    }
-    const year = lookup['year'] ?? '1970';
-    const month = lookup['month'] ?? '01';
-    const dayOfMonth = lookup['day'] ?? '01';
-    const hourStr = lookup['hour'] ?? '00';
-    return {
-      hour: Number.parseInt(hourStr, 10),
-      day: `${year}-${month}-${dayOfMonth}`,
-    };
-  }
-  try {
-    const result = compute(tz);
-    return { ...result, usedFallback: false };
-  } catch {
-    const fallback = compute(DEFAULT_TIMEZONE);
-    return { ...fallback, usedFallback: true };
-  }
 }
 
 /**
@@ -463,14 +421,18 @@ export const notifyEventReminders = onSchedule(
     }
 
     // M38 sweep summary. Payload keys are restricted to the M38 allow-list
-    // (kind, familyId-omitted because this is the aggregate; actorUid:null
-    // because there is no caller; recipientCount, successCount,
-    // cleanedTokenCount, durationMs). `timezone` and `localDay` are on the
+    // (kind, actorUid:null because there is no caller; familiesScanned,
+    // successCount, cleanedTokenCount, durationMs). `familiesScanned` is a
+    // PR-F-specific allow-listed key (per `M38_LOG_ALLOWLIST` extension in
+    // `test/functions/logger-allowlist-ast.test.ts`) — using the precise
+    // key avoids the semantic drift second-opinion concern 2 flagged
+    // (reusing `recipientCount` for a families-count would silently mix
+    // series in the dashboard). `timezone` and `localDay` are on the
     // M38 FORBIDDEN list and are NOT included.
     logger.info('notifyEventReminders: sweep complete', {
       kind: KIND,
       actorUid: null,
-      recipientCount: familiesScanned,
+      familiesScanned,
       successCount,
       cleanedTokenCount,
       durationMs: Date.now() - startedAt,
