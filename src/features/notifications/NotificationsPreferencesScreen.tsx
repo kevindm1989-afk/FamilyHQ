@@ -76,6 +76,11 @@ const CATEGORY_SPECS: readonly CategorySpec[] = [
   { key: 'myWishlistResolved', visibleTo: ['member'] },
   { key: 'familyBoardPosts', visibleTo: 'all' },
   { key: 'familyTodos', visibleTo: 'all' },
+  // PR F (F10) — scheduled-send categories. The schedulers fan out to every
+  // active family member that has opted in, so the toggle is visible to all
+  // roles (same as familyBoardPosts / familyTodos).
+  { key: 'eventReminders', visibleTo: 'all' },
+  { key: 'birthdays', visibleTo: 'all' },
 ];
 
 function isCategoryVisible(spec: CategorySpec, role: Role): boolean {

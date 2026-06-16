@@ -94,13 +94,20 @@ export interface UserPrivate {
 }
 
 /**
- * Notification category keys (PR B). The architect's locked-in set:
+ * Notification category keys (PR B; extended PR F for scheduled sends):
  *   - choreApprovalsNeeded   — parent only (kid completed a chore, needs review)
  *   - wishlistApprovalsNeeded — parent only (kid requested an allowance redeem)
  *   - myChoreResolved        — kid only (parent approved/rejected your chore)
  *   - myWishlistResolved     — kid only (parent approved/denied your wish)
  *   - familyBoardPosts       — all members (someone posted to the board)
  *   - familyTodos            — all members (a new to-do landed)
+ *   - eventReminders         — all members (PR F: morning-of calendar event)
+ *   - birthdays              — all members (PR F: morning-of birthday/anniv.)
+ *
+ * The two PR F keys MUST match the literal strings the scheduled functions
+ * read (`functions/src/notifyEventReminders.ts`,
+ * `functions/src/notifyBirthdays.ts`). A drift here makes the sweeps find
+ * zero opted-in recipients and silently exit (the F10 acceptance).
  */
 export type NotificationCategoryKey =
   | 'choreApprovalsNeeded'
@@ -108,7 +115,9 @@ export type NotificationCategoryKey =
   | 'myChoreResolved'
   | 'myWishlistResolved'
   | 'familyBoardPosts'
-  | 'familyTodos';
+  | 'familyTodos'
+  | 'eventReminders'
+  | 'birthdays';
 
 /**
  * Per-subject notification preferences doc shape (PR B). Stored as
