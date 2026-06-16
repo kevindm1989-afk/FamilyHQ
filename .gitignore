@@ -41,3 +41,7 @@ test-results/
 # Lighthouse CI — autorun emits ~10 MB of HTML/JSON reports per run.
 .lighthouseci/
 
+# Claude Code local state — session caches, agent worktrees, etc.
+# Pure orchestration ephemera; never committed.
+.claude/
+
