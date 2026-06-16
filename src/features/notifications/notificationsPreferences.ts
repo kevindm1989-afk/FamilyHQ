@@ -30,6 +30,10 @@ export const NOTIFICATION_CATEGORY_KEYS: readonly NotificationCategoryKey[] = Ob
   'myWishlistResolved',
   'familyBoardPosts',
   'familyTodos',
+  // PR F (F10) — scheduled-send categories. Placed after `familyTodos` so the
+  // calendar/birthday pair sits next to each other and after the to-dos group.
+  'eventReminders',
+  'birthdays',
 ] as const);
 
 /**
@@ -51,5 +55,9 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = Object.
     myWishlistResolved: false,
     familyBoardPosts: false,
     familyTodos: false,
+    // PR F (F10) — scheduled-send categories. All members; default false
+    // (matches existing safe-by-default contract).
+    eventReminders: false,
+    birthdays: false,
   }) as Record<NotificationCategoryKey, boolean>,
 });

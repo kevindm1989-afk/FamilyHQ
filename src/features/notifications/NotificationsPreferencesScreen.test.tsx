@@ -61,6 +61,10 @@ const ALL_CATEGORY_KEYS: NotificationCategoryKey[] = [
   'myWishlistResolved',
   'familyBoardPosts',
   'familyTodos',
+  // PR F (F10) — scheduled-send toggles. Same render contract as the other
+  // family-wide categories; visible to both viewer roles.
+  'eventReminders',
+  'birthdays',
 ];
 
 function renderScreen(overrides: Partial<NotificationsPreferencesScreenProps> = {}) {

@@ -38,7 +38,11 @@ describe('DEFAULT_NOTIFICATION_PREFERENCES — safe-by-default master + categori
     expect(typeof DEFAULT_NOTIFICATION_PREFERENCES.updatedAt).toBe('number');
   });
 
-  it('has EXACTLY the six category keys the architect locked in (no extras, no missing)', () => {
+  it('has EXACTLY the eight category keys the architect locked in (no extras, no missing)', () => {
+    // PR F (F10) grew the locked set from 6 to 8: the schedulers depend on
+    // `eventReminders` + `birthdays` toggles existing on the user's
+    // preferences doc, otherwise notifyEventReminders / notifyBirthdays find
+    // zero opted-in recipients and silently exit.
     const expected = [
       'choreApprovalsNeeded',
       'wishlistApprovalsNeeded',
@@ -46,6 +50,8 @@ describe('DEFAULT_NOTIFICATION_PREFERENCES — safe-by-default master + categori
       'myWishlistResolved',
       'familyBoardPosts',
       'familyTodos',
+      'eventReminders',
+      'birthdays',
     ].sort();
     expect(Object.keys(DEFAULT_NOTIFICATION_PREFERENCES.categories).sort()).toEqual(expected);
   });
@@ -59,6 +65,8 @@ describe('DEFAULT_NOTIFICATION_PREFERENCES — safe-by-default master + categori
         'myWishlistResolved',
         'familyBoardPosts',
         'familyTodos',
+        'eventReminders',
+        'birthdays',
       ].sort(),
     );
   });

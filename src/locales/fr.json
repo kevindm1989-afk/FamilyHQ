@@ -914,7 +914,9 @@
       "myChoreResolved": "Mises à jour de mes tâches",
       "myWishlistResolved": "Mises à jour de mes souhaits",
       "familyBoardPosts": "Messages du babillard familial",
-      "familyTodos": "Listes à faire de la famille"
+      "familyTodos": "Listes à faire de la famille",
+      "eventReminders": "Rappels d’événements",
+      "birthdays": "Anniversaires"
     },
     "devices": {
       "heading": "Appareils",

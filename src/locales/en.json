@@ -914,7 +914,9 @@
       "myChoreResolved": "My chore updates",
       "myWishlistResolved": "My wishlist updates",
       "familyBoardPosts": "Family board posts",
-      "familyTodos": "Family to-dos"
+      "familyTodos": "Family to-dos",
+      "eventReminders": "Event reminders",
+      "birthdays": "Birthdays"
     },
     "devices": {
       "heading": "Devices",
