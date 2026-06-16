@@ -15,15 +15,22 @@ import { Placeholder } from '../../app/Placeholder';
 import { useFamily } from '../../hooks/useFamily';
 import { FamilyManagementScreen } from './FamilyManagementScreen';
 import { useAllFamilyMembers } from './useAllFamilyMembers';
-import { FamilyManagementError, renameMember, setMemberActive } from './familyManagementService';
+import {
+  FamilyManagementError,
+  renameMember,
+  setFamilyTimezone,
+  setMemberActive,
+} from './familyManagementService';
 import { createInvite, InviteActionError, inviteExpiresAt, revokeInvite } from './inviteService';
 import { usePendingFamilyInvites } from './usePendingFamilyInvites';
+import { useFamilyDoc } from './useFamilyDoc';
 import type { Role } from '../../lib/types';
 
 export default function FamilyManagementRoute(): ReactElement {
   const { familyId, currentUser } = useFamily();
   const feed = useAllFamilyMembers(familyId);
   const invitesFeed = usePendingFamilyInvites(familyId);
+  const familyDoc = useFamilyDoc(familyId);
 
   if (!currentUser || !familyId) {
     return <Placeholder title="Family" />;
@@ -86,6 +93,22 @@ export default function FamilyManagementRoute(): ReactElement {
     await revokeInvite({ db }, inviteId);
   };
 
+  // F13 — parent-only timezone update. Mirror the resolveDb null guard so a
+  // missing firebase config in a test harness short-circuits with the
+  // generic PII-free FamilyManagementError (no `db as Firestore` null lie).
+  // The handler is wired only when the viewer is a parent so a defensive
+  // non-parent embed can never call the write.
+  const handleSetTimezone =
+    currentUser.role === 'parent'
+      ? async (timezone: string): Promise<void> => {
+          const db = await resolveDb();
+          if (db === null) {
+            throw new FamilyManagementError();
+          }
+          await setFamilyTimezone({ db }, familyId, timezone);
+        }
+      : undefined;
+
   return (
     <FamilyManagementScreen
       viewer={currentUser}
@@ -107,6 +130,8 @@ export default function FamilyManagementRoute(): ReactElement {
         expiresAt: inviteExpiresAt(inv),
       }))}
       onRevokeInvite={handleRevokeInvite}
+      timezone={familyDoc.family?.timezone}
+      onSetTimezone={handleSetTimezone}
     />
   );
 }

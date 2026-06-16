@@ -1127,3 +1127,187 @@ describe('FamilyManagementScreen — fixture safety (dynamic family roster, not 
     expect(screen.queryByRole('button', { name: /rename\s+maya|ben|sarah|alex/i })).toBeNull();
   });
 });
+
+// =====================================================================
+// F13 — Family timezone settings row (parent-only)
+//
+// State traceability:
+//  - PARENT VIEWER + handler provided -> visible labelled <select> with the
+//    shortlist (Toronto / Vancouver / Edmonton / Halifax / St_Johns), the
+//    current timezone preselected, a help description wired via
+//    aria-describedby, and a 44px tap target.
+//  - PARENT VIEWER but no handler (route hasn't wired it) -> no row.
+//  - NON-PARENT viewer -> no row.
+//  - LEGACY off-shortlist value -> rendered as an additional option
+//    prefixed with "(current)"; never trap the parent on it.
+//  - CHANGE -> calls onSetTimezone(newValue) ONCE; in-flight prevents a
+//    second call (disabled select) and re-enables after resolve.
+//  - REJECTION -> generic toast, control re-enabled.
+// =====================================================================
+describe('FamilyManagementScreen — F13 family timezone settings (parent-only)', () => {
+  it('a parent viewer sees a labelled timezone control with the shortlist when a handler is wired', () => {
+    const onSetTimezone = vi.fn().mockResolvedValue(undefined);
+    renderScreen({ timezone: 'America/Toronto', onSetTimezone });
+    const select = screen.getByRole('combobox', { name: /family timezone/i });
+    expect(select).toBeInTheDocument();
+    // The shortlist values are present as <option value="…">.
+    const options = Array.from(select.querySelectorAll('option')).map((o) => o.value);
+    expect(options).toEqual(
+      expect.arrayContaining([
+        'America/Toronto',
+        'America/Vancouver',
+        'America/Edmonton',
+        'America/Halifax',
+        'America/St_Johns',
+      ]),
+    );
+    // The current value is preselected.
+    expect((select as HTMLSelectElement).value).toBe('America/Toronto');
+  });
+
+  it('the timezone select has a min-tap-target class (44px floor, AODA / kids users)', () => {
+    const onSetTimezone = vi.fn().mockResolvedValue(undefined);
+    renderScreen({ timezone: 'America/Toronto', onSetTimezone });
+    const select = screen.getByRole('combobox', { name: /family timezone/i });
+    expect(
+      select.className,
+      'the timezone select must meet the 44px floor (mobile + kid users)',
+    ).toMatch(/min-h-tap/);
+  });
+
+  it('the timezone select is associated with help text via aria-describedby (a11y)', () => {
+    const onSetTimezone = vi.fn().mockResolvedValue(undefined);
+    renderScreen({ timezone: 'America/Toronto', onSetTimezone });
+    const select = screen.getByRole('combobox', { name: /family timezone/i });
+    const describedById = select.getAttribute('aria-describedby');
+    expect(describedById, 'a help description must be wired via aria-describedby').not.toBeNull();
+    const describedNode = document.getElementById(describedById!);
+    expect(describedNode).not.toBeNull();
+    expect(describedNode!.textContent ?? '').toMatch(/notification|morning|local hour/i);
+  });
+
+  it('a PARENT viewer with NO onSetTimezone handler shows NO timezone control (route opt-out)', () => {
+    renderScreen({ timezone: 'America/Toronto', onSetTimezone: undefined });
+    expect(
+      screen.queryByRole('combobox', { name: /family timezone/i }),
+      'without a handler the timezone row must not render (avoids a confusing dead control)',
+    ).toBeNull();
+  });
+
+  it('a NON-PARENT viewer never sees the timezone control even when a handler is provided', () => {
+    const memberViewer: UserWithId = {
+      id: 'uid-member-viewer',
+      name: 'Sam',
+      role: 'member',
+      familyId: 'fam-A',
+      isActive: true,
+      allowanceBalance: 0,
+      theme: 'light',
+    };
+    const onSetTimezone = vi.fn().mockResolvedValue(undefined);
+    renderScreen({
+      viewer: memberViewer,
+      members: [memberViewer],
+      timezone: 'America/Toronto',
+      onSetTimezone,
+    });
+    expect(
+      screen.queryByRole('combobox', { name: /family timezone/i }),
+      'a non-parent viewer must never see the timezone control (rules deny anyway)',
+    ).toBeNull();
+  });
+
+  it('changing the select calls onSetTimezone ONCE with the new value', async () => {
+    const onSetTimezone = vi.fn().mockResolvedValue(undefined);
+    renderScreen({ timezone: 'America/Toronto', onSetTimezone });
+    const select = screen.getByRole('combobox', { name: /family timezone/i }) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'America/Vancouver' } });
+    await waitFor(() => expect(onSetTimezone).toHaveBeenCalledTimes(1));
+    expect(onSetTimezone).toHaveBeenCalledWith('America/Vancouver');
+  });
+
+  it('a successful change surfaces the success toast', async () => {
+    const onSetTimezone = vi.fn().mockResolvedValue(undefined);
+    renderScreen({ timezone: 'America/Toronto', onSetTimezone });
+    const select = screen.getByRole('combobox', { name: /family timezone/i }) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'America/Halifax' } });
+    await waitFor(() => {
+      expect(screen.getByText(/family timezone updated/i)).toBeInTheDocument();
+    });
+  });
+
+  it('a rejected change surfaces the GENERIC error toast (no raw provider text leaks)', async () => {
+    const onSetTimezone = vi.fn().mockRejectedValue(new Error('permission-denied: raw'));
+    renderScreen({ timezone: 'America/Toronto', onSetTimezone });
+    const select = screen.getByRole('combobox', { name: /family timezone/i }) as HTMLSelectElement;
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'America/Vancouver' } });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/something went wrong/i)).toBeInTheDocument();
+    });
+    // The raw Firebase text must not appear anywhere in the page.
+    expect(screen.queryByText(/permission-denied/i)).toBeNull();
+  });
+
+  it('a LEGACY off-shortlist value is shown as an additional option prefixed "(current)" — parent is never trapped', () => {
+    const onSetTimezone = vi.fn().mockResolvedValue(undefined);
+    renderScreen({ timezone: 'America/Whitehorse', onSetTimezone });
+    const select = screen.getByRole('combobox', { name: /family timezone/i }) as HTMLSelectElement;
+    expect(select.value).toBe('America/Whitehorse');
+    // The legacy value appears as an option.
+    const matchingOption = Array.from(select.querySelectorAll('option')).find(
+      (o) => o.value === 'America/Whitehorse',
+    );
+    expect(matchingOption).toBeTruthy();
+    expect(matchingOption!.textContent ?? '').toMatch(/current/i);
+    // Shortlist options are still present so the parent can move OFF the legacy value.
+    const optionValues = Array.from(select.querySelectorAll('option')).map((o) => o.value);
+    expect(optionValues).toEqual(
+      expect.arrayContaining(['America/Toronto', 'America/Vancouver']),
+    );
+  });
+
+  it('an UNDEFINED current timezone (legacy doc, field absent) falls back to America/Toronto for display', () => {
+    const onSetTimezone = vi.fn().mockResolvedValue(undefined);
+    renderScreen({ timezone: undefined, onSetTimezone });
+    const select = screen.getByRole('combobox', { name: /family timezone/i }) as HTMLSelectElement;
+    // Falls back to the universal default the runtime sweep also uses (M50).
+    expect(select.value).toBe('America/Toronto');
+  });
+
+  it('selecting the SAME value is a no-op (does not call onSetTimezone)', () => {
+    const onSetTimezone = vi.fn().mockResolvedValue(undefined);
+    renderScreen({ timezone: 'America/Toronto', onSetTimezone });
+    const select = screen.getByRole('combobox', { name: /family timezone/i }) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'America/Toronto' } });
+    expect(
+      onSetTimezone,
+      're-selecting the current value must not write (avoids a spurious server roundtrip)',
+    ).not.toHaveBeenCalled();
+  });
+
+  it('IN-FLIGHT guard: the select is disabled while pending; re-enabled after resolve', async () => {
+    let resolveAction: (() => void) | null = null;
+    const onSetTimezone = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((res) => {
+          resolveAction = () => res(undefined);
+        }),
+    );
+    renderScreen({ timezone: 'America/Toronto', onSetTimezone });
+    const select = screen.getByRole('combobox', { name: /family timezone/i }) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'America/Vancouver' } });
+    // While the write is in flight the control is disabled.
+    expect(select.disabled, 'the select must disable while the write is in flight').toBe(true);
+    await act(async () => {
+      resolveAction!();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(select.disabled, 'after the write resolves the select re-enables').toBe(false);
+    });
+  });
+});

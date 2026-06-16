@@ -65,7 +65,11 @@ import {
   MEMBER_REACTIVATED,
   NAME_MAX_LENGTH,
   RENAME_SUCCESS,
+  TIMEZONE_MAX_LENGTH,
+  TIMEZONE_OPTIONS,
+  TIMEZONE_UPDATED,
   renameMember,
+  setFamilyTimezone,
   setMemberActive,
 } from './familyManagementService';
 
@@ -395,5 +399,176 @@ describe('setMemberActive — Sec3: a non-boolean `isActive` is mapped to Family
     expect(updateDocMock).toHaveBeenCalledTimes(1);
     expect(updateOps).toHaveLength(1);
     expect(updateOps[0]!.data.isActive).toBe(false);
+  });
+});
+
+// =====================================================================
+// F13 — setFamilyTimezone writes EXACTLY {timezone} to families/{familyId}
+//
+// Rules contract is `isParent() && callerFamily() == familyId &&
+// timezoneFieldValid()` — the service mirrors the narrow shape: validate
+// type + length BEFORE any write, write only the `timezone` key, map every
+// failure to the generic PII-free FamilyManagementError.
+// =====================================================================
+describe('setFamilyTimezone — writes EXACTLY {timezone} to families/{familyId} (no other keys)', () => {
+  it('writes a single updateDoc with EXACTLY the `timezone` key', async () => {
+    await setFamilyTimezone({ db }, 'fam-A', 'America/Vancouver');
+    expect(updateDocMock).toHaveBeenCalledTimes(1);
+    expect(updateOps).toHaveLength(1);
+    const payload = updateOps[0]!.data;
+    expect(Object.keys(payload).sort()).toEqual(['timezone']);
+    expect(payload.timezone).toBe('America/Vancouver');
+  });
+
+  it('targets families/{familyId} (not users / other collections)', async () => {
+    await setFamilyTimezone({ db }, 'fam-target', 'America/Halifax');
+    expect(updateOps[0]!.ref.__collection).toBe('families');
+    expect(updateOps[0]!.ref.__id).toBe('fam-target');
+  });
+
+  it('trims surrounding whitespace before write', async () => {
+    await setFamilyTimezone({ db }, 'fam-A', '   America/Edmonton   ');
+    expect(updateOps[0]!.data.timezone).toBe('America/Edmonton');
+  });
+
+  it('never includes familyName / createdBy / createdAt in the payload (no full-doc spread)', async () => {
+    await setFamilyTimezone({ db }, 'fam-A', 'America/Toronto');
+    const payload = updateOps[0]!.data;
+    for (const forbidden of ['familyName', 'createdBy', 'createdAt']) {
+      expect(
+        Object.prototype.hasOwnProperty.call(payload, forbidden),
+        `forbidden key "${forbidden}" must NOT be in the timezone payload`,
+      ).toBe(false);
+    }
+  });
+
+  it('accepts every value in TIMEZONE_OPTIONS (boundary control on the shortlist)', async () => {
+    for (const tz of TIMEZONE_OPTIONS) {
+      updateOps = [];
+      await setFamilyTimezone({ db }, 'fam-A', tz);
+      expect(updateOps).toHaveLength(1);
+      expect(updateOps[0]!.data.timezone).toBe(tz);
+    }
+  });
+
+  it('accepts a legacy/off-shortlist value (the service does NOT enforce the shortlist; the screen does)', async () => {
+    await setFamilyTimezone({ db }, 'fam-A', 'America/Whitehorse');
+    expect(updateOps).toHaveLength(1);
+    expect(updateOps[0]!.data.timezone).toBe('America/Whitehorse');
+  });
+});
+
+describe('setFamilyTimezone — validation rejects bad input BEFORE any Firestore write', () => {
+  it('rejects an empty timezone without issuing any write', async () => {
+    await expect(setFamilyTimezone({ db }, 'fam-A', '')).rejects.toBeInstanceOf(
+      FamilyManagementError,
+    );
+    expect(updateDocMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a whitespace-only timezone without issuing any write', async () => {
+    await expect(setFamilyTimezone({ db }, 'fam-A', '   \t\n  ')).rejects.toBeInstanceOf(
+      FamilyManagementError,
+    );
+    expect(updateDocMock).not.toHaveBeenCalled();
+  });
+
+  it(`rejects an over-length timezone (> ${TIMEZONE_MAX_LENGTH} chars after trim) without issuing any write`, async () => {
+    const tooLong = 'A'.repeat(TIMEZONE_MAX_LENGTH + 1);
+    await expect(setFamilyTimezone({ db }, 'fam-A', tooLong)).rejects.toBeInstanceOf(
+      FamilyManagementError,
+    );
+    expect(updateDocMock).not.toHaveBeenCalled();
+  });
+
+  it(`accepts a timezone of EXACTLY the cap (${TIMEZONE_MAX_LENGTH} chars) — boundary inclusive`, async () => {
+    const atCap = 'B'.repeat(TIMEZONE_MAX_LENGTH);
+    await setFamilyTimezone({ db }, 'fam-A', atCap);
+    expect(updateOps).toHaveLength(1);
+    expect(updateOps[0]!.data.timezone).toBe(atCap);
+  });
+
+  it('rejects a non-string timezone (TS escape hatch) without issuing any write', async () => {
+    for (const bad of [
+      123 as unknown as string,
+      null as unknown as string,
+      undefined as unknown as string,
+      { tz: 'hax' } as unknown as string,
+    ]) {
+      await expect(setFamilyTimezone({ db }, 'fam-A', bad)).rejects.toBeInstanceOf(
+        FamilyManagementError,
+      );
+    }
+    expect(updateDocMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an empty familyId without issuing any write', async () => {
+    await expect(setFamilyTimezone({ db }, '', 'America/Toronto')).rejects.toBeInstanceOf(
+      FamilyManagementError,
+    );
+    expect(updateDocMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-string familyId without issuing any write', async () => {
+    await expect(
+      setFamilyTimezone({ db }, null as unknown as string, 'America/Toronto'),
+    ).rejects.toBeInstanceOf(FamilyManagementError);
+    expect(updateDocMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('setFamilyTimezone — error mapping: raw Firebase text + PII never surface', () => {
+  it('maps a Firestore failure to the generic PII-free message (no raw provider text)', async () => {
+    updateShouldReject = true;
+    await expect(
+      setFamilyTimezone({ db }, 'fam-A', 'America/Toronto'),
+    ).rejects.toThrow(FAMILY_GENERIC_ERROR);
+  });
+
+  it('the surfaced error contains no raw provider text and no familyId', async () => {
+    updateShouldReject = true;
+    const err = await setFamilyTimezone({ db }, 'fam-secret-1234', 'America/Toronto').then(
+      () => new Error('expected rejection'),
+      (e: unknown) => e as Error,
+    );
+    expect(err).toBeInstanceOf(FamilyManagementError);
+    expect(err.message).toBe(FAMILY_GENERIC_ERROR);
+    expect(err.message).not.toMatch(/permission-denied|firebase|firestore/i);
+    expect(err.message).not.toContain('fam-secret-1234');
+  });
+
+  it('the surfaced error message contains no raw TypeError text on a non-string input', async () => {
+    const err = await setFamilyTimezone(
+      { db },
+      'fam-secret',
+      42 as unknown as string,
+    ).then(
+      () => new Error('expected rejection'),
+      (e: unknown) => e as Error,
+    );
+    expect(err).toBeInstanceOf(FamilyManagementError);
+    expect(err.message).toBe(FAMILY_GENERIC_ERROR);
+    expect(err.message).not.toMatch(/TypeError|trim is not a function/i);
+    expect(err.message).not.toContain('fam-secret');
+  });
+});
+
+describe('TIMEZONE constants — shape + non-empty', () => {
+  it('TIMEZONE_UPDATED is a non-empty string with no provider tokens / PII', () => {
+    expect(typeof TIMEZONE_UPDATED).toBe('string');
+    expect(TIMEZONE_UPDATED.length).toBeGreaterThan(0);
+    expect(TIMEZONE_UPDATED).not.toMatch(/permission-denied|firebase|firestore|@|uid-|fam-/i);
+  });
+
+  it('TIMEZONE_OPTIONS includes the architect-approved Canadian shortlist (Toronto first as the default)', () => {
+    expect(TIMEZONE_OPTIONS[0]).toBe('America/Toronto');
+    expect(TIMEZONE_OPTIONS).toContain('America/Vancouver');
+    expect(TIMEZONE_OPTIONS).toContain('America/Edmonton');
+    expect(TIMEZONE_OPTIONS).toContain('America/Halifax');
+    expect(TIMEZONE_OPTIONS).toContain('America/St_Johns');
+  });
+
+  it('TIMEZONE_MAX_LENGTH matches the firestore.rules cap (50)', () => {
+    expect(TIMEZONE_MAX_LENGTH).toBe(50);
   });
 });

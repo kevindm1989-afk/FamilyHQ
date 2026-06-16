@@ -711,6 +711,22 @@
       "deactivated": "Membre désactivé.",
       "reactivated": "Membre réactivé.",
       "generic": "Une erreur est survenue. Veuillez réessayer."
+    },
+    "settings": {
+      "heading": "Paramètres de la famille",
+      "timezoneLabel": "Fuseau horaire familial",
+      "timezoneHelp": "Utilisé pour planifier les notifications du matin à la bonne heure locale.",
+      "timezoneCurrent": "{{value}} (actuel)",
+      "timezoneName": {
+        "toronto": "Heure de l’Est — Toronto (Ontario, Québec)",
+        "vancouver": "Heure du Pacifique — Vancouver (Colombie-Britannique)",
+        "edmonton": "Heure des Rocheuses — Edmonton (Alberta, Saskatchewan, T.N.-O.)",
+        "halifax": "Heure de l’Atlantique — Halifax (Provinces maritimes)",
+        "stJohns": "Heure de Terre-Neuve — St. John’s"
+      },
+      "toast": {
+        "timezoneUpdated": "Fuseau horaire familial mis à jour."
+      }
     }
   },
 
