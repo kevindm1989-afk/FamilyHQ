@@ -226,7 +226,7 @@ export const notifyBirthdays = onSchedule(
     region: REGION,
     schedule: '0 * * * *',
     timeZone: 'UTC',
-    retryConfig: { retryCount: 0 },
+    retryCount: 0,
     memory: '256MiB',
     timeoutSeconds: 300,
   },

@@ -694,19 +694,23 @@ describe('F-T2 (M46(b)): handler resolves even when one family throws; other fam
 // ===========================================================================
 
 describe('F-T3 (M46(c)): onSchedule options declare retry disabled', () => {
-  it('options include either { retryConfig: { retryCount: 0 } } OR { retryConfig: { maxRetries: 0 } }', async () => {
+  it('options include retryCount: 0 (or a tolerant equivalent for older shapes)', async () => {
+    // firebase-functions v2 ScheduleOptions has flat `retryCount` (verified
+    // against functions/node_modules/firebase-functions/lib/v2/providers/
+    // scheduler.d.ts at firebase-functions 7.2.5). Older brief-side
+    // shapes (`retryConfig.retryCount`, `retryConfig.maxRetries`) are
+    // accepted as defense against a future SDK rename — the SAFETY
+    // contract (M46(c): retry is disabled) is the invariant; the field
+    // name is incidental.
     await invokeSweep().catch(() => undefined);
     expect(onScheduleMock).toHaveBeenCalledTimes(1);
     const opts = (captured.options ?? {}) as Record<string, unknown>;
-    const retryConfig = opts.retryConfig as
-      | { retryCount?: unknown; maxRetries?: unknown }
-      | undefined;
-    const retryCount = retryConfig?.retryCount;
-    const maxRetries = retryConfig?.maxRetries;
-    const ok = retryCount === 0 || maxRetries === 0;
+    const flatRetryCount = opts.retryCount;
+    const nested = opts.retryConfig as { retryCount?: unknown; maxRetries?: unknown } | undefined;
+    const ok = flatRetryCount === 0 || nested?.retryCount === 0 || nested?.maxRetries === 0;
     expect(
       ok,
-      `F-T3 (M46(c)) violation: onSchedule options must contain retryConfig.retryCount === 0 OR retryConfig.maxRetries === 0; got ${JSON.stringify(opts.retryConfig)}`,
+      `F-T3 (M46(c)) violation: onSchedule options must declare retry disabled — flat retryCount === 0 OR retryConfig.retryCount === 0 OR retryConfig.maxRetries === 0; got retryCount=${JSON.stringify(opts.retryCount)} retryConfig=${JSON.stringify(opts.retryConfig)}`,
     ).toBe(true);
   });
 
