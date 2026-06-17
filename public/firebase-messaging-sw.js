@@ -17,19 +17,21 @@ importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js
 importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
 
 // Public web app config (these are public identifiers, NOT secrets —
-// the real authority is firestore.rules + App Check). The actual values
-// are injected at deploy time by replacing the FIREBASE_CONFIG_PLACEHOLDER
-// token below in a build step (deferred to PR C deployment). For PR B
-// the SW is unit-tested in a sandbox where firebase is mocked — no real
-// network call ever fires.
-firebase.initializeApp({
-  apiKey: 'web-public-identifier',
-  authDomain: 'familyhq.firebaseapp.com',
-  projectId: 'familyhq',
-  storageBucket: 'familyhq.appspot.com',
-  messagingSenderId: '000000000000',
-  appId: '1:000000000000:web:0000000000000000000000',
-});
+// the real authority is firestore.rules + App Check). The literal object
+// between the two marker comments below is substituted at `vite build`
+// time by the inline plugin in vite.config.ts; the source file keeps a
+// hardcoded placeholder so static unit tests + dev mode have a working
+// SW even before the build runs.
+firebase.initializeApp(
+  /* __FIREBASE_CONFIG_START__ */ {
+    apiKey: 'web-public-identifier',
+    authDomain: 'familyhq.firebaseapp.com',
+    projectId: 'familyhq',
+    storageBucket: 'familyhq.appspot.com',
+    messagingSenderId: '000000000000',
+    appId: '1:000000000000:web:0000000000000000000000',
+  } /* __FIREBASE_CONFIG_END__ */,
+);
 
 var messaging = firebase.messaging();
 

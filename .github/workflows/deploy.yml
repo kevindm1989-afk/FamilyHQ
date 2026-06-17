@@ -143,7 +143,18 @@ jobs:
         run: bash scripts/verify.sh
 
       - name: Build for staging
+        # VITE_FCM_VAPID_KEY: the FCM Web Push public VAPID key. Sourced
+        # from a GH Actions secret (FIREBASE_VAPID_KEY) so the value can
+        # be rotated in one place when Firebase regenerates it. The value
+        # is the PUBLIC half of the VAPID pair; the private half stays
+        # inside Firebase. Falls through to whatever .env.production
+        # carries if the secret is unset — the build does NOT fail (a
+        # missing key degrades silently to "no push registration"; the
+        # alerting that exists for backend failures still catches the
+        # downstream zero-token signal).
         run: npm run build
+        env:
+          VITE_FCM_VAPID_KEY: ${{ secrets.FIREBASE_VAPID_KEY }}
 
       - name: Deploy hosting + firestore:rules
         id: deploy
@@ -277,7 +288,11 @@ jobs:
         run: bash scripts/verify.sh
 
       - name: Build for production
+        # See the staging job's "Build for staging" step for the rationale
+        # on the FIREBASE_VAPID_KEY secret.
         run: npm run build
+        env:
+          VITE_FCM_VAPID_KEY: ${{ secrets.FIREBASE_VAPID_KEY }}
 
       - name: Deploy hosting
         id: deploy

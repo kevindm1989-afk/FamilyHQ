@@ -22,6 +22,11 @@ export default tseslint.config(
       'node_modules',
       'functions/lib',
       'functions/node_modules',
+      // `.claude/` is the local Claude Code state directory (gitignored) — it
+      // may contain leftover agent worktrees that re-mount the repo on disk.
+      // Without this entry, eslint crawls every worktree and floods the run
+      // with thousands of errors from copies of files it has already linted.
+      '.claude',
     ],
   },
   js.configs.recommended,
