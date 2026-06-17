@@ -19,6 +19,12 @@
       "note": "FamilyProvider + AppShell chrome + AccountScreen + IosPwaHintBanner (F15, PR E). Was 20 KB before #20's per-route splits; now ~6.2 KB after PR E adds the iOS-PWA hint banner (mounted in AppShell so it must ship in this chunk — non-iOS users self-suppress at runtime, but the code still lands in the bundle). Tight budget keeps the post-auth shell small."
     },
     {
+      "name": "NotificationsRoute (push container)",
+      "pattern": "^NotificationsRoute-",
+      "maxGzipBytes": 9500,
+      "note": "Lazy route that wires the preferences screen to the live FCM service: two onSnapshot subscriptions (userPrivate + fcmTokens subcollection), four async handlers (request-permission/register, unregister, category write, device-row delete), iOS-without-PWA detection, and preferences coercion. PR G grew this from a 4 KB stub to ~9 KB once the no-op callbacks became real wiring (registerToken/unregisterToken/Notification.requestPermission/setDoc). Carved out separately from the other Route chunks because the FCM messaging import baseline pulls roughly 4 KB even before any logic — the general per-route budget would have to be loosened for everyone otherwise."
+    },
+    {
       "name": "per-route chunks",
       "pattern": "Route-[^.]+\\.js$",
       "maxGzipBytes": 8000,

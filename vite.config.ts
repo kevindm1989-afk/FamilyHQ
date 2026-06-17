@@ -13,6 +13,89 @@ import { defineConfig } from 'vitest/config';
 import type { PluginOption } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { loadEnv } from 'vite';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+// FCM background-message service worker config substitution. The SW at
+// `public/firebase-messaging-sw.js` is plain JS loaded directly by the
+// browser (outside the Vite bundle), so it cannot read `import.meta.env`.
+// At build time this plugin reads the same VITE_FIREBASE_* values Vite
+// already loaded for the SPA bundle, then rewrites the literal config
+// object between the marker comments. Without this step the SW boots
+// against placeholder values, `getToken()` fails silently, and no push
+// is ever delivered.
+function firebaseMessagingSwConfigPlugin(): PluginOption {
+  const SW_FILENAME = 'firebase-messaging-sw.js';
+  const REQUIRED_VITE_KEYS = [
+    'VITE_FIREBASE_API_KEY',
+    'VITE_FIREBASE_AUTH_DOMAIN',
+    'VITE_FIREBASE_PROJECT_ID',
+    'VITE_FIREBASE_STORAGE_BUCKET',
+    'VITE_FIREBASE_MESSAGING_SENDER_ID',
+    'VITE_FIREBASE_APP_ID',
+  ] as const;
+  let resolvedMode = 'production';
+  let resolvedRoot = process.cwd();
+  return {
+    name: 'familyhq-firebase-messaging-sw-config',
+    apply: 'build',
+    configResolved(config): void {
+      resolvedMode = config.mode;
+      resolvedRoot = config.root;
+    },
+    closeBundle: {
+      sequential: true,
+      handler(): void {
+        const outPath = resolve(resolvedRoot, 'dist', SW_FILENAME);
+        let source: string;
+        try {
+          source = readFileSync(outPath, 'utf8');
+        } catch (err) {
+          // PWA-disabled emulator e2e builds may not copy `public/` assets;
+          // ENOENT in that case is benign. Anything else (EACCES, EISDIR,
+          // partial read) is a real environment problem — fail loud so a
+          // mis-permissioned CI mount cannot ship an un-templated SW
+          // that would silently degrade FCM in production.
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
+          throw err;
+        }
+        // 'VITE_' prefix matches the SPA bundle's contract — only VITE_-
+        // prefixed vars cross into client-shipped artifacts. An empty
+        // prefix would load every env var present at build time (deploy
+        // tokens, service-account JSON), which is the wrong default for
+        // any code that emits into dist/.
+        const env = loadEnv(resolvedMode, resolvedRoot, 'VITE_');
+        const missing = REQUIRED_VITE_KEYS.filter((k) => !env[k]);
+        if (missing.length > 0) {
+          throw new Error(
+            `firebase-messaging-sw.js cannot be templated — missing env: ${missing.join(', ')}`,
+          );
+        }
+        const firebaseConfig = {
+          apiKey: env['VITE_FIREBASE_API_KEY'],
+          authDomain: env['VITE_FIREBASE_AUTH_DOMAIN'],
+          projectId: env['VITE_FIREBASE_PROJECT_ID'],
+          storageBucket: env['VITE_FIREBASE_STORAGE_BUCKET'],
+          messagingSenderId: env['VITE_FIREBASE_MESSAGING_SENDER_ID'],
+          appId: env['VITE_FIREBASE_APP_ID'],
+        };
+        const marker =
+          /\/\* __FIREBASE_CONFIG_START__ \*\/[\s\S]*?\/\* __FIREBASE_CONFIG_END__ \*\//;
+        if (!marker.test(source)) {
+          throw new Error(
+            `firebase-messaging-sw.js missing __FIREBASE_CONFIG_START__/__END__ markers`,
+          );
+        }
+        const replaced = source.replace(
+          marker,
+          `/* __FIREBASE_CONFIG_START__ */ ${JSON.stringify(firebaseConfig)} /* __FIREBASE_CONFIG_END__ */`,
+        );
+        writeFileSync(outPath, replaced, 'utf8');
+      },
+    },
+  };
+}
 // rollup-plugin-visualizer is imported DYNAMICALLY inside the config factory
 // (only when ANALYZE=true). The package is ESM-only and uses `import.meta.dirname`
 // in its template loader; knip's jiti-based config loader runs in a CJS-style VM
@@ -36,6 +119,7 @@ const ANALYZE = process.env.ANALYZE === 'true';
 export default defineConfig(async () => ({
   plugins: [
     react(),
+    firebaseMessagingSwConfigPlugin(),
     VitePWA({
       // Skip SW generation when the build is for the authed e2e suite
       // (`vite build --mode emulator`, see package.json's e2e:authed

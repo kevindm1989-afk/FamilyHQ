@@ -912,6 +912,8 @@
 
   "notifications": {
     "title": "Notifications",
+    "notConfigured": "Les notifications push ne sont pas configurées pour ce déploiement. Contactez votre administrateur.",
+    "writeFailed": "Impossible d’enregistrer vos préférences de notification. Veuillez réessayer.",
     "iosHint": "Ajoutez à l’écran d’accueil pour recevoir les notifications sur iPhone ou iPad.",
     "iosPwaHint": {
       "title": "Ajoutez à l’écran d’accueil pour les notifications",

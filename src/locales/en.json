@@ -912,6 +912,8 @@
 
   "notifications": {
     "title": "Notifications",
+    "notConfigured": "Push notifications are not configured for this deployment. Contact your administrator.",
+    "writeFailed": "Could not save your notification preferences. Please try again.",
     "iosHint": "Add to Home Screen to receive notifications on iPhone or iPad.",
     "iosPwaHint": {
       "title": "Add to Home Screen for push notifications",
