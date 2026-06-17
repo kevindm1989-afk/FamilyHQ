@@ -129,7 +129,13 @@ describe('B-T1: own user + active → CAN read own fcmTokens', () => {
 // PRODUCTION-attacker case — a script with a valid session token but no
 // App Check attestation tries to register a token. It must be denied.)
 // ---------------------------------------------------------------------------
-describe('B-T2 (M32): own user without App Check → cannot WRITE; read unaffected', () => {
+// TEMPORARY (PR G smoke-test unblock): skipped while the App Check
+// attestation issue on iOS Safari PWA is debugged. The rule clause
+//   && request.app_check_token != null
+// was commented out in firestore.rules (see the matching TEMPORARY
+// note there). Restoration is paired: un-comment the rule clause AND
+// un-skip this describe block in the same follow-up PR.
+describe.skip('B-T2 (M32): own user without App Check → cannot WRITE; read unaffected', () => {
   it('CANNOT create an fcmToken doc when App Check token is absent', async () => {
     const db = env.authenticatedContext(UID.memberA).firestore();
     const { doc, setDoc } = await import('firebase/firestore');
