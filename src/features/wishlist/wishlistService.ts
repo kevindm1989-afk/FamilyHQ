@@ -32,6 +32,7 @@ import {
   type Transaction as FirestoreTx,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { FUNCTIONS_REGION } from '../../firebase/functions-region';
 import { wishlistItemConverter } from '../../lib/converters';
 import { MONEY_MAX_CENTS, type WishlistItem, type WishlistStatus } from '../../lib/types';
 
@@ -47,7 +48,7 @@ async function fireAndForgetNotify(
   itemId: string,
 ): Promise<void> {
   try {
-    const fns = getFunctions();
+    const fns = getFunctions(undefined, FUNCTIONS_REGION);
     const fn = httpsCallable<{ itemId: string }, { sent: number; cleaned: number }>(fns, name);
     await fn({ itemId });
   } catch {

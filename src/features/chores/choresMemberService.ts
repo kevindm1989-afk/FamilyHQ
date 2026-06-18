@@ -22,6 +22,7 @@
  */
 import { doc, updateDoc, type Firestore } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { FUNCTIONS_REGION } from '../../firebase/functions-region';
 import type { Chore, ChoreStatus } from '../../lib/types';
 
 /** A chore enriched with its document id for list rendering + mark-complete. */
@@ -67,7 +68,7 @@ export async function markComplete(deps: { db: Firestore }, choreId: string): Pr
   // kid uid, no amount, no chore title (the server re-derives
   // everything it needs).
   try {
-    const fns = getFunctions();
+    const fns = getFunctions(undefined, FUNCTIONS_REGION);
     const fn = httpsCallable<{ choreId: string }, { sent: number; cleaned: number }>(
       fns,
       'notifyChoreSubmitted',
