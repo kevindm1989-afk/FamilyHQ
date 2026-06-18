@@ -21,6 +21,7 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { FUNCTIONS_REGION } from '../../firebase/functions-region';
 import type { Post, Role } from '../../lib/types';
 
 /** A post enriched with its document id for list rendering + delete. */
@@ -90,7 +91,7 @@ export async function createPost(deps: { db: Firestore }, input: CreatePostInput
   // The callable's failure must NEVER undo the post creation — push is
   // non-essential (ADR-0014); the in-app inbox is the source of truth.
   try {
-    const fns = getFunctions();
+    const fns = getFunctions(undefined, FUNCTIONS_REGION);
     const fn = httpsCallable<{ postId: string }, { sent: number; cleaned: number }>(
       fns,
       'notifyBoardPost',

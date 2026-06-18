@@ -23,6 +23,7 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { FUNCTIONS_REGION } from '../../firebase/functions-region';
 import { todoConverter } from '../../lib/converters';
 import type { Todo } from '../../lib/types';
 
@@ -38,7 +39,7 @@ async function fireAndForgetTodoNotify(
   todoId: string,
 ): Promise<void> {
   try {
-    const fns = getFunctions();
+    const fns = getFunctions(undefined, FUNCTIONS_REGION);
     const fn = httpsCallable<{ todoId: string }, { sent: number; cleaned: number }>(fns, name);
     await fn({ todoId });
   } catch {

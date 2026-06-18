@@ -34,6 +34,7 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { FUNCTIONS_REGION } from '../../firebase/functions-region';
 import {
   MONEY_MAX_CENTS,
   type RecurrenceFrequency,
@@ -235,7 +236,7 @@ export async function approveChore(
   // The payload is EXACTLY `{ choreId }` — no kid uid, no amount, no
   // chore title (the server re-derives everything it needs).
   try {
-    const fns = getFunctions();
+    const fns = getFunctions(undefined, FUNCTIONS_REGION);
     const fn = httpsCallable<{ choreId: string }, { sent: number; cleaned: number }>(
       fns,
       'notifyChoreApproved',
