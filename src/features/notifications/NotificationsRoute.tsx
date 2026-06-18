@@ -160,7 +160,7 @@ async function readCurrentDeviceHash(vapidKey: string): Promise<string | null> {
 
 export default function NotificationsRoute(): ReactElement {
   const { t } = useTranslation();
-  const { currentUser } = useFamily();
+  const { currentUser, familyId } = useFamily();
   const { showToast } = useToast();
   const [preferences, setPreferences] = useState<NotificationPreferences>(
     DEFAULT_NOTIFICATION_PREFERENCES,
@@ -241,10 +241,25 @@ export default function NotificationsRoute(): ReactElement {
   const writePreferencesPatch = useCallback(
     async (capturedUid: string, patch: Record<string, unknown>): Promise<void> => {
       if (uidRef.current !== capturedUid) return;
+      if (!familyId) return;
       try {
         await setDoc(
           doc(db, USER_PRIVATE_COLLECTION, capturedUid),
-          { notificationPreferences: { ...patch, updatedAt: Date.now() } },
+          {
+            // Include familyId explicitly even though it never changes.
+            // The userPrivate UPDATE rule's `immutable('familyId')` check
+            // compares request.resource.data.familyId vs resource.data.
+            // familyId. With a setDoc(merge:true) that touches only
+            // `notificationPreferences`, the rules-engine evaluation of
+            // request.resource.data was rejecting the write on iOS Safari
+            // PWA (root cause unverified — likely a merge-evaluation
+            // subtlety where the new top-level field caused the engine to
+            // treat request.resource.data.familyId as not-present).
+            // Passing familyId explicitly guarantees both sides are
+            // present and equal so immutable() unambiguously passes.
+            familyId,
+            notificationPreferences: { ...patch, updatedAt: Date.now() },
+          },
           { merge: true },
         );
       } catch {
@@ -257,7 +272,7 @@ export default function NotificationsRoute(): ReactElement {
         showToast(t('notifications.writeFailed'));
       }
     },
-    [showToast, t],
+    [familyId, showToast, t],
   );
 
   const handleRequestPermission = useCallback(async (): Promise<void> => {
