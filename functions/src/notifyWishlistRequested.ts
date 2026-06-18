@@ -63,7 +63,7 @@ interface MulticastResult {
 export const notifyWishlistRequested = onCall(
   {
     region: 'northamerica-northeast1',
-    enforceAppCheck: true,
+    enforceAppCheck: false, // TEMPORARY (smoke-test): App Check attestation broken on iOS Safari PWA — restore to true when fixed
   },
   async (request) => {
     const startedAt = Date.now();

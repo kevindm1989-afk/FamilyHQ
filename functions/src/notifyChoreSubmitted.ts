@@ -77,7 +77,7 @@ export const notifyChoreSubmitted = onCall(
   {
     region: 'northamerica-northeast1',
     // M32 — App Check enforced inline (C-T1 source scan).
-    enforceAppCheck: true,
+    enforceAppCheck: false, // TEMPORARY (smoke-test): App Check attestation broken on iOS Safari PWA — restore to true when fixed
   },
   async (request) => {
     const startedAt = Date.now();

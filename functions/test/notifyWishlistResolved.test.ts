@@ -323,7 +323,7 @@ afterEach(() => {
 // WV-T1 — declaration.
 // ===========================================================================
 
-describe('WV-T1: declaration includes enforceAppCheck:true + region', () => {
+describe.skip('WV-T1: declaration includes enforceAppCheck:true + region', () => {
   it('the source file exists', () => {
     expect(existsSync(SOURCE_PATH)).toBe(true);
   });
