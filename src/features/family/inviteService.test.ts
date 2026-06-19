@@ -25,6 +25,7 @@ const deleteDocMock = vi.fn();
 const collectionMock = vi.fn();
 const docMock = vi.fn();
 const createUserMock = vi.fn();
+const writeBatchMock = vi.fn();
 
 vi.mock('firebase/firestore', () => ({
   addDoc: (...a: unknown[]) => addDocMock(...a),
@@ -32,7 +33,7 @@ vi.mock('firebase/firestore', () => ({
   deleteDoc: (...a: unknown[]) => deleteDocMock(...a),
   collection: (...a: unknown[]) => collectionMock(...a),
   doc: (...a: unknown[]) => docMock(...a),
-  writeBatch: vi.fn(),
+  writeBatch: (...a: unknown[]) => writeBatchMock(...a),
   serverTimestamp: vi.fn(),
 }));
 vi.mock('firebase/auth', () => ({
@@ -59,16 +60,21 @@ beforeEach(() => {
   collectionMock.mockReset();
   docMock.mockReset();
   createUserMock.mockReset();
+  writeBatchMock.mockReset();
   // `.withConverter` is chained in the service — the mock collection and
   // doc refs must support it without throwing, otherwise the try/catch
   // swallows a TypeError and surfaces as a generic InviteActionError that
   // masks the real assertion.
-  const refWithConverter = (ref: { __ref?: true }) => ({
+  const refWithConverter = (ref: { __ref?: true; __path?: string }) => ({
     ...ref,
     withConverter: () => ref,
   });
   collectionMock.mockImplementation(() => refWithConverter({ __ref: true }));
-  docMock.mockImplementation(() => refWithConverter({ __ref: true }));
+  // Capture the doc path (collectionName/id) so batch-set assertions can
+  // tell the users / userPrivate / invites writes apart. doc(db, coll, id).
+  docMock.mockImplementation((...args: unknown[]) =>
+    refWithConverter({ __ref: true, __path: args.slice(1).join('/') }),
+  );
 });
 afterEach(() => {
   vi.clearAllMocks();
@@ -320,5 +326,78 @@ describe('acceptInvite — validation gates', () => {
       // a plain retry toast without the "Sign in instead" affordance.
       message: expect.not.stringContaining(INVITE_EMAIL_IN_USE_ERROR),
     });
+  });
+});
+
+describe('acceptInvite — userPrivate bootstrap (parity with founding-parent signup)', () => {
+  interface BatchOp {
+    path: string;
+    data?: Record<string, unknown>;
+  }
+
+  function wireHappyPath(): { sets: BatchOp[]; updates: BatchOp[]; commit: ReturnType<typeof vi.fn> } {
+    getDocMock.mockResolvedValue({
+      id: 'inv-1',
+      exists: () => true,
+      data: () => ({
+        status: 'pending',
+        email: 'invitee@example.test',
+        role: 'member',
+        familyId: 'fam-A',
+        invitedBy: 'p1',
+        createdAt: Date.now(),
+        expiresAt: Date.now() + INVITE_TTL_MS,
+      }),
+    });
+    createUserMock.mockResolvedValue({ user: { uid: 'new-invitee-uid' } });
+    const sets: BatchOp[] = [];
+    const updates: BatchOp[] = [];
+    const commit = vi.fn().mockResolvedValue(undefined);
+    writeBatchMock.mockReturnValue({
+      set: (ref: { __path?: string }, data: Record<string, unknown>) => {
+        sets.push({ path: ref.__path ?? '', data });
+      },
+      update: (ref: { __path?: string }, data: Record<string, unknown>) => {
+        updates.push({ path: ref.__path ?? '', data });
+      },
+      commit,
+    });
+    return { sets, updates, commit };
+  }
+
+  it('writes userPrivate/{uid} = {email, familyId} in the SAME batch as the users doc', async () => {
+    const { sets, commit } = wireHappyPath();
+    await acceptInvite(
+      { auth, db },
+      { inviteId: 'inv-1', email: 'Invitee@Example.test', password: 'pw', name: 'Alice' },
+    );
+    expect(commit).toHaveBeenCalledTimes(1);
+    const priv = sets.find((s) => s.path === 'userPrivate/new-invitee-uid');
+    expect(priv, 'a userPrivate/{uid} doc must be written for the invited member').toBeDefined();
+    // EXACTLY {email, familyId} (lowercased email) to satisfy the create
+    // rule's keys().hasOnly([email, familyId]). No extra keys.
+    expect(priv!.data).toEqual({ email: 'invitee@example.test', familyId: 'fam-A' });
+  });
+
+  it('still writes the users/{uid} doc (regression guard on the existing batch op)', async () => {
+    const { sets } = wireHappyPath();
+    await acceptInvite(
+      { auth, db },
+      { inviteId: 'inv-1', email: 'invitee@example.test', password: 'pw', name: 'Alice' },
+    );
+    const usersDoc = sets.find((s) => s.path === 'users/new-invitee-uid');
+    expect(usersDoc, 'the users/{uid} doc must still be written').toBeDefined();
+    // The users doc MUST NOT carry email [PI] (privacy finding 2).
+    expect(usersDoc!.data && 'email' in usersDoc!.data).toBe(false);
+  });
+
+  it('marks the invite accepted in the same batch', async () => {
+    const { updates } = wireHappyPath();
+    await acceptInvite(
+      { auth, db },
+      { inviteId: 'inv-1', email: 'invitee@example.test', password: 'pw', name: 'Alice' },
+    );
+    const inviteUpdate = updates.find((u) => u.path === 'invites/inv-1');
+    expect(inviteUpdate?.data).toMatchObject({ status: 'accepted' });
   });
 });
