@@ -25,6 +25,10 @@ Definition in one or two sentences. Optionally: how it's used in this project, w
 
 ## Entries
 
+## FUNCTIONS_REGION
+
+Exported constant at `src/firebase/functions-region.ts` naming the project's Cloud Functions deployment region (`northamerica-northeast1` per ADR-0013). Every client `getFunctions(...)` call passes this as the second argument; the server-side `onCall({region:...})` declarations must match. Lives in a zero-Firebase-dependency module so client-service tests can import it without mocking the SDK.
+
 ## familyId
 
 The tenant key. An immutable field on every non-`families` Firestore doc that

@@ -25,6 +25,51 @@ short code example
 
 ## Entries
 
+## Rules-emulator reproduction for any Firestore-permission bug
+
+**When to use:** any "client write fails with PERMISSION_DENIED (or silently 404s) on a real device" report. Especially when the rule code path is non-obvious — merges into a possibly-missing doc, transactional writes with cross-doc preconditions, complex auth context interactions.
+**How:** write a tiny vitest test under `test/rules/` that asserts succeed/fail using `@firebase/rules-unit-testing` with the same auth uid (or `authenticated` context shape) and the same payload shape the production client sends. Cover the small lattice that bounds the failure (doc exists × payload variant, ideally 2-4 cases). Run via `npx firebase emulators:exec --only firestore "npx vitest run --config vitest.rules.config.ts test/rules/<file>"`. The PERMISSION_DENIED message names the rule line; the matrix names the precondition.
+**Example:**
+```ts
+// test/rules/userprivate-notification-prefs.test.ts (sketch)
+it('case C — doc missing + prefs merge → DENY at L347', async () => {
+  const ctx = testEnv.authenticatedContext(uid);
+  await assertFails(
+    setDoc(doc(ctx.firestore(), 'userPrivate', uid),
+           { notificationPreferences: { ... } },
+           { merge: true })
+  );
+});
+```
+**When not to use:** a rule denial whose root cause is in the auth/App Check layer (the emulator's auth shape doesn't perfectly model App Check); for those, the diagnostic is the Console Rules Playground with the real attested token.
+
+## Pin client `getFunctions` to a shared region constant in a zero-Firebase-dependency module
+
+**When to use:** any client service that invokes a Cloud Function via `httpsCallable`. The constant centralizes the deployment region so it cannot drift from `functions.region` in `firebase.json` / the server's `onCall({region:...})` declaration.
+**How:** export a single `FUNCTIONS_REGION` from a module that imports nothing from `firebase/*`. Every callable site uses `getFunctions(undefined, FUNCTIONS_REGION)`. The zero-dependency rule keeps the constant importable in service-level test sandboxes without forcing those tests to mock the Firebase SDK just to read a string.
+**Example:**
+```ts
+// src/firebase/functions-region.ts
+export const FUNCTIONS_REGION = 'northamerica-northeast1';
+
+// any caller
+const fns = getFunctions(undefined, FUNCTIONS_REGION);
+const callable = httpsCallable(fns, 'notifyBoardPost');
+```
+**When not to use:** a one-off internal tool with a single callsite and its own bespoke region — fine to inline. Anything in `src/features/**` shipping in the SPA must use the shared constant.
+
+## Mirror the founding-parent signup batch when extending the invite-acceptance batch (and vice versa)
+
+**When to use:** any change to `authService.signUpFoundingParent`'s `writeBatch` (a new doc path, a new field, a new same-batch update). The sibling write in `inviteService.acceptInvite` must move in lockstep.
+**How:** the two functions are sibling onboarding paths and should produce the same set of doc-paths-and-keys for the new member, modulo `role` (parent vs invited role) and `inviteId` (only on the invited path). When you add a doc to one batch, add the analogous doc to the other in the same PR. Co-locate a parity test (asserting the set of `batch.set` paths is identical modulo the known per-path differences) at `src/features/family/inviteService.test.ts` alongside the existing batch-shape assertions in `authService.test.ts`.
+**Example:**
+```ts
+// both functions must produce a userPrivate/{uid} doc with EXACTLY
+// { email, familyId } in the SAME atomic batch
+batch.set(doc(db, 'userPrivate', uid), { email, familyId: <newOrInvited> });
+```
+**When not to use:** when the divergence is intentional and load-bearing (e.g. the founding parent creates `families/{newId}`; the invited member does not — that's correct). Make any intentional asymmetry explicit in a doc-comment so the next reader does not mis-read it as a missed parity update.
+
 ## One-doc-per-item Firestore collections for live family lists
 
 **When to use:** any "live shared list" of independently-mutable items
