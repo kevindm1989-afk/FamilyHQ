@@ -41,6 +41,7 @@ import type { Invite, Role } from '../../lib/types';
 
 const INVITES_COLLECTION = 'invites';
 const USERS_COLLECTION = 'users';
+const USER_PRIVATE_COLLECTION = 'userPrivate';
 
 /**
  * How long a pending invite remains redeemable. 14 days balances the parent's
@@ -226,6 +227,24 @@ export async function acceptInvite(
       allowanceBalance: 0,
       theme: 'light',
       inviteId: input.inviteId,
+    });
+    // Privacy finding 2 / parity with founding-parent signup
+    // (authService.signUpFoundingParent): the invited member's email [PI]
+    // lives on the per-subject userPrivate/{uid} doc, NOT on the
+    // family-readable users doc. Written in this SAME atomic batch so an
+    // invited member ends up in exactly the same shape as a founding
+    // parent. Without this, invited members had NO userPrivate doc at all,
+    // which (a) lost their email from the family-management surface and
+    // (b) made every later userPrivate write (e.g. notification
+    // preferences) a CREATE that the rules reject — the create-shape only
+    // permits {email, familyId}, so a notificationPreferences write could
+    // never land. The doc shape is EXACTLY {email, familyId} to satisfy
+    // the userPrivate create rule's keys().hasOnly([email,familyId]); its
+    // familyId is bound to the same-batch users doc's family via the
+    // rule's getAfter() check.
+    batch.set(doc(deps.db, USER_PRIVATE_COLLECTION, uid), {
+      email,
+      familyId: invite.familyId,
     });
     batch.update(doc(deps.db, INVITES_COLLECTION, input.inviteId), {
       status: 'accepted',

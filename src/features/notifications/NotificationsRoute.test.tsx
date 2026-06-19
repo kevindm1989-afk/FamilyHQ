@@ -84,9 +84,15 @@ vi.mock('firebase/messaging', () => ({
   getToken: (...args: unknown[]) => getTokenMock(...args),
 }));
 
+const authStub: { currentUser: { email: string | null } | null } = {
+  currentUser: { email: 'invitee@example.test' },
+};
 vi.mock('../../firebase/config', () => ({
   db: { __db: true },
   app: { __app: true },
+  get auth() {
+    return authStub;
+  },
 }));
 
 // hashToken is small + pure — re-implement here rather than spy through it.
@@ -444,5 +450,72 @@ describe('NotificationsRoute — mid-flight cancellation guard', () => {
     });
     expect(registerTokenMock).not.toHaveBeenCalled();
     expect(setDocMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('NotificationsRoute — userPrivate self-heal (legacy invited members)', () => {
+  it('when the userPrivate doc does NOT exist, bootstraps {email, familyId} BEFORE the prefs merge', async () => {
+    await renderRoute();
+    // seedPreferences(null) -> snapshot reports exists() === false, so the
+    // route's docExistsRef becomes false (the legacy invited-member state).
+    seedPreferences(null);
+    const switches = await screen.findAllByRole('switch');
+    await act(async () => {
+      fireEvent.click(switches[0]!);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(setDocMock.mock.calls.length).toBeGreaterThanOrEqual(2));
+    // First setDoc is the bootstrap CREATE: EXACTLY {email, familyId}, no
+    // merge option (so it satisfies the create rule's hasOnly check).
+    const firstCall = setDocMock.mock.calls[0]!;
+    expect(firstCall[1]).toEqual({ email: 'invitee@example.test', familyId: 'fam-A' });
+    expect(firstCall[2]).toBeUndefined(); // no { merge: true } on the create
+    // A later setDoc carries the preferences as a merge UPDATE.
+    const prefsWrite = setDocMock.mock.calls.find(
+      (c) => (c[1] as { notificationPreferences?: unknown })?.notificationPreferences !== undefined,
+    );
+    expect(prefsWrite, 'a notificationPreferences merge write must follow the bootstrap').toBeDefined();
+    expect(prefsWrite![2]).toEqual({ merge: true });
+  });
+
+  it('does NOT bootstrap when the userPrivate doc already exists (no redundant create)', async () => {
+    await renderRoute();
+    seedPreferences({ pushEnabled: false }); // exists() === true
+    const switches = await screen.findAllByRole('switch');
+    await act(async () => {
+      fireEvent.click(switches[0]!);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(setDocMock).toHaveBeenCalled());
+    // No bare {email, familyId} create should appear — every write is the
+    // prefs merge.
+    const bootstrapCreate = setDocMock.mock.calls.find(
+      (c) => JSON.stringify(c[1]) === JSON.stringify({ email: 'invitee@example.test', familyId: 'fam-A' }),
+    );
+    expect(bootstrapCreate).toBeUndefined();
+  });
+
+  it('skips the bootstrap when no auth email is available (cannot satisfy create shape)', async () => {
+    authStub.currentUser = { email: null };
+    await renderRoute();
+    seedPreferences(null);
+    const switches = await screen.findAllByRole('switch');
+    await act(async () => {
+      fireEvent.click(switches[0]!);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // No bootstrap create fired (email was null); restore for other tests.
+    const bootstrapCreate = setDocMock.mock.calls.find(
+      (c) => (c[1] as { email?: unknown })?.email !== undefined,
+    );
+    expect(bootstrapCreate).toBeUndefined();
+    authStub.currentUser = { email: 'invitee@example.test' };
   });
 });

@@ -49,7 +49,7 @@ import { useTranslation } from 'react-i18next';
 import { Placeholder } from '../../app/Placeholder';
 import { useFamily } from '../../hooks/useFamily';
 import { useToast } from '../../hooks/useToast';
-import { app, db } from '../../firebase/config';
+import { app, auth, db } from '../../firebase/config';
 import type { NotificationCategoryKey, NotificationPreferences } from '../../lib/types';
 import { isPushNotificationsEnabled } from './featureFlag';
 import {
@@ -180,11 +180,21 @@ export default function NotificationsRoute(): ReactElement {
   const uidRef = useRef<string | null>(uid);
   uidRef.current = uid;
 
+  // Whether the subject's userPrivate/{uid} doc actually exists. Founding
+  // parents get one at signup; invited members created BEFORE the
+  // inviteService bootstrap fix have none, which makes a preferences
+  // setDoc-merge a CREATE that the rules reject (create-shape is exactly
+  // {email, familyId}). When the doc is missing we self-heal: bootstrap
+  // {email, familyId} first, then write preferences as an UPDATE. Starts
+  // null (unknown) until the first snapshot resolves.
+  const docExistsRef = useRef<boolean | null>(null);
+
   useEffect((): (() => void) | undefined => {
     if (!uid) return undefined;
     const unsub = onSnapshot(
       doc(db, USER_PRIVATE_COLLECTION, uid),
       (snap) => {
+        docExistsRef.current = snap.exists();
         const data = snap.exists() ? (snap.data() as RawUserPrivateDoc) : null;
         setPreferences(readPreferences(data));
       },
@@ -243,32 +253,36 @@ export default function NotificationsRoute(): ReactElement {
       if (uidRef.current !== capturedUid) return;
       if (!familyId) return;
       try {
+        // Self-heal the legacy invited-member gap. A preferences write is a
+        // setDoc-merge; when the userPrivate/{uid} doc does NOT exist that
+        // merge is a CREATE, and the create rule permits ONLY the exact
+        // shape {email, familyId} — so a notificationPreferences write can
+        // never land on a missing doc (confirmed by the rules test
+        // userprivate-notification-prefs.test.ts case C). Invited members
+        // accepted before the inviteService bootstrap fix have no doc, so
+        // here we first create it with exactly {email, familyId} (which the
+        // create rule allows for an established active member claiming their
+        // own family), then fall through to the preferences UPDATE.
+        if (docExistsRef.current === false) {
+          const email = auth.currentUser?.email;
+          if (email) {
+            await setDoc(doc(db, USER_PRIVATE_COLLECTION, capturedUid), {
+              email,
+              familyId,
+            });
+            docExistsRef.current = true;
+            if (uidRef.current !== capturedUid) return;
+          }
+        }
         await setDoc(
           doc(db, USER_PRIVATE_COLLECTION, capturedUid),
-          {
-            // Include familyId explicitly even though it never changes.
-            // The userPrivate UPDATE rule's `immutable('familyId')` check
-            // compares request.resource.data.familyId vs resource.data.
-            // familyId. With a setDoc(merge:true) that touches only
-            // `notificationPreferences`, the rules-engine evaluation of
-            // request.resource.data was rejecting the write on iOS Safari
-            // PWA (root cause unverified — likely a merge-evaluation
-            // subtlety where the new top-level field caused the engine to
-            // treat request.resource.data.familyId as not-present).
-            // Passing familyId explicitly guarantees both sides are
-            // present and equal so immutable() unambiguously passes.
-            familyId,
-            notificationPreferences: { ...patch, updatedAt: Date.now() },
-          },
+          { notificationPreferences: { ...patch, updatedAt: Date.now() } },
           { merge: true },
         );
       } catch {
-        // Most likely cause: the `userPrivate/{uid}` doc does not yet
-        // exist, so setDoc-merge becomes a CREATE that the rules reject
-        // (the create-shape only allows {email, familyId} per ADR-0008).
-        // Surface a toast so the user knows the toggle did not persist;
-        // the error object is NOT logged (it can carry path fragments
-        // that are PI-adjacent under the threat model).
+        // Surface a toast so the user knows the toggle did not persist; the
+        // error object is NOT logged (it can carry path fragments that are
+        // PI-adjacent under the threat model).
         showToast(t('notifications.writeFailed'));
       }
     },
