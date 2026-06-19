@@ -352,7 +352,7 @@ afterEach(() => {
 // TC-T1 — declaration.
 // ===========================================================================
 
-describe.skip('TC-T1: declaration includes enforceAppCheck:true + region', () => {
+describe('TC-T1: declaration includes enforceAppCheck:true + region', () => {
   it('source file exists', () => {
     expect(existsSync(SOURCE_PATH)).toBe(true);
   });

@@ -129,13 +129,7 @@ describe('B-T1: own user + active → CAN read own fcmTokens', () => {
 // PRODUCTION-attacker case — a script with a valid session token but no
 // App Check attestation tries to register a token. It must be denied.)
 // ---------------------------------------------------------------------------
-// TEMPORARY (PR G smoke-test unblock): skipped while the App Check
-// attestation issue on iOS Safari PWA is debugged. The rule clause
-//   && request.app_check_token != null
-// was commented out in firestore.rules (see the matching TEMPORARY
-// note there). Restoration is paired: un-comment the rule clause AND
-// un-skip this describe block in the same follow-up PR.
-describe.skip('B-T2 (M32): own user without App Check → cannot WRITE; read unaffected', () => {
+describe('B-T2 (M32): own user without App Check → cannot WRITE; read unaffected', () => {
   it('CANNOT create an fcmToken doc when App Check token is absent', async () => {
     const db = env.authenticatedContext(UID.memberA).firestore();
     const { doc, setDoc } = await import('firebase/firestore');
@@ -356,13 +350,7 @@ describe('B-T8 (marker): per-user device cap is enforced CLIENT-SIDE, not in rul
 // positive branch, but the rule LITERAL is the canonical contract.
 // ---------------------------------------------------------------------------
 describe('static-source assertion: firestore.rules requires App Check on fcmTokens writes (M32)', () => {
-  // TEMPORARY (PR G smoke-test unblock): skipped while the App Check
-  // attestation issue on iOS Safari PWA is debugged. The rule literal
-  // was commented out in firestore.rules so a real iPhone register flow
-  // could reach the rules engine; restoring this assertion is paired
-  // with un-commenting the rule clause. See the "TEMPORARY" block in
-  // firestore.rules for the matching tracking note.
-  it.skip('firestore.rules contains the fcmTokens block AND references request.app_check_token', async () => {
+  it('firestore.rules contains the fcmTokens block AND references request.app_check_token', async () => {
     const fs = await import('node:fs');
     const path = await import('node:path');
     const url = await import('node:url');

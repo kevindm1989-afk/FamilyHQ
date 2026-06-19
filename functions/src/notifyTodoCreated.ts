@@ -73,7 +73,7 @@ interface MulticastResult {
 export const notifyTodoCreated = onCall(
   {
     region: 'northamerica-northeast1',
-    enforceAppCheck: false, // TEMPORARY (smoke-test): App Check attestation broken on iOS Safari PWA — restore to true when fixed
+    enforceAppCheck: true,
   },
   async (request) => {
     const startedAt = Date.now();

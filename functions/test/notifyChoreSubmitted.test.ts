@@ -371,7 +371,7 @@ afterEach(() => {
 // CS-T1 — declaration shape: enforceAppCheck + region pinned in source.
 // ===========================================================================
 
-describe.skip('CS-T1: callable declaration includes `enforceAppCheck: true` and pins the region', () => {
+describe('CS-T1: callable declaration includes `enforceAppCheck: true` and pins the region', () => {
   it('the source file exists at functions/src/notifyChoreSubmitted.ts', () => {
     expect(existsSync(SOURCE_PATH)).toBe(true);
   });

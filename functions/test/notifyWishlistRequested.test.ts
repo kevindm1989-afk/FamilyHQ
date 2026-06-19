@@ -354,7 +354,7 @@ afterEach(() => {
 // WR-T1 — Declaration: enforceAppCheck + region pinned.
 // ===========================================================================
 
-describe.skip('WR-T1: declaration includes enforceAppCheck:true and pins the region', () => {
+describe('WR-T1: declaration includes enforceAppCheck:true and pins the region', () => {
   it('the source file exists', () => {
     expect(existsSync(SOURCE_PATH)).toBe(true);
   });
