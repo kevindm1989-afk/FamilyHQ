@@ -353,7 +353,7 @@ afterEach(() => {
 // BP-T1 — declaration.
 // ===========================================================================
 
-describe.skip('BP-T1: declaration includes enforceAppCheck:true + region', () => {
+describe('BP-T1: declaration includes enforceAppCheck:true + region', () => {
   it('source file exists', () => {
     expect(existsSync(SOURCE_PATH)).toBe(true);
   });

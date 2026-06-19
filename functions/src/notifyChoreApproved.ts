@@ -134,7 +134,7 @@ export const notifyChoreApproved = onCall(
     // C-T1 CI source-scan greps for it as a property assignment (not a
     // comment). Without this, a stolen user session token alone is
     // enough to mint pushes — see threat-model T5.7 / T-C.3.
-    enforceAppCheck: false, // TEMPORARY (smoke-test): App Check attestation broken on iOS Safari PWA — restore to true when fixed
+    enforceAppCheck: true,
   },
   async (request) => {
     // Wall-clock start for the structured-log `durationMs` field (M38).
