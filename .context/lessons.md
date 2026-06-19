@@ -21,6 +21,66 @@ Append newest on top. Be specific — vague lessons don't prevent anything.
 
 ## Entries
 
+## 2026-06-19 — Reproduce Firestore rule rejections in the emulator FIRST; one targeted rules test beats four PRs of guessing
+
+**Symptom:** A push-preferences write failed silently on one device — the device row appeared then vanished and the master toggle flipped back to OFF. Diagnosed across four PRs (App Check dropped on the `fcmTokens` rule, App Check dropped on seven callables, `familyId` added to the merge payload, then the actual fix). The first three addressed real-but-non-load-bearing issues; only the last stopped the symptom.
+
+**Root cause:** Without an emulator reproduction, every PR was a hypothesis aimed at a class of failure (attestation, payload shape, region) rather than a confirmed rule line. Cloud Logging did not surface the rule denial (Firestore audit logging is off by default). The Firebase Console Rules Playground was not reliably reachable on the device under test. So each "fix" shipped, the symptom persisted, and we learned only by exclusion.
+
+**Fix:** Wrote a four-case rules test against the emulator that ran the EXACT client write under the EXACT auth context: (A) doc exists + prefs-only merge → ALLOW, (B) doc exists + familyId+prefs merge → ALLOW, (C) doc missing + prefs merge → DENY at the line the rule cited in PERMISSION_DENIED, (D) bootstrap `{email, familyId}` then merge → ALLOW. The single failing case (C) immediately named the root cause — `setDoc(merge:true)` on a missing doc is a CREATE, gated by the create-rule's exact-shape constraint.
+
+**Prevention:** When a Firestore write fails on a real device with an unclear rule line, the FIRST step is `npx firebase emulators:exec --only firestore "npx vitest run --config vitest.rules.config.ts <file>"` with a tiny test that mirrors the production client call (same auth uid, same path, same payload). The denied-line number falls out of the PERMISSION_DENIED message; no further guessing. Console Rules Playground is the secondary option (when reachable); enabling Firestore audit logging is the last-resort observability move, not the diagnostic ladder's first rung. See `test/rules/userprivate-notification-prefs.test.ts` for the template.
+
+## 2026-06-19 — Founding-parent and invite-acceptance bootstrap paths must stay symmetric; check both when extending the multi-doc signup batch
+
+**Symptom:** An established invited member could not save notification preferences. Every preferences merge into `userPrivate/{uid}` was rejected. Founding parents had no such issue.
+
+**Root cause:** `authService.signUpFoundingParent` writes THREE docs atomically (`families/{newId}`, `users/{uid}`, `userPrivate/{uid}` with `{email, familyId}`). `inviteService.acceptInvite` was writing only TWO (`users/{uid}`, `invites/{id}` status). The `userPrivate` doc was never created for invited members. This was flagged as INFORMATIONAL in an earlier security review — turned out to be load-bearing the moment an invited member opened the notifications screen.
+
+**Fix:** `inviteService.acceptInvite` now writes `userPrivate/{uid}` with `{email, familyId}` in the SAME atomic batch — full parity with the founding-parent path. Added a self-heal in `NotificationsRoute.tsx` so members accepted BEFORE the fix auto-bootstrap on their next preferences write.
+
+**Prevention:** When extending the founding-parent bootstrap batch (a new doc, a new field, a new collection touched at signup), mirror the change in `inviteService.acceptInvite` in the same PR. The two paths are siblings, not variants — any asymmetry is a latent rules-denial waiting for the first invited member to hit it. A test asserting shape parity (same doc paths, same field keys per path, modulo `role` and `inviteId`) would prevent regression; see `inviteService.test.ts` for the batch-shape-assertion pattern.
+
+## 2026-06-19 — `setDoc(merge:true)` on a MISSING doc is a CREATE, subject to the CREATE rule's shape constraint
+
+**Symptom:** A merge write to `userPrivate/{uid}` carrying `{notificationPreferences: {...}}` was denied by the create rule whose `request.resource.data.keys().hasOnly(['email','familyId'])` predicate did not accept the merged shape. Confusion arose because the SDK call was `setDoc(ref, payload, { merge: true })` — read as an UPDATE shape.
+
+**Root cause:** Firestore evaluates the operation against the existence of the doc. If the doc does not exist, `setDoc(merge:true)` is a CREATE, gated by the `allow create` predicate — including any `hasOnly([...])` shape lock. The merge flag changes what the SDK sends (partial vs full) but NOT which rule predicate runs.
+
+**Fix:** Ensure the doc exists first (bootstrap with the create-allowed shape), then perform the merge as an UPDATE. The self-heal pattern at `src/features/notifications/NotificationsRoute.tsx` is the canonical implementation: detect the missing doc via the live snapshot, write `{email, familyId}` to satisfy the create rule, then issue the preferences merge.
+
+**Prevention:** When designing a collection whose create rule uses `keys().hasOnly([...])`, EITHER (a) guarantee the doc always exists before any merge write (via the founding bootstrap + invite-symmetric bootstrap — see previous lesson), OR (b) write the create rule to accept the union of `{create-shape} | {future-merge-shape}`. The "only the bootstrap shape on create" choice traded ergonomics for tight rules — that trade is correct, but the symmetry guarantee from the previous lesson is the load-bearing precondition.
+
+## 2026-06-19 — Firebase JS `getFunctions()` defaults to `us-central1`; always pass the deployment region explicitly
+
+**Symptom:** Every push-callable invocation since PR D had been silently 404'ing. Server-side logs showed zero invocations of the seven notify callables; client-side, the fire-and-forget `try/catch` (per ADR-0014) was swallowing the network error so the SPA gave no signal.
+
+**Root cause:** Client called `getFunctions(app)` with no region. The Firebase JS SDK defaults to `us-central1`. The functions are deployed to `northamerica-northeast1` (per ADR-0013). Requests resolved to a non-existent regional endpoint. By design (ADR-0014) the callers do not surface the failure; by design (ADR-0013) there is nothing to surface in Cloud Logging because the function never ran.
+
+**Fix:** Pass region explicitly via a shared constant module that has zero Firebase SDK dependencies, so the five callsites (`boardService`, `choresParentService`, `choresMemberService`, `todosService`, `wishlistService`) import the constant without dragging the SDK into their test sandboxes. See `src/firebase/functions-region.ts` and its docblock.
+
+**Prevention:** Every `getFunctions()` call passes `FUNCTIONS_REGION` as the second arg: `getFunctions(undefined, FUNCTIONS_REGION)`. The constant lives in its own zero-firebase-dependency module so the test sandboxes for client services do not need an `import.meta.env` shim for an unrelated dependency. When the deploy region for `functions/` changes, that constant is the single update point — the deployed `region:` value on every `onCall` is its server twin and must move together.
+
+## 2026-06-19 — Fire-and-forget callable invocations (ADR-0014) require server-side observability; client toasts are explicitly not the diagnostic path
+
+**Symptom:** Four hours of debugging because the symptom (preferences write failure, region 404, App Check refusal) produced zero client signal AND zero server signal. The SPA's intentional `try/catch` (push is non-essential by design) hides callable failures from the operator.
+
+**Root cause:** ADR-0014's fire-and-forget pattern is correct for UX (a notification that didn't fire should not block the user's action) but creates a diagnostic blind spot when something IS wrong. The trade-off favors user experience over operator visibility — and that trade is correct — but the mitigation has to live server-side, not client-side.
+
+**Fix:** No code change (the trade-off is intentional). Mitigation is documentation + the diagnostic ladder: emulator reproduction (definitive), Rules Playground (when reachable), Cloud Logging only if Firestore audit logging is explicitly enabled.
+
+**Prevention:** When ADR-0014's callsite pattern is touched, do NOT add error toasts to surface push failures to the user. When debugging a "push isn't working" report, do NOT start at the client (there's nothing to see) — start at the server function logs; if logs are empty, suspect a transport failure (region mismatch, App Check, network) before suspecting a code bug. Update operator runbooks to include "verify the function was actually invoked (Cloud Logging) before debugging anything else."
+
+## 2026-06-19 — Operator config drift (a TTL added via Firebase Console) breaks subsequent non-interactive `firebase deploy` runs; mirror the override into `firestore.indexes.json` BEFORE the next deploy
+
+**Symptom:** A deploy was needed unexpectedly: the next deploy after the PR F operator setup refused to proceed in non-interactive mode because the live project's `scheduledSends.expiresAt` TTL (added via Firebase Console during PR F's operator gate steps) was not present in `firestore.indexes.json`, so the deploy detected drift it would not auto-reconcile without prompting.
+
+**Root cause:** Console-applied field overrides (TTL policies, single-field index exemptions) are real Firestore configuration but live OUTSIDE the repo's deploy artifact. The next `firebase deploy --only firestore` sees the discrepancy as drift and prompts; in CI / non-interactive mode that prompt is a failure.
+
+**Fix:** Mirrored the TTL field override into `firestore.indexes.json`. Now the repo IS the source of truth and the next deploy is no-op-clean.
+
+**Prevention:** Any operator action that mutates Firestore field overrides via the Console (TTL enable, single-field exemption, etc.) is followed in the SAME merge train by a PR that adds the equivalent entry to `firestore.indexes.json`. The operator runbook step for "enable TTL on `<collection>.<field>`" gains a sibling step "open a one-line PR mirroring the TTL into `firestore.indexes.json`". Otherwise the next `firebase deploy` is the broken signal.
+
 ## 2026-06-16 — Server-trigger feature: first deploy will fail four times in a predictable cascade — bundle the operator gates into the design doc
 
 **Symptom:** PR F (scheduled push) needed four separate deploy attempts after merge, each surfacing a different operator-side gate that the deploy SA couldn't bootstrap on its own:
