@@ -138,3 +138,177 @@ describe('parent chore authority within own family', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// parentChoreEdit — the chore-management edit rule (Feature: edit + delete).
+// Lets a parent correct a chore's content fields BEFORE it has been earned
+// (status == 'pending' or 'rejected'). Once 'complete' or 'approved' the
+// reward is owed and editing is denied. familyId/createdBy/createdAt/status
+// are immutable via the affectedKeys lock; the change set must be non-empty.
+// ---------------------------------------------------------------------------
+describe('parentChoreEdit: parent may correct a pre-earned chore', () => {
+  it('parent CAN edit title + dueDate + pointValue + dollarValue on a PENDING chore', async () => {
+    const parentDb = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertSucceeds(
+      updateDoc(doc(parentDb, 'chores', CHORE_A), {
+        title: 'Take out trash',
+        dueDate: '2026-07-01',
+        pointValue: 10,
+        dollarValue: 7,
+      }),
+    );
+  });
+
+  it('parent CAN reassign a pending chore to another same-family member', async () => {
+    const parentDb = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertSucceeds(
+      updateDoc(doc(parentDb, 'chores', CHORE_A), { assignedTo: UID.member2A }),
+    );
+  });
+
+  it('parent CAN edit isRecurring / recurrenceFrequency on a pending chore', async () => {
+    const parentDb = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertSucceeds(
+      updateDoc(doc(parentDb, 'chores', CHORE_A), {
+        isRecurring: true,
+        recurrenceFrequency: 'weekly',
+      }),
+    );
+  });
+
+  it('parent CAN edit a REJECTED chore (kid was sent back; parent clarifies)', async () => {
+    // Drive the chore to 'rejected' first (complete -> rejected).
+    const memberDb = env.authenticatedContext(UID.memberA).firestore();
+    const fs = await import('firebase/firestore');
+    await fs.updateDoc(fs.doc(memberDb, 'chores', CHORE_A), { status: 'complete' });
+    const parentDb = env.authenticatedContext(UID.parentA).firestore();
+    await fs.updateDoc(fs.doc(parentDb, 'chores', CHORE_A), {
+      status: 'rejected',
+      rejectionReason: 'try again',
+    });
+    // Now edit the chore content.
+    await assertSucceeds(
+      fs.updateDoc(fs.doc(parentDb, 'chores', CHORE_A), { title: 'Take out trash (clearer)' }),
+    );
+  });
+
+  it('parent CANNOT edit a chore in COMPLETE status (kid earned it; lock the value)', async () => {
+    const memberDb = env.authenticatedContext(UID.memberA).firestore();
+    const fs = await import('firebase/firestore');
+    await fs.updateDoc(fs.doc(memberDb, 'chores', CHORE_A), { status: 'complete' });
+    const parentDb = env.authenticatedContext(UID.parentA).firestore();
+    await assertFails(
+      fs.updateDoc(fs.doc(parentDb, 'chores', CHORE_A), { dollarValue: 1 }),
+    );
+  });
+
+  it('parent CANNOT edit a chore in APPROVED status (reward already credited)', async () => {
+    const memberDb = env.authenticatedContext(UID.memberA).firestore();
+    const fs = await import('firebase/firestore');
+    await fs.updateDoc(fs.doc(memberDb, 'chores', CHORE_A), { status: 'complete' });
+    const parentDb = env.authenticatedContext(UID.parentA).firestore();
+    await fs.updateDoc(fs.doc(parentDb, 'chores', CHORE_A), { status: 'approved' });
+    await assertFails(
+      fs.updateDoc(fs.doc(parentDb, 'chores', CHORE_A), { title: 'retroactive change' }),
+    );
+  });
+
+  it('parent CANNOT change familyId via edit (tenant reassignment denied)', async () => {
+    const parentDb = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(parentDb, 'chores', CHORE_A), { familyId: 'family-B' }),
+    );
+  });
+
+  it('parent CANNOT change status via edit (lifecycle path only)', async () => {
+    const parentDb = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    // From 'pending' the only legal status moves are via the member-complete
+    // path; a parent setting status directly via the edit predicate is denied.
+    await assertFails(updateDoc(doc(parentDb, 'chores', CHORE_A), { status: 'approved' }));
+  });
+
+  it('parent CANNOT reassign to a CROSS-FAMILY user', async () => {
+    const parentDb = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(parentDb, 'chores', CHORE_A), { assignedTo: UID.memberB }),
+    );
+  });
+
+  it('parent CANNOT submit a no-op edit (empty change set denied — defence against same-value re-assert)', async () => {
+    // Setting dollarValue to its current value is a no-op write (affectedKeys
+    // is empty), which the rule denies. Tests the size() > 0 clause.
+    const parentDb = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, getDoc, updateDoc } = await import('firebase/firestore');
+    const snap = await getDoc(doc(parentDb, 'chores', CHORE_A));
+    const current = snap.data() as { dollarValue: number };
+    await assertFails(
+      updateDoc(doc(parentDb, 'chores', CHORE_A), { dollarValue: current.dollarValue }),
+    );
+  });
+
+  it('parent CANNOT set a fractional dollarValue (isValidMoneyInt: integer cents only)', async () => {
+    const parentDb = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(parentDb, 'chores', CHORE_A), { dollarValue: 3.5 }),
+    );
+  });
+
+  it('parent CANNOT set a negative pointValue', async () => {
+    const parentDb = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(parentDb, 'chores', CHORE_A), { pointValue: -1 }),
+    );
+  });
+
+  it('parent CANNOT set an unknown recurrenceFrequency value', async () => {
+    const parentDb = env.authenticatedContext(UID.parentA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(parentDb, 'chores', CHORE_A), { recurrenceFrequency: 'monthly' }),
+    );
+  });
+
+  it('CROSS-FAMILY parent CANNOT edit a chore in another family', async () => {
+    const otherFamilyParentDb = env.authenticatedContext(UID.parentB).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(otherFamilyParentDb, 'chores', CHORE_A), { title: 'cross-family' }),
+    );
+  });
+
+  it('MEMBER CANNOT edit chore content even on own pending chore (parent-only path)', async () => {
+    const memberDb = env.authenticatedContext(UID.memberA).firestore();
+    const { doc, updateDoc } = await import('firebase/firestore');
+    await assertFails(
+      updateDoc(doc(memberDb, 'chores', CHORE_A), { title: 'kid renamed it' }),
+    );
+  });
+});
+
+describe('parent chore delete (rule already allowed; documenting the contract)', () => {
+  it('parent CAN delete a chore in their own family at ANY status', async () => {
+    const parentDb = env.authenticatedContext(UID.parentA).firestore();
+    const { deleteDoc, doc } = await import('firebase/firestore');
+    await assertSucceeds(deleteDoc(doc(parentDb, 'chores', CHORE_A)));
+  });
+
+  it('member CANNOT delete a chore (even their own assigned chore)', async () => {
+    const memberDb = env.authenticatedContext(UID.memberA).firestore();
+    const { deleteDoc, doc } = await import('firebase/firestore');
+    await assertFails(deleteDoc(doc(memberDb, 'chores', CHORE_A)));
+  });
+
+  it('CROSS-FAMILY parent CANNOT delete a chore in another family', async () => {
+    const otherFamilyParentDb = env.authenticatedContext(UID.parentB).firestore();
+    const { deleteDoc, doc } = await import('firebase/firestore');
+    await assertFails(deleteDoc(doc(otherFamilyParentDb, 'chores', CHORE_A)));
+  });
+});

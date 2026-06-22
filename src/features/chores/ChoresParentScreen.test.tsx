@@ -25,7 +25,7 @@
  * builds its own props (order-independent). Money/date matchers are PRECISE so a
  * stray digit cannot false-match (member-view matcher lesson).
  */
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../hooks/useToast';
 import { ChoresParentScreen, type ChoresParentScreenProps } from './ChoresParentScreen';
@@ -102,6 +102,8 @@ function renderScreen(overrides: Partial<ChoresParentScreenProps> = {}) {
     onApprove: vi.fn().mockResolvedValue(undefined),
     onReject: vi.fn().mockResolvedValue(undefined),
     onAddChore: vi.fn(),
+    onEditChore: vi.fn(),
+    onDeleteChore: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
   render(
@@ -793,5 +795,148 @@ describe('ChoresParentScreen — a11y: focus moves to the awaiting heading after
     await waitFor(() => expect(onApprove).toHaveBeenCalled());
     const heading = screen.getByRole('heading', { name: /awaiting approval/i });
     await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+});
+
+// ===========================================================================
+// Chore management — Edit + Delete affordances on each chore card
+// ===========================================================================
+describe('chore management — Edit button (status-gated) + two-tap Delete confirm', () => {
+  it('renders an Edit button on a PENDING chore card AND invokes onEditChore with the chore', () => {
+    const onEditChore = vi.fn();
+    renderScreen({
+      onEditChore,
+      feed: {
+        chores: [mkChore({ id: 'c-pending', title: 'Take out trash', status: 'pending' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    const editBtn = screen.getByRole('button', { name: 'Edit' });
+    fireEvent.click(editBtn);
+    expect(onEditChore).toHaveBeenCalledTimes(1);
+    expect(onEditChore.mock.calls[0]![0]).toMatchObject({ id: 'c-pending' });
+  });
+
+  it('renders an Edit button on a REJECTED chore card', () => {
+    renderScreen({
+      feed: {
+        chores: [mkChore({ id: 'c-rej', status: 'rejected' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    // 'rejected' chores still allow content edit (kid was sent back).
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+  });
+
+  it('a COMPLETE chore is shown only in the approvals queue (no chore card -> no Edit/Delete row)', () => {
+    // Complete chores go to the approvals queue at the top (ApprovalRow) which
+    // exposes Approve/Reject — not the chore card row that carries Edit/Delete.
+    // Mirrors the firestore.rules `parentChoreEdit` predicate (edit hidden
+    // post-completion) and the screen's `visibleChores.filter(c.status !=
+    // 'complete')` rule. Delete on an awaiting-approval chore is a separate
+    // follow-up: parents who want to remove an awaiting chore can reject
+    // first (back to 'rejected') then delete from its chore-card row.
+    renderScreen({
+      feed: {
+        chores: [mkChore({ id: 'c-complete', status: 'complete' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+    // The Approve button IS shown (the approvals queue).
+    expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument();
+  });
+
+  it('does NOT render an Edit button on an APPROVED chore card', () => {
+    renderScreen({
+      feed: {
+        chores: [mkChore({ id: 'c-app', status: 'approved' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+  });
+
+  it('FIRST Delete tap arms the row (button flips to "Delete?"); does NOT call onDeleteChore yet', () => {
+    const onDeleteChore = vi.fn().mockResolvedValue(undefined);
+    renderScreen({
+      onDeleteChore,
+      feed: {
+        chores: [mkChore({ id: 'c-1', status: 'pending' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    // The button text flipped; the destructive action has NOT fired yet.
+    expect(screen.getByRole('button', { name: 'Delete?' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+    expect(onDeleteChore).not.toHaveBeenCalled();
+  });
+
+  it('SECOND Delete tap (after arming) invokes onDeleteChore with the chore id', async () => {
+    const onDeleteChore = vi.fn().mockResolvedValue(undefined);
+    renderScreen({
+      onDeleteChore,
+      feed: {
+        chores: [mkChore({ id: 'c-1', status: 'pending' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete?' }));
+    await waitFor(() => expect(onDeleteChore).toHaveBeenCalledTimes(1));
+    expect(onDeleteChore).toHaveBeenCalledWith('c-1');
+  });
+
+  it('Cancel after arming returns the row to the un-armed state without calling onDeleteChore', () => {
+    const onDeleteChore = vi.fn().mockResolvedValue(undefined);
+    renderScreen({
+      onDeleteChore,
+      feed: {
+        chores: [mkChore({ id: 'c-1', status: 'pending' })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    // Back to the un-armed state.
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete?' })).toBeNull();
+    expect(onDeleteChore).not.toHaveBeenCalled();
+  });
+
+  it('Delete button appears on every chore-card status (pending / approved / rejected)', () => {
+    // The screen routes 'complete' chores to the approvals queue (no card),
+    // so the delete affordance is wired on the three card-rendering states.
+    for (const status of ['pending', 'approved', 'rejected'] as const) {
+      renderScreen({
+        feed: {
+          chores: [mkChore({ id: `c-${status}`, status })],
+          loading: false,
+          error: null,
+          refresh: vi.fn(),
+        },
+      });
+      expect(
+        screen.getByRole('button', { name: 'Delete' }),
+        `delete button should render for status=${status}`,
+      ).toBeInTheDocument();
+      cleanup(); // unmount between iterations so getByRole stays unambiguous
+    }
   });
 });

@@ -526,3 +526,91 @@ describe('AddChore — a11y: submit carries aria-busy while adding', () => {
     await waitFor(() => expect(getSubmit()).not.toHaveAttribute('aria-busy', 'true'));
   });
 });
+
+// ===========================================================================
+// EDIT MODE — the shared sheet pre-fills from `initial` and submits via
+// `onUpdate(id, value)`. Sheet title + submit copy flip to the edit variants.
+// ===========================================================================
+
+const EDIT_INITIAL = {
+  id: 'chore-42',
+  value: {
+    title: 'Take out the trash',
+    assignedTo: 'uid-maya',
+    date: new Date(Date.UTC(2026, 6, 1, 12, 0, 0)).toISOString(), // 2026-07-01
+    pointValue: 8,
+    dollarValue: 700, // cents — $7.00
+    isRecurring: true,
+    recurrenceFrequency: 'weekly' as const,
+  },
+};
+
+function getEditSubmit(): HTMLButtonElement {
+  return screen.getByRole('button', { name: /save changes/i }) as HTMLButtonElement;
+}
+
+describe('AddChore — edit mode: sheet title + submit copy flip', () => {
+  it('shows the edit-mode sheet title when `initial` is passed', () => {
+    renderSheet({ initial: EDIT_INITIAL, onUpdate: vi.fn().mockResolvedValue(undefined) });
+    expect(screen.getByText(/edit chore/i)).toBeInTheDocument();
+    expect(screen.queryByText(/add chore/i)).toBeNull();
+  });
+
+  it('shows the "Save changes" submit label instead of "Add chore" when `initial` is passed', () => {
+    renderSheet({ initial: EDIT_INITIAL, onUpdate: vi.fn().mockResolvedValue(undefined) });
+    expect(getEditSubmit()).toBeInTheDocument();
+  });
+});
+
+describe('AddChore — edit mode: pre-fills the form fields from `initial.value`', () => {
+  it('prefills the title input from initial.value.title', () => {
+    renderSheet({ initial: EDIT_INITIAL, onUpdate: vi.fn().mockResolvedValue(undefined) });
+    const titleInput = screen.getByLabelText(/what/i) as HTMLInputElement;
+    expect(titleInput.value).toBe('Take out the trash');
+  });
+
+  it('prefills the dollar input as a 2-decimal string (cents -> dollars)', () => {
+    renderSheet({ initial: EDIT_INITIAL, onUpdate: vi.fn().mockResolvedValue(undefined) });
+    // The dollar input shows formatted dollars, e.g. "7.00" for 700 cents.
+    expect(screen.getByDisplayValue('7.00')).toBeInTheDocument();
+  });
+
+  it('prefills the points input from initial.value.pointValue', () => {
+    renderSheet({ initial: EDIT_INITIAL, onUpdate: vi.fn().mockResolvedValue(undefined) });
+    expect(screen.getByDisplayValue('8')).toBeInTheDocument();
+  });
+});
+
+describe('AddChore — edit mode: submit invokes onUpdate(id, value) and toasts the edit copy', () => {
+  it('submits via onUpdate with the chore id + AddChoreValue (NOT onAdd)', async () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined);
+    const onUpdate = vi.fn().mockResolvedValue(undefined);
+    renderSheet({ initial: EDIT_INITIAL, onAdd, onUpdate });
+    // Edit the title slightly then save.
+    const titleInput = screen.getByLabelText(/what/i) as HTMLInputElement;
+    fireEvent.change(titleInput, { target: { value: 'Take out trash (clearer)' } });
+    fireEvent.click(getEditSubmit());
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledTimes(1));
+    expect(onAdd).not.toHaveBeenCalled();
+    const [id, value] = onUpdate.mock.calls[0]!;
+    expect(id).toBe('chore-42');
+    expect((value as { title: string }).title).toBe('Take out trash (clearer)');
+  });
+
+  it('toasts the edit-success copy on a successful onUpdate', async () => {
+    const onUpdate = vi.fn().mockResolvedValue(undefined);
+    renderSheet({ initial: EDIT_INITIAL, onUpdate });
+    fireEvent.click(getEditSubmit());
+    await waitFor(() => expect(screen.getByText(/chore updated/i)).toBeInTheDocument());
+  });
+
+  it('on onUpdate rejection: surfaces the generic toast (no raw error)', async () => {
+    const onUpdate = vi.fn().mockRejectedValue(new Error('emulated-firestore-raw'));
+    renderSheet({ initial: EDIT_INITIAL, onUpdate });
+    fireEvent.click(getEditSubmit());
+    await waitFor(() =>
+      expect(screen.getByText(/something went wrong|please try again/i)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/emulated-firestore-raw/)).toBeNull();
+  });
+});

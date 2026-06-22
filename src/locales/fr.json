@@ -783,6 +783,13 @@
     "reasonRequired": "Veuillez ajouter une courte raison avant de renvoyer.",
     "rewardSuffix": "récompense",
     "rewardLabel": "récompense {{amount}}",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "confirmDelete": "Supprimer ?",
+    "editSheetTitle": "Modifier la tâche",
+    "editSubmit": "Enregistrer",
+    "editSuccess": "Tâche modifiée.",
+    "deleteSuccess": "Tâche supprimée.",
     "balanceLabel": "Solde de {{name}} {{amount}}",
     "balanceUnavailable": "Solde de {{name}} indisponible",
     "toast": {

@@ -27,6 +27,7 @@ import {
   addDoc,
   collection,
   doc,
+  deleteDoc,
   increment,
   runTransaction,
   serverTimestamp,
@@ -326,6 +327,89 @@ export async function addChore(deps: { db: Firestore }, input: CreateChoreInput)
   } catch {
     throw new ChoreActionError(CHORE_PARENT_GENERIC_ERROR);
   }
+}
+
+/**
+ * Input shape for the parent edit. Same content fields as CreateChoreInput
+ * minus the create-only `createdBy` / `familyId` bindings — both are
+ * immutable post-create and the rule enforces that via the affectedKeys
+ * lock. Status is also NOT in the input: the edit path is for content
+ * correction, not lifecycle transitions (those live in approve/reject).
+ */
+export interface EditChoreInput {
+  title: string;
+  assignedTo: string;
+  dueDate: string;
+  pointValue: number;
+  dollarValue: number;
+  isRecurring: boolean;
+  recurrenceFrequency: RecurrenceFrequency;
+}
+
+/**
+ * Parent edit: correct a chore's content fields. Allowed by the rules layer
+ * only while the chore is still in a pre-earned state (status == 'pending'
+ * or 'rejected'); a write against a 'complete' or 'approved' chore is
+ * rejected by the rules and bubbled up here as the generic PII-free error.
+ * The kid would have already earned (or be about to earn) the reward in
+ * those states and a retroactive value change would be unfair.
+ *
+ * Trims the title; rejects an empty/whitespace title BEFORE any write
+ * (mirrors the addChore + rejectChore validate-before-write posture).
+ */
+export async function editChore(
+  deps: { db: Firestore },
+  choreId: string,
+  input: EditChoreInput,
+): Promise<void> {
+  const title = input.title.trim();
+  if (title.length === 0) {
+    throw new ChoreActionError(CHORE_PARENT_GENERIC_ERROR);
+  }
+  try {
+    await updateDoc(doc(deps.db, CHORES_COLLECTION, choreId), {
+      title,
+      assignedTo: input.assignedTo,
+      dueDate: input.dueDate,
+      pointValue: input.pointValue,
+      dollarValue: input.dollarValue,
+      isRecurring: input.isRecurring,
+      recurrenceFrequency: input.recurrenceFrequency,
+    });
+  } catch {
+    throw new ChoreActionError(CHORE_PARENT_GENERIC_ERROR);
+  }
+}
+
+/**
+ * Parent delete: remove a chore from the family. The rules layer permits
+ * delete at ANY status (the parent owns the family's task list). The UI
+ * gates this behind an explicit confirm so it is not a one-tap mistake.
+ * Idempotent at the SDK level: deleting a non-existent doc is a no-op.
+ *
+ * Note: deleting a chore that was already approved does NOT reverse the
+ * allowance credit — the transactions ledger is append-only (M27) and the
+ * balance reflects the historical credit. This is intentional and matches
+ * the spec: the chore record can be removed for tidiness, but the ledger
+ * stays for audit.
+ */
+export async function deleteChore(deps: { db: Firestore }, choreId: string): Promise<void> {
+  try {
+    await deleteDoc(doc(deps.db, CHORES_COLLECTION, choreId));
+  } catch {
+    throw new ChoreActionError(CHORE_PARENT_GENERIC_ERROR);
+  }
+}
+
+/**
+ * PURE SELECTOR — whether a chore can be edited by a parent (status guard
+ * that mirrors the firestore.rules `parentChoreEdit` predicate). The screen
+ * uses this to hide the edit affordance on chores that are past the
+ * pre-earned window, so the user never taps an edit button that the server
+ * would reject.
+ */
+export function isEditable(chore: ChoreWithId): boolean {
+  return chore.status === 'pending' || chore.status === 'rejected';
 }
 
 /**

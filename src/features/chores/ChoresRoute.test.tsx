@@ -46,6 +46,12 @@ vi.mock('../../hooks/useFamily', () => ({
   useFamily: () => familyState,
 }));
 
+const showToastMock = vi.fn();
+vi.mock('../../hooks/useToast', () => ({
+  useToast: () => ({ message: null, showToast: showToastMock, dismiss: vi.fn() }),
+  ToastProvider: ({ children }: { children: unknown }) => children,
+}));
+
 vi.mock('./useMyChores', () => ({
   useMyChores: () => ({ chores: [], loading: false, error: null, refresh: vi.fn() }),
 }));
@@ -61,10 +67,14 @@ vi.mock('./choresMemberService', () => ({
 const approveMock = vi.fn();
 const rejectMock = vi.fn();
 const addChoreMock = vi.fn();
+const editChoreMock = vi.fn();
+const deleteChoreMock = vi.fn();
 vi.mock('./choresParentService', () => ({
   approveChore: (...a: unknown[]) => approveMock(...a),
   rejectChore: (...a: unknown[]) => rejectMock(...a),
   addChore: (...a: unknown[]) => addChoreMock(...a),
+  editChore: (...a: unknown[]) => editChoreMock(...a),
+  deleteChore: (...a: unknown[]) => deleteChoreMock(...a),
 }));
 
 // Mock the screens + sheet so we can assert wiring without their internals.
