@@ -123,8 +123,15 @@ const RECURRENCE_I18N_KEY: Record<RecurrenceFrequency, string | null> = {
   monthly: 'chores.recurrence.monthly',
 };
 
-function formatMoney(value: number): string {
-  return CURRENCY.format(Number.isFinite(value) ? value : 0);
+/**
+ * Format an INTEGER-CENTS amount as a currency string. `chore.dollarValue`
+ * and `viewer.allowanceBalance` are stored as whole cents per ADR-0009 (the
+ * authoritative money convention), NOT dollars — so 800 here means $8.00,
+ * not $800.00. A prior implementation treated the input as dollars and
+ * displayed 100× the real value on every kid-side chore reward and balance.
+ */
+function formatMoney(cents: number): string {
+  return CURRENCY.format(Number.isFinite(cents) ? cents / 100 : 0);
 }
 
 export function ChoresMemberScreen(props: ChoresMemberScreenProps): ReactElement {
