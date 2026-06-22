@@ -783,6 +783,13 @@
     "reasonRequired": "Please add a short reason before sending it back.",
     "rewardSuffix": "reward",
     "rewardLabel": "reward {{amount}}",
+    "edit": "Edit",
+    "delete": "Delete",
+    "confirmDelete": "Delete?",
+    "editSheetTitle": "Edit chore",
+    "editSubmit": "Save changes",
+    "editSuccess": "Chore updated.",
+    "deleteSuccess": "Chore deleted.",
     "balanceLabel": "{{name}} balance {{amount}}",
     "balanceUnavailable": "{{name}} balance unavailable",
     "toast": {

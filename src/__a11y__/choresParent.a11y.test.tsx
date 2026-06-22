@@ -50,6 +50,8 @@ describe('a11y — ChoresParentScreen', () => {
           onApprove={noopAsync}
           onReject={noopAsync}
           onAddChore={noop}
+          onEditChore={noop}
+          onDeleteChore={noopAsync}
         />
       </ToastProvider>,
     );

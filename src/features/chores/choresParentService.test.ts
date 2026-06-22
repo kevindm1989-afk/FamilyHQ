@@ -25,7 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // lets us assert the EXACT transactional writes without an emulator.
 
 interface TxnOp {
-  op: 'update' | 'set';
+  op: 'update' | 'set' | 'delete';
   ref: { __collection: string; __id?: string };
   data: Record<string, unknown>;
 }
@@ -64,6 +64,11 @@ const setDocMock = vi.fn(
     txnOps.push({ op: 'set', ref, data });
   },
 );
+let deleteShouldReject = false;
+const deleteDocMock = vi.fn(async (ref: { __collection: string; __id?: string }) => {
+  if (deleteShouldReject) throw new Error('emulated-firestore-failure (raw, must not surface)');
+  txnOps.push({ op: 'delete', ref, data: {} });
+});
 
 const runTransactionMock = vi.fn(
   async (_db: unknown, updater: (tx: unknown) => Promise<void>) => {
@@ -91,6 +96,7 @@ vi.mock('firebase/firestore', () => ({
     updateDocMock(...a),
   setDoc: (...a: [{ __collection: string; __id?: string }, Record<string, unknown>]) =>
     setDocMock(...a),
+  deleteDoc: (...a: [{ __collection: string; __id?: string }]) => deleteDocMock(...a),
   increment: (n: number) => incrementMock(n),
   serverTimestamp: () => serverTimestampMock(),
   runTransaction: (...a: [unknown, (tx: unknown) => Promise<void>]) => runTransactionMock(...a),
@@ -172,7 +178,10 @@ import {
   approveChore,
   canManageChores,
   choresForTab,
+  deleteChore,
+  editChore,
   formatMoney,
+  isEditable,
   isValidMoneyCents,
   memberFilterTabs,
   pendingApprovalCount,
@@ -219,6 +228,7 @@ beforeEach(() => {
   txnOps = [];
   addShouldReject = false;
   updateShouldReject = false;
+  deleteShouldReject = false;
   httpsCallableCalls = [];
   callableShouldReject = false;
   callableRejection = undefined;
@@ -879,5 +889,184 @@ describe('approveChore — PR C: callable failure is silent (in-app inbox is sou
       expect(e.message).not.toMatch(/messaging\/internal-error/);
       expect(e.message).not.toMatch(/RAW/);
     });
+  });
+});
+
+// ===========================================================================
+// editChore — content correction on a pre-earned chore (status pending|rejected)
+// ===========================================================================
+
+describe('editChore — writes EXACTLY the editable content fields to the right doc', () => {
+  it('issues one updateDoc against chores/{id} with all editable fields', async () => {
+    await editChore({ db }, 'chore-1', {
+      title: 'Take out trash',
+      assignedTo: 'uid-kid-a',
+      dueDate: '2026-07-01',
+      pointValue: 10,
+      dollarValue: 700,
+      isRecurring: true,
+      recurrenceFrequency: 'weekly',
+    });
+    expect(updateDocMock).toHaveBeenCalledTimes(1);
+    const [ref, data] = updateDocMock.mock.calls[0]!;
+    expect(ref.__collection).toBe('chores');
+    expect(ref.__id).toBe('chore-1');
+    expect(data).toEqual({
+      title: 'Take out trash',
+      assignedTo: 'uid-kid-a',
+      dueDate: '2026-07-01',
+      pointValue: 10,
+      dollarValue: 700,
+      isRecurring: true,
+      recurrenceFrequency: 'weekly',
+    });
+  });
+
+  it('trims the title BEFORE the write (single space chopped, internal spaces kept)', async () => {
+    await editChore({ db }, 'chore-1', {
+      title: '   Take out trash   ',
+      assignedTo: 'uid-kid-a',
+      dueDate: '2026-07-01',
+      pointValue: 0,
+      dollarValue: 0,
+      isRecurring: false,
+      recurrenceFrequency: 'none',
+    });
+    const [, data] = updateDocMock.mock.calls[0]!;
+    expect((data as { title: string }).title).toBe('Take out trash');
+  });
+
+  it('REJECTS a blank/whitespace title BEFORE any write — surfaces the generic error', async () => {
+    await expect(
+      editChore({ db }, 'chore-1', {
+        title: '   ',
+        assignedTo: 'uid-kid-a',
+        dueDate: '2026-07-01',
+        pointValue: 0,
+        dollarValue: 0,
+        isRecurring: false,
+        recurrenceFrequency: 'none',
+      }),
+    ).rejects.toMatchObject({
+      name: 'ChoreActionError',
+      message: CHORE_PARENT_GENERIC_ERROR,
+    });
+    expect(updateDocMock, 'no write should have fired on validation failure').not.toHaveBeenCalled();
+  });
+
+  it('does NOT write status, familyId, createdBy, createdAt, rejectionReason, or rejectedAt', async () => {
+    // The rule's affectedKeys lock would reject any of these; the service
+    // shape is the load-bearing positive control.
+    await editChore({ db }, 'chore-1', {
+      title: 'x',
+      assignedTo: 'u',
+      dueDate: '2026-07-01',
+      pointValue: 1,
+      dollarValue: 1,
+      isRecurring: false,
+      recurrenceFrequency: 'none',
+    });
+    const [, data] = updateDocMock.mock.calls[0]!;
+    const keys = Object.keys(data as Record<string, unknown>).sort();
+    expect(keys).toEqual(
+      [
+        'assignedTo',
+        'dollarValue',
+        'dueDate',
+        'isRecurring',
+        'pointValue',
+        'recurrenceFrequency',
+        'title',
+      ].sort(),
+    );
+    expect(keys).not.toContain('status');
+    expect(keys).not.toContain('familyId');
+    expect(keys).not.toContain('createdBy');
+    expect(keys).not.toContain('createdAt');
+    expect(keys).not.toContain('rejectionReason');
+    expect(keys).not.toContain('rejectedAt');
+  });
+
+  it('maps a raw Firestore failure to the generic PII-free error (no raw text bleeds out)', async () => {
+    updateShouldReject = true;
+    await expect(
+      editChore({ db }, 'chore-1', {
+        title: 'x',
+        assignedTo: 'u',
+        dueDate: '2026-07-01',
+        pointValue: 1,
+        dollarValue: 1,
+        isRecurring: false,
+        recurrenceFrequency: 'none',
+      }),
+    ).rejects.toMatchObject({
+      name: 'ChoreActionError',
+      message: CHORE_PARENT_GENERIC_ERROR,
+    });
+  });
+});
+
+// ===========================================================================
+// deleteChore — single deleteDoc on the right doc, generic error mapping
+// ===========================================================================
+
+describe('deleteChore — single deleteDoc on chores/{id}', () => {
+  it('calls deleteDoc against chores/{choreId} once', async () => {
+    await deleteChore({ db }, 'chore-42');
+    expect(deleteDocMock).toHaveBeenCalledTimes(1);
+    const [ref] = deleteDocMock.mock.calls[0]!;
+    expect(ref.__collection).toBe('chores');
+    expect(ref.__id).toBe('chore-42');
+  });
+
+  it('does NOT call updateDoc / addDoc / runTransaction (delete is the only side effect)', async () => {
+    await deleteChore({ db }, 'chore-42');
+    expect(updateDocMock).not.toHaveBeenCalled();
+    expect(addDocMock).not.toHaveBeenCalled();
+    expect(runTransactionMock).not.toHaveBeenCalled();
+  });
+
+  it('maps a raw Firestore failure to the generic PII-free error', async () => {
+    deleteShouldReject = true;
+    await expect(deleteChore({ db }, 'chore-42')).rejects.toMatchObject({
+      name: 'ChoreActionError',
+      message: CHORE_PARENT_GENERIC_ERROR,
+    });
+  });
+});
+
+// ===========================================================================
+// isEditable — pure status guard that mirrors the rule predicate
+// ===========================================================================
+
+describe('isEditable — pure status guard (matches parentChoreEdit predicate)', () => {
+  function chore(status: ChoreWithId['status']): ChoreWithId {
+    return {
+      id: 'chore-1',
+      title: 'x',
+      assignedTo: 'u',
+      familyId: 'fam-A',
+      createdBy: 'u',
+      createdAt: 0,
+      dueDate: '2026-07-01',
+      pointValue: 0,
+      dollarValue: 0,
+      status,
+      isRecurring: false,
+      recurrenceFrequency: 'none',
+    } as ChoreWithId;
+  }
+
+  it('returns true for status="pending"', () => {
+    expect(isEditable(chore('pending'))).toBe(true);
+  });
+  it('returns true for status="rejected"', () => {
+    expect(isEditable(chore('rejected'))).toBe(true);
+  });
+  it('returns false for status="complete" (kid is owed — no retroactive edits)', () => {
+    expect(isEditable(chore('complete'))).toBe(false);
+  });
+  it('returns false for status="approved" (reward already credited)', () => {
+    expect(isEditable(chore('approved'))).toBe(false);
   });
 });

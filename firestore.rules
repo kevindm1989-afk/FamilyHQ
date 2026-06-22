@@ -617,10 +617,45 @@ service cloud.firestore {
           && (isParent() || resource.data.assignedTo == request.auth.uid);
       }
 
+      // Parent edit (Feature: chore management). A parent in the same family
+      // may correct a chore's content fields — title, assignedTo, dueDate,
+      // pointValue, dollarValue, isRecurring, recurrenceFrequency — but ONLY
+      // while the chore is still in a pre-earned state (status == 'pending'
+      // or 'rejected'). Once a kid has completed it (status == 'complete')
+      // OR a parent approved it (status == 'approved'), the reward is owed
+      // and editing fields like dollarValue would let a parent retroactively
+      // change what the kid earned. familyId, createdBy, createdAt, and
+      // status are immutable via the affectedKeys().hasOnly() lock; the
+      // changed-key set must be NON-EMPTY (no-op writes denied — defence in
+      // depth against a crafted same-value re-assert). Numeric / type
+      // validation mirrors the create rule. assignedTo may be reassigned but
+      // only to a same-family user (mirrors create's assigneeIsSameFamilyUser
+      // predicate); an unchanged assignedTo skips the existence read.
+      function parentChoreEdit() {
+        return isParent()
+          && sameFamily(resource)
+          && incomingSameFamily()
+          && (resource.data.status == 'pending' || resource.data.status == 'rejected')
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+               ['title', 'assignedTo', 'dueDate', 'pointValue', 'dollarValue',
+                'isRecurring', 'recurrenceFrequency'])
+          && request.resource.data.diff(resource.data).affectedKeys().size() > 0
+          && isValidMoneyInt(request.resource.data.pointValue)
+          && isValidMoneyInt(request.resource.data.dollarValue)
+          && request.resource.data.isRecurring is bool
+          && request.resource.data.recurrenceFrequency in ['none', 'weekly', 'biweekly']
+          && request.resource.data.dueDate is string
+          && request.resource.data.title is string
+          && (
+            request.resource.data.assignedTo == resource.data.assignedTo
+            || assigneeIsSameFamilyUser()
+          );
+      }
+
       allow get: if memberOwnsOrIsParent();
       allow list: if memberOwnsOrIsParent();
       allow create: if choreCreateHardened();
-      allow update: if memberLegalCompletion() || parentChoreUpdate();
+      allow update: if memberLegalCompletion() || parentChoreUpdate() || parentChoreEdit();
       allow delete: if isParent() && sameFamily(resource);
     }
 

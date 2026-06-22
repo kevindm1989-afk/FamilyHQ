@@ -45,10 +45,20 @@ export interface AddChoreProps {
   author: { uid: string; name: string; role: Role };
   /** Active members to populate the assign-to control (dynamic, not hardcoded). */
   members: UserWithId[];
-  /** Injected create action (wired to choresParentService.addChore + toast). */
+  /** Injected create action (wired to choresParentService.addChore + toast).
+   *  IGNORED when `initial` is provided (edit mode); use `onUpdate` instead. */
   onAdd: (value: AddChoreValue) => Promise<void>;
   /** The reference "today" so the Today/Tomorrow chips are deterministic. */
   today: { year: number; month: number; day: number };
+  /** EDIT MODE — when present the sheet:
+   *   - opens pre-filled with these values (title/assignee/date/points/dollars/recurrence),
+   *   - shows the edit-mode sheet title + submit copy,
+   *   - submits via `onUpdate` instead of `onAdd`.
+   *  The `id` is the chore document id; the value shape is the same
+   *  `AddChoreValue` the create path uses. Absent on add. */
+  initial?: { id: string; value: AddChoreValue };
+  /** REQUIRED when `initial` is provided. Receives the edited value. */
+  onUpdate?: (id: string, value: AddChoreValue) => Promise<void>;
 }
 
 type DueChoice = 'today' | 'tomorrow' | 'pick';
@@ -115,18 +125,58 @@ function toCents(value: string): number {
 
 export function AddChore(props: AddChoreProps): ReactElement {
   const { t } = useTranslation();
-  const { open, onClose, members, onAdd, today } = props;
+  const { open, onClose, members, onAdd, today, initial, onUpdate } = props;
   const { showToast } = useToast();
+  const isEditMode = initial !== undefined;
 
-  const [title, setTitle] = useState('');
-  const [assignedTo, setAssignedTo] = useState<string>(members[0]?.id ?? '');
-  const [due, setDue] = useState<DueChoice>('today');
-  const [pickedDate, setPickedDate] = useState('');
-  const [pointValue, setPointValue] = useState('0');
-  const [dollarValue, setDollarValue] = useState('0');
-  const [isRecurring, setIsRecurring] = useState(false);
-  const [recurrenceFrequency, setRecurrenceFrequency] = useState<RecurrenceFrequency>('weekly');
+  // Helpers to extract YYYY-MM-DD from an ISO datetime string for the date
+  // input. The chore's stored dueDate is the ISO datetime; the native
+  // <input type="date"> wants the bare day part.
+  const initialIsoToDateInput = (iso: string): string => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+    return m ? `${m[1]}-${m[2]}-${m[3]}` : '';
+  };
+  const centsToDollarsInput = (cents: number): string => (cents / 100).toFixed(2);
+
+  const [title, setTitle] = useState(initial?.value.title ?? '');
+  const [assignedTo, setAssignedTo] = useState<string>(
+    initial?.value.assignedTo ?? members[0]?.id ?? '',
+  );
+  // Edit mode always lands on the 'pick' date variant (a kept-date is a
+  // specific calendar day, not "today" relative to the editor's clock).
+  const [due, setDue] = useState<DueChoice>(initial ? 'pick' : 'today');
+  const [pickedDate, setPickedDate] = useState(
+    initial ? initialIsoToDateInput(initial.value.date) : '',
+  );
+  const [pointValue, setPointValue] = useState(initial ? String(initial.value.pointValue) : '0');
+  const [dollarValue, setDollarValue] = useState(
+    initial ? centsToDollarsInput(initial.value.dollarValue) : '0',
+  );
+  const [isRecurring, setIsRecurring] = useState(initial?.value.isRecurring ?? false);
+  const [recurrenceFrequency, setRecurrenceFrequency] = useState<RecurrenceFrequency>(
+    initial && initial.value.recurrenceFrequency !== 'none'
+      ? initial.value.recurrenceFrequency
+      : 'weekly',
+  );
   const [submitting, setSubmitting] = useState(false);
+
+  // Re-prime the form when `initial` changes (e.g. user closes the edit
+  // sheet for chore-A, then re-opens it for chore-B). Without this the
+  // sheet would render with the old chore's values until a separate
+  // unmount/remount.
+  useEffect(() => {
+    if (!initial) return;
+    setTitle(initial.value.title);
+    setAssignedTo(initial.value.assignedTo);
+    setDue('pick');
+    setPickedDate(initialIsoToDateInput(initial.value.date));
+    setPointValue(String(initial.value.pointValue));
+    setDollarValue(centsToDollarsInput(initial.value.dollarValue));
+    setIsRecurring(initial.value.isRecurring);
+    if (initial.value.recurrenceFrequency !== 'none') {
+      setRecurrenceFrequency(initial.value.recurrenceFrequency);
+    }
+  }, [initial]);
 
   const titleId = useId();
   const assignLabelId = useId();
@@ -175,9 +225,10 @@ export function AddChore(props: AddChoreProps): ReactElement {
       isRecurring,
       recurrenceFrequency: isRecurring ? recurrenceFrequency : 'none',
     };
-    void onAdd(value)
+    const action = isEditMode && onUpdate ? onUpdate(initial!.id, value) : onAdd(value);
+    void action
       .then(() => {
-        showToast(t('chores.toast.added'));
+        showToast(t(isEditMode ? 'chores.editSuccess' : 'chores.toast.added'));
         onClose();
       })
       .catch(() => showToast(t('chores.toast.generic')))
@@ -188,7 +239,11 @@ export function AddChore(props: AddChoreProps): ReactElement {
 
   return (
     <>
-      <BottomSheet open={open} title={t('chores.addChore.sheetTitle')} onClose={onClose}>
+      <BottomSheet
+        open={open}
+        title={t(isEditMode ? 'chores.editSheetTitle' : 'chores.addChore.sheetTitle')}
+        onClose={onClose}
+      >
         <div className="flex flex-col gap-16">
           {/* Title — autofocus-eligible (first focusable), aria-required. The
               visible <label> is the accessible name (no aria-label override). */}
@@ -409,7 +464,7 @@ export function AddChore(props: AddChoreProps): ReactElement {
             onClick={handleSubmit}
             className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control bg-brand px-20 text-body font-semibold text-brand-on transition-colors duration-cardPress ease-out hover:bg-brand-dark active:bg-brand-dark focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus aria-disabled:opacity-60 motion-reduce:transition-none"
           >
-            {t('chores.addChore.submit')}
+            {t(isEditMode ? 'chores.editSubmit' : 'chores.addChore.submit')}
           </button>
         </div>
       </BottomSheet>

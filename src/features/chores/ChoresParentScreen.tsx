@@ -38,6 +38,7 @@ import {
   approvalQueue,
   choresForTab,
   formatMoney,
+  isEditable as isChoreEditable,
   isValidMoneyCents,
   memberFilterTabs,
   pendingApprovalCount,
@@ -60,6 +61,11 @@ export interface ChoresParentScreenProps {
   onReject: (choreId: string, reason: string) => Promise<void>;
   /** Open the Add Chore sheet (FAB). */
   onAddChore: () => void;
+  /** Open the (shared) chore sheet pre-filled with this chore for editing. */
+  onEditChore: (chore: ChoreWithId) => void;
+  /** Hard delete the chore. The screen wraps the call in a confirm step
+   *  (two-tap inline confirmation) so a single tap never destroys data. */
+  onDeleteChore: (choreId: string) => Promise<void>;
 }
 
 function friendlyDueDate(iso: string, locale: string): string {
@@ -74,7 +80,28 @@ function friendlyDueDate(iso: string, locale: string): string {
 
 export function ChoresParentScreen(props: ChoresParentScreenProps): ReactElement {
   const { t, i18n } = useTranslation();
-  const { members, feed, onApprove, onReject, onAddChore } = props;
+  const { members, feed, onApprove, onReject, onAddChore, onEditChore, onDeleteChore } = props;
+  // Per-row inline delete confirmation: first tap arms the row; second tap
+  // commits. Tapping anything else (or another delete) cancels. Avoids a
+  // modal dialog — keeps the tap target close to the action being confirmed.
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<Set<string>>(new Set());
+
+  const handleDelete = (choreId: string): void => {
+    if (confirmingDeleteId !== choreId) {
+      setConfirmingDeleteId(choreId);
+      return;
+    }
+    setConfirmingDeleteId(null);
+    setDeleting((prev) => new Set(prev).add(choreId));
+    void onDeleteChore(choreId).finally(() => {
+      setDeleting((prev) => {
+        const next = new Set(prev);
+        next.delete(choreId);
+        return next;
+      });
+    });
+  };
   const { showToast } = useToast();
   const locale = i18n.resolvedLanguage ?? 'en';
 
@@ -259,7 +286,16 @@ export function ChoresParentScreen(props: ChoresParentScreenProps): ReactElement
               <ul className="flex flex-col gap-8" aria-label={t('chores.choresList')}>
                 {visibleChores.map((chore) => (
                   <li key={chore.id}>
-                    <ChoreCard chore={chore} locale={locale} />
+                    <ChoreCard
+                      chore={chore}
+                      locale={locale}
+                      editable={isChoreEditable(chore)}
+                      onEdit={() => onEditChore(chore)}
+                      confirmingDelete={confirmingDeleteId === chore.id}
+                      deleting={deleting.has(chore.id)}
+                      onDelete={() => handleDelete(chore.id)}
+                      onCancelDelete={() => setConfirmingDeleteId(null)}
+                    />
                   </li>
                 ))}
               </ul>
@@ -456,9 +492,27 @@ function ApprovalRow(props: ApprovalRowProps): ReactElement {
   );
 }
 
-function ChoreCard(props: { chore: ChoreWithId; locale: string }): ReactElement {
+interface ChoreCardProps {
+  chore: ChoreWithId;
+  locale: string;
+  /** True when the chore's status permits content edit (pending|rejected). */
+  editable: boolean;
+  onEdit: () => void;
+  /** True after the FIRST delete tap on this row — the button text + style
+   *  flips to a confirm prompt. A second tap commits. */
+  confirmingDelete: boolean;
+  /** True while the delete request is in flight. */
+  deleting: boolean;
+  onDelete: () => void;
+  /** Tapping anywhere else cancels confirm; this lets the row's own
+   *  on-blur-style escape cancel without a global listener. */
+  onCancelDelete: () => void;
+}
+
+function ChoreCard(props: ChoreCardProps): ReactElement {
   const { t } = useTranslation();
-  const { chore, locale } = props;
+  const { chore, locale, editable, onEdit, confirmingDelete, deleting, onDelete, onCancelDelete } =
+    props;
   const STATUS_I18N_KEY: Record<ChoreStatus, string> = {
     pending: 'chores.status.pending',
     complete: 'chores.status.waiting',
@@ -495,6 +549,49 @@ function ChoreCard(props: { chore: ChoreWithId; locale: string }): ReactElement 
           </span>
           {t('chores.rewardSuffix')}
         </span>
+      </span>
+      {/* Parent-only management controls. Edit is hidden when the chore is
+          past the pre-earned window (status=complete|approved) — mirrors the
+          firestore.rules `parentChoreEdit` guard via the isEditable selector
+          so a button never tempts a user into a server-side rejection. */}
+      <span className="flex flex-wrap items-center justify-end gap-8 pt-4">
+        {editable ? (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control border border-surface-line bg-surface-card px-12 text-label font-semibold text-brand focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+          >
+            {t('chores.edit')}
+          </button>
+        ) : null}
+        {confirmingDelete ? (
+          <>
+            <button
+              type="button"
+              onClick={onCancelDelete}
+              className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control border border-surface-line bg-surface-card px-12 text-label font-semibold text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={deleting}
+              className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control border border-status-danger-text bg-status-danger-text px-12 text-label font-semibold text-white focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t('chores.confirmDelete')}
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={deleting}
+            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control border border-surface-line bg-surface-card px-12 text-label font-semibold text-status-danger-text focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {t('chores.delete')}
+          </button>
+        )}
       </span>
     </div>
   );
