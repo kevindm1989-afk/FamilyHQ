@@ -38,7 +38,11 @@ const VIEWER = {
   uid: 'uid-member-a',
   name: 'Maya Rivera',
   role: 'member' as const,
-  allowanceBalance: 38.5,
+  // INTEGER CENTS per ADR-0009. 3850 cents == $38.50. A prior fixture used the
+  // float 38.5 (dollars), which only worked because the local formatMoney was
+  // also typed-as-dollars — both halves of the bug paired up to display the
+  // wrong value as the "right" value. Cents is the canonical convention.
+  allowanceBalance: 3850,
 };
 
 function mkChore(over: Partial<ChoreWithId> & { id: string }): ChoreWithId {
@@ -47,7 +51,8 @@ function mkChore(over: Partial<ChoreWithId> & { id: string }): ChoreWithId {
     assignedTo: 'uid-member-a',
     dueDate: '2026-05-30',
     pointValue: 10,
-    dollarValue: 3,
+    // INTEGER CENTS per ADR-0009. 300 cents == $3.00.
+    dollarValue: 300,
     status: 'pending',
     familyId: 'fam-A',
     createdBy: 'uid-parent-a',
@@ -89,7 +94,7 @@ describe('ChoresMemberScreen — loading state', () => {
 
 describe('ChoresMemberScreen — earnings card (balance only; month-sum DEFERRED)', () => {
   it('shows the member’s current allowanceBalance prominently', () => {
-    renderScreen({ viewer: { ...VIEWER, allowanceBalance: 38.5 } });
+    renderScreen({ viewer: { ...VIEWER, allowanceBalance: 3850 } });
     // The balance is shown as currency. Pin the value, not the exact element.
     expect(screen.getByText(/\$?38\.50/)).toBeInTheDocument();
   });
@@ -99,11 +104,38 @@ describe('ChoresMemberScreen — earnings card (balance only; month-sum DEFERRED
     expect(screen.getByText(/\$?0\.00/)).toBeInTheDocument();
   });
 
+  // REGRESSION pin (PR: kid-side cents-vs-dollars). The local formatMoney in
+  // ChoresMemberScreen.tsx used to treat the input as DOLLARS, displaying
+  // $800.00 for a chore stored as 800 cents (= $8.00). Same bug on the
+  // allowance-balance chip. Pin both directions of the conversion so a
+  // future refactor can't reintroduce the 100× display drift.
+  it('formats an 800-cent reward as $8.00 (not $800.00) — cents-vs-dollars regression', () => {
+    renderScreen({
+      feed: {
+        chores: [mkChore({ id: 'c1', pointValue: 8, dollarValue: 800 })],
+        loading: false,
+        error: null,
+        refresh: vi.fn(),
+      },
+    });
+    expect(screen.getByText(/\$8\.00/)).toBeInTheDocument();
+    expect(screen.queryByText(/\$800\.00/), 'must NOT display 100x the stored value').toBeNull();
+  });
+
+  it('formats an 80000-cent balance as $800.00 (not $80,000) — cents-vs-dollars regression', () => {
+    renderScreen({ viewer: { ...VIEWER, allowanceBalance: 80000 } });
+    expect(screen.getByText(/\$800\.00/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/\$80,000\.00|\$80000\.00/),
+      'must NOT display 100x the stored cents balance',
+    ).toBeNull();
+  });
+
   it('does NOT render a computed "earned this month" sum (deferred — depends on the ledger)', () => {
     // The transactions ledger is not built yet; the screen must not fabricate a
     // monthly total. A static "View history" affordance is allowed, but no
     // "earned this month" dollar figure derived from transactions.
-    renderScreen({ viewer: { ...VIEWER, allowanceBalance: 38.5 } });
+    renderScreen({ viewer: { ...VIEWER, allowanceBalance: 3850 } });
     expect(screen.queryByText(/earned this month/i)).not.toBeInTheDocument();
   });
 });
@@ -133,7 +165,7 @@ describe('ChoresMemberScreen — pending section + Mark done', () => {
   it('renders the point value and dollar value on a chore row', () => {
     renderScreen({
       feed: {
-        chores: [mkChore({ id: 'c1', pointValue: 10, dollarValue: 3 })],
+        chores: [mkChore({ id: 'c1', pointValue: 10, dollarValue: 300 })],
         loading: false,
         error: null,
         refresh: vi.fn(),
@@ -205,7 +237,7 @@ describe('ChoresMemberScreen — sections (pending / waiting-for-approval / appr
   it('renders an approved chore with its "$X earned" amount', () => {
     renderScreen({
       feed: {
-        chores: [mkChore({ id: 'c1', title: 'Mow lawn', status: 'approved', dollarValue: 5 })],
+        chores: [mkChore({ id: 'c1', title: 'Mow lawn', status: 'approved', dollarValue: 500 })],
         loading: false,
         error: null,
         refresh: vi.fn(),
@@ -656,7 +688,7 @@ describe('ChoresMemberScreen — accessibility (a11y findings)', () => {
   });
 
   it('the balance has an accessible name that reads as the balance, not a bare number', () => {
-    renderScreen({ viewer: { ...VIEWER, allowanceBalance: 38.5 } });
+    renderScreen({ viewer: { ...VIEWER, allowanceBalance: 3850 } });
     // The amount element exposes a meaningful accessible name like
     // "Your balance $38.50", so it is not announced as a lone "$38.50".
     expect(
