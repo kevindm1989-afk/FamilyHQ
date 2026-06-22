@@ -25,6 +25,25 @@ short code example
 
 ## Entries
 
+## Money / unit fixtures use the STORAGE convention, never the display convention
+
+**When to use:** any new or modified test that constructs a fixture for a field whose storage representation differs from its rendered form. In this repo the canonical case is money (storage = integer cents per ADR-0009; display = "$X.XX"). The same shape applies to durations (storage = ms; display = "Xm Ys"), bytes, percentages stored as basis points, etc.
+**How:** every money-touching fixture is in CENTS (`allowanceBalance: 3850`, `dollarValue: 300`, `costCents: 80000`). Assertions on rendered output assert the FORMATTED string ("$38.50"). Never use a dollar-typed fixture and a dollar-typed assertion together — that pair is satisfied by a broken formatter as readily as a correct one. For magnitude-class regressions, pin BOTH the correct rendered value (`getByText('$8.00')`) AND the wrong one's absence (`queryByText('$800.00')` is null).
+**Example:**
+```ts
+// fixture (storage units — cents)
+const member = { id: 'm1', name: 'Member A', allowanceBalance: 3850 };
+const chore  = { id: 'c1', dollarValue: 300, title: 'T' };
+
+// assertions (display units — formatted output)
+expect(getByText('$38.50')).toBeInTheDocument();
+expect(getByText('$3.00')).toBeInTheDocument();
+// regression-pin against the 100x drift
+expect(queryByText('$3850.00')).not.toBeInTheDocument();
+expect(queryByText('$300.00')).not.toBeInTheDocument();
+```
+**When not to use:** tests for the boundary converter itself (e.g. `formatMoney.test.ts`, the dollars→cents form-input parser) — those LEGITIMATELY take dollar-typed inputs because asserting the conversion is the point. Outside that one file, fixtures are cents.
+
 ## Rules-emulator reproduction for any Firestore-permission bug
 
 **When to use:** any "client write fails with PERMISSION_DENIED (or silently 404s) on a real device" report. Especially when the rule code path is non-obvious — merges into a possibly-missing doc, transactional writes with cross-doc preconditions, complex auth context interactions.

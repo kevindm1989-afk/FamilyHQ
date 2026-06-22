@@ -21,6 +21,23 @@ Append newest on top. Be specific — vague lessons don't prevent anything.
 
 ## Entries
 
+## 2026-06-22 — When a screen has its own copy of a converter (formatMoney, parseDate, etc.), tests written with display-typed fixtures cannot catch a unit-mismatch bug — both halves agree and the wrong value renders
+
+**Symptom:** An allowance value persisted as the integer 800 (eight dollars in cents, per ADR-0009) rendered as "$800.00" on the kid-side chore list and the kid-side allowance balance chip. The parent-side equivalent rendered "$8.00" correctly. The component-level test suite for the kid screen was green.
+
+**Root cause:** Two unrelated failures lined up to mask each other.
+  1. The kid screen had a LOCAL `formatMoney` stub that treated its input as dollars (no `/100`), while the canonical `formatMoney` in the chores parent service divided by 100 per ADR-0009. Duplicate converters drift on their unit assumption; the local stub existed because importing the shared one "felt heavier" than re-deriving four lines.
+  2. The kid-screen tests passed fixtures in DISPLAY units (e.g. `allowanceBalance: 38.5`, `dollarValue: 3`) and asserted the buggy formatter's 1:1 output ("$38.50", "$3.00"). Each half was wrong in the same direction, so the assertion succeeded against the broken code and would have FAILED against the correct code — the test was pinning the bug, not the spec.
+
+**Fix:** Corrected the local formatter to divide cents by 100 (matching ADR-0009 and the parent-side canonical), rewrote the kid-screen fixtures in storage units (cents — 3850, 300, 500, 800, 80000), and added two REGRESSION-PIN assertions for the load-bearing case: `expect(getByText('$8.00')).toBeInTheDocument()` AND `expect(queryByText('$800.00')).not.toBeInTheDocument()`. The negative assertion is what prevents the next refactor from silently reintroducing the 100× drift — a single positive assertion can be satisfied by partial matches in surprisingly slippery ways (e.g. "$8.00" is a substring of "$800.00" depending on the matcher).
+
+**Prevention (three rules, one cause):**
+  - **Test fixtures use the STORAGE convention, never the display convention.** Per ADR-0009, money is integer cents at the storage and rules layer; every new fixture touching `allowanceBalance` / `dollarValue` / `costCents` / `amount` starts from cents. If your fixture reads naturally (`balance: 38.5`), you are testing the formatter against itself.
+  - **One canonical converter per unit boundary; treat local stubs as a code smell.** The duplicate-formatter pattern is how unit conventions drift between screens. When adding a money/date/byte/duration display in a new screen, import the shared helper; if no shared helper exists, extract one in the same PR. Worth occasionally grepping for `function formatMoney|const formatMoney` to catch new stubs early.
+  - **Regression-pin a magnitude bug from both directions.** When the symptom is an off-by-100× (or off-by-1000×, off-by-3600×) error, assert both that the correct value IS rendered AND that the wrong value is NOT. The negative assertion is the gate against the same drift re-entering.
+
+**Known follow-up, NOT a rule yet (single observation):** the parent-side formatter uses `en-US`/`USD` while the kid-side uses `en-CA`/`CAD`, so the parent sees "$8.00" and the kid sees "8,00 $". UX inconsistency, not a correctness bug; flagged for a future locale-consolidation PR. Do not generalize to a rule on one occurrence.
+
 ## 2026-06-19 — Reproduce Firestore rule rejections in the emulator FIRST; one targeted rules test beats four PRs of guessing
 
 **Symptom:** A push-preferences write failed silently on one device — the device row appeared then vanished and the master toggle flipped back to OFF. Diagnosed across four PRs (App Check dropped on the `fcmTokens` rule, App Check dropped on seven callables, `familyId` added to the merge payload, then the actual fix). The first three addressed real-but-non-load-bearing issues; only the last stopped the symptom.
