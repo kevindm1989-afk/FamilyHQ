@@ -21,8 +21,8 @@
     {
       "name": "NotificationsRoute (push container)",
       "pattern": "^NotificationsRoute-",
-      "maxGzipBytes": 9500,
-      "note": "Lazy route that wires the preferences screen to the live FCM service: two onSnapshot subscriptions (userPrivate + fcmTokens subcollection), four async handlers (request-permission/register, unregister, category write, device-row delete), iOS-without-PWA detection, and preferences coercion. PR G grew this from a 4 KB stub to ~9 KB once the no-op callbacks became real wiring (registerToken/unregisterToken/Notification.requestPermission/setDoc). Carved out separately from the other Route chunks because the FCM messaging import baseline pulls roughly 4 KB even before any logic — the general per-route budget would have to be loosened for everyone otherwise."
+      "maxGzipBytes": 9800,
+      "note": "Lazy route that wires the preferences screen to the live FCM service: two onSnapshot subscriptions (userPrivate + fcmTokens subcollection), four async handlers (request-permission/register, unregister, category write, device-row delete), iOS-without-PWA detection, and preferences coercion. PR G grew this from a 4 KB stub to ~9 KB once the no-op callbacks became real wiring (registerToken/unregisterToken/Notification.requestPermission/setDoc). Carved out separately from the other Route chunks because the FCM messaging import baseline pulls roughly 4 KB even before any logic — the general per-route budget would have to be loosened for everyone otherwise. Budget raised 9500 -> 9800 in the firebase 10->12 bump (deps/firebase-12-undici-cve): the firebase 12 messaging SDK is marginally larger, pushing this chunk to ~9.31 KB gzip. The headroom keeps a future small change from re-tripping the gate on the SDK size alone."
     },
     {
       "name": "per-route chunks",
