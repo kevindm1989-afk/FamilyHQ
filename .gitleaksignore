@@ -1,0 +1,23 @@
+# Gitleaks ignore list — reviewed, known false positives.
+#
+# Gitleaks scans the FULL git history (`gitleaks detect --all`), so a finding
+# stays reported even after the offending line is fixed in the working tree —
+# the old commit still contains it. Each fingerprint below has been manually
+# reviewed and confirmed NOT to be a real secret. Format is:
+#   <commit-sha>:<file>:<rule-id>:<start-line>
+#
+# Anything NOT listed here is still flagged with the full default ruleset, so
+# a genuine leak elsewhere continues to fail the secrets-scan gate.
+
+# Dummy e2e test passwords ("correct-pass-1234" / "returning-pass-1234").
+# These were hard-coded literals in the auth e2e specs; the working tree has
+# since replaced them with the runtime `ephemeralCredential()` helper (no
+# secret in source), but the literals persist in this historical commit.
+9b9a3cefadd19b513736ffa613683af96862e20b:e2e/authed/negative-paths.spec.ts:generic-api-key:71
+9b9a3cefadd19b513736ffa613683af96862e20b:e2e/authed/returning-user.spec.ts:generic-api-key:30
+
+# package.json "e2e:authed" npm script. The generic-api-key entropy heuristic
+# fires on the build-command string (`VITE_DISABLE_PWA=true vite build …`),
+# not a credential. Suppressed at both commits where that line was introduced.
+a92fcefe7f09d8b0f792c4de9ecb70cc6a3469b3:package.json:generic-api-key:22
+c6b4baa83b787ffdc89e3b5908441ca942b3469f:package.json:generic-api-key:22
