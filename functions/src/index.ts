@@ -10,6 +10,10 @@
  * kill-switch silently undeployed (second-opinion review #1).
  */
 export { billingKillSwitch } from './billingKillSwitch.js';
+// Managed (email-less) child accounts — parent-only callables (ADR-0003
+// Option C; docs/specs/managed-child-accounts.md).
+export { createManagedChild } from './createManagedChild.js';
+export { resetManagedChildPassword } from './resetManagedChildPassword.js';
 export { notifyChoreApproved } from './notifyChoreApproved.js';
 export { notifyChoreSubmitted } from './notifyChoreSubmitted.js';
 export { notifyWishlistRequested } from './notifyWishlistRequested.js';

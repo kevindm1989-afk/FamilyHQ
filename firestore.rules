@@ -199,7 +199,18 @@ service cloud.firestore {
           // invite-bootstrap flow records the redeemed invite id) and is then
           // an audit-only field — the subject must not mutate it.
           && (absent('inviteId') ? !('inviteId' in resource.data)
-                                 : ('inviteId' in resource.data && immutable('inviteId')));
+                                 : ('inviteId' in resource.data && immutable('inviteId')))
+          // accountType + loginHandle are set ONCE by the createManagedChild
+          // callable (Admin SDK) and are then identity/authority fields — a
+          // managed child must not self-promote out of 'managed' or repoint the
+          // loginHandle that its Auth sign-in address is derived from
+          // (docs/specs/managed-child-accounts.md). Same optional-field pattern
+          // as inviteId: a plain immutable() throws when the field is absent on
+          // both sides (standard accounts), so branch on presence.
+          && (absent('accountType') ? !('accountType' in resource.data)
+                                    : ('accountType' in resource.data && immutable('accountType')))
+          && (absent('loginHandle') ? !('loginHandle' in resource.data)
+                                    : ('loginHandle' in resource.data && immutable('loginHandle')));
       }
 
       // A same-family active parent doing a BARE update of a member doc may
@@ -1230,6 +1241,21 @@ service cloud.firestore {
     // (Privacy review Fix 3 / Fix 4 — pairs with the `expiresAt` TTL field
     // the callables now write.)
     match /rateLimits/{any} {
+      allow read, write: if false;
+    }
+
+    // --- familyLoginCodes (server-only, managed-child login-code ledger) ----
+    //
+    // Reserves the per-family `loginCode` that scopes managed-child sign-in
+    // (docs/specs/managed-child-accounts.md). The createManagedChild callable
+    // claims `familyLoginCodes/{code} = {familyId}` in a transaction (Admin SDK,
+    // which bypasses these rules) to keep codes globally unique. NO client ever
+    // reads or writes it: a child signs in by composing its synthetic address
+    // from the code the parent shares out-of-band, never by reading this ledger,
+    // so exposing it would only hand out a family-enumeration oracle. The
+    // default-deny catch-all already covers it; pinning it here makes the intent
+    // explicit and survives any future rule re-ordering.
+    match /familyLoginCodes/{code} {
       allow read, write: if false;
     }
 
