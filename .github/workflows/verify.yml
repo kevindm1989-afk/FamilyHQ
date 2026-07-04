@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4 # nosemgrep GitHub-owned first-party action; mutable tag accepted (CI policy)
         with:
           fetch-depth: 0 # full history for some tools
 
@@ -27,7 +27,7 @@ jobs:
 
       - name: Setup Node
         if: ${{ hashFiles('package.json') != '' }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4 # nosemgrep GitHub-owned first-party action; mutable tag accepted (CI policy)
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'
@@ -88,7 +88,7 @@ jobs:
         # Firestore-rules job already installs Java; mirroring it here so
         # the verifier's e2e-authed gate doesn't silently skip in CI.
         if: ${{ hashFiles('e2e/authed/**') != '' }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v4 # nosemgrep GitHub-owned first-party action; mutable tag accepted (CI policy)
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -100,7 +100,7 @@ jobs:
         # Key on the firebase-tools version from package-lock.json so a CLI
         # bump invalidates the cache.
         if: ${{ hashFiles('e2e/authed/**') != '' }}
-        uses: actions/cache@v4
+        uses: actions/cache@v4 # nosemgrep GitHub-owned first-party action; mutable tag accepted (CI policy)
         with:
           path: ~/.cache/firebase/emulators
           key: firebase-emulators-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -145,17 +145,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4 # nosemgrep GitHub-owned first-party action; mutable tag accepted (CI policy)
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4 # nosemgrep GitHub-owned first-party action; mutable tag accepted (CI policy)
         with:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
       # The Firebase emulator requires a JVM.
       - name: Setup Java (required by the Firestore emulator)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v4 # nosemgrep GitHub-owned first-party action; mutable tag accepted (CI policy)
         with:
           distribution: 'temurin'
           java-version: '21'

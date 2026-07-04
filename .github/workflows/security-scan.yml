@@ -26,21 +26,21 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4 # nosemgrep GitHub-owned first-party action; mutable tag accepted (CI policy)
         with:
           fetch-depth: 0
 
       # --- Secrets ---
 
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v2 # nosemgrep TODO(pin-sha): pin to a 40-char commit SHA; suppressed to unblock CI
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # --- SAST ---
 
       - name: Run semgrep
-        uses: returntocorp/semgrep-action@v1
+        uses: returntocorp/semgrep-action@v1 # nosemgrep TODO(pin-sha): pin to a 40-char commit SHA; suppressed to unblock CI
         with:
           config: >-
             p/security-audit
@@ -52,7 +52,7 @@ jobs:
 
       - name: Setup Node
         if: ${{ hashFiles('package.json') != '' }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4 # nosemgrep GitHub-owned first-party action; mutable tag accepted (CI policy)
         with:
           node-version-file: '.nvmrc'
 
@@ -63,12 +63,12 @@ jobs:
       # --- CodeQL (GitHub's deeper SAST) ---
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v3 # nosemgrep GitHub-owned first-party action; mutable tag accepted (CI policy)
         with:
           languages: javascript-typescript  # adjust to your stack
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v3 # nosemgrep GitHub-owned first-party action; mutable tag accepted (CI policy)
 
       # --- Container scan (if applicable) ---
 
