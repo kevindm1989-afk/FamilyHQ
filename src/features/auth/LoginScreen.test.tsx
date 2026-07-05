@@ -19,12 +19,13 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const sendPasswordResetMock = vi.fn();
+const signInMock = vi.fn();
 
 vi.mock('./authService', () => ({
   sendPasswordReset: (...a: unknown[]) => sendPasswordResetMock(...a),
   // Keep the other named exports present so the import in LoginScreen
   // doesn't blow up when `withApi` resolves the whole module.
-  signIn: vi.fn(),
+  signIn: (...a: unknown[]) => signInMock(...a),
   signUpFoundingParent: vi.fn(),
 }));
 vi.mock('../../firebase/config', () => ({
@@ -47,6 +48,8 @@ function mount() {
 
 afterEach(() => {
   sendPasswordResetMock.mockReset();
+  signInMock.mockReset();
+  vi.unstubAllEnvs();
 });
 
 describe('LoginScreen — forgot password post-success flow', () => {
@@ -102,5 +105,37 @@ describe('LoginScreen — forgot password post-success flow', () => {
     // retry without losing context.
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /send reset link/i })).toBeInTheDocument();
+  });
+});
+
+describe('LoginScreen — kid sign-in (managed child, flag-gated)', () => {
+  it('hides the "Kid signing in?" affordance when the flag is off', () => {
+    // Flag unset ⇒ isManagedChildEnabled() is false.
+    mount();
+    expect(screen.queryByRole('button', { name: /kid signing in/i })).not.toBeInTheDocument();
+  });
+
+  it('composes the synthetic .invalid address from family code + username and signs in', async () => {
+    vi.stubEnv('VITE_MANAGED_CHILD_ENABLED', 'true');
+    signInMock.mockResolvedValue({ user: { uid: 'uid-child' } });
+    mount();
+
+    // Enter kid mode.
+    fireEvent.click(screen.getByRole('button', { name: /kid signing in/i }));
+
+    // Kid mode swaps the email field for family code + username.
+    expect(screen.queryByLabelText(/email/i)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/family code/i), { target: { value: 'OTTER42' } });
+    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'Maya' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'a-good-password' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    // signIn is called with the normalised synthetic address (lower-cased,
+    // .invalid) — NOT a real email — and the password.
+    await waitFor(() => expect(signInMock).toHaveBeenCalledTimes(1));
+    const [, emailArg, passwordArg] = signInMock.mock.calls[0] as [unknown, string, string];
+    expect(emailArg).toBe('maya@otter42.familyhq.invalid');
+    expect(passwordArg).toBe('a-good-password');
   });
 });

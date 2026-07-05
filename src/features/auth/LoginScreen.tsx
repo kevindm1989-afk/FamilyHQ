@@ -3,8 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button, LanguageToggle, TextField } from '../../components';
 import { useToast } from '../../hooks/useToast';
+import { isManagedChildEnabled } from '../family/managedChildFeatureFlag';
+import { composeChildLoginEmail } from '../family/childLoginEmail';
 
-type Mode = 'signin' | 'signup' | 'forgot';
+type Mode = 'signin' | 'signup' | 'forgot' | 'kidsignin';
 
 /**
  * Login screen (Task 4/7). Functional, minimal: sign-in, founding-parent
@@ -29,8 +31,13 @@ export function LoginScreen(): ReactElement {
   const [familyName, setFamilyName] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [familyCode, setFamilyCode] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  // The "Kid sign-in" affordance is a client UX gate; the child's account and
+  // the callables that created it are enforced server-side regardless.
+  const kidEnabled = isManagedChildEnabled();
 
   // Match on the error's name string instead of `instanceof AuthActionError`
   // so we don't need to statically import the class — that would pull
@@ -62,7 +69,14 @@ export function LoginScreen(): ReactElement {
     if (busy) return;
     setBusy(true);
     try {
-      if (mode === 'signin') {
+      if (mode === 'kidsignin') {
+        // A managed child has no email: compose the synthetic sign-in address
+        // from the family code + username, then take the SAME signIn path.
+        const syntheticEmail = composeChildLoginEmail(familyCode, username);
+        await withApi((api, { auth }) => api.signIn({ auth }, syntheticEmail, password));
+        showToast(t('login.toast.signedIn'));
+        navigate('/', { replace: true });
+      } else if (mode === 'signin') {
         await withApi((api, { auth }) => api.signIn({ auth }, email, password));
         showToast(t('login.toast.signedIn'));
         // Force a return to the dashboard. The Gate flips to AuthedApp on
@@ -127,13 +141,31 @@ export function LoginScreen(): ReactElement {
               <TextField label={t('login.field.name')} value={name} onChange={setName} required />
             </>
           )}
-          <TextField
-            label={t('login.field.email')}
-            type="email"
-            value={email}
-            onChange={setEmail}
-            required
-          />
+          {mode === 'kidsignin' && (
+            <>
+              <TextField
+                label={t('login.field.familyCode')}
+                value={familyCode}
+                onChange={setFamilyCode}
+                required
+              />
+              <TextField
+                label={t('login.field.username')}
+                value={username}
+                onChange={setUsername}
+                required
+              />
+            </>
+          )}
+          {mode !== 'kidsignin' && (
+            <TextField
+              label={t('login.field.email')}
+              type="email"
+              value={email}
+              onChange={setEmail}
+              required
+            />
+          )}
           {mode !== 'forgot' && (
             <TextField
               label={t('login.field.password')}
@@ -166,6 +198,15 @@ export function LoginScreen(): ReactElement {
               >
                 {t('login.switch.toForgot')}
               </button>
+              {kidEnabled && (
+                <button
+                  type="button"
+                  className="text-brand focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+                  onClick={() => setMode('kidsignin')}
+                >
+                  {t('login.switch.toKid')}
+                </button>
+              )}
             </>
           )}
           {mode !== 'signin' && (

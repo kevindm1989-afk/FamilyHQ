@@ -4,7 +4,6 @@
     "review_status": "PLACEHOLDER — NEEDS NATIVE-SPEAKER REVIEW",
     "register_target": "Canadian French (fr-CA), warm but plain — same tone as the English source. Avoid France-specific idiom (e.g. 'mél' for email, 'arobase' if writing addresses)."
   },
-
   "common": {
     "appName": "Family HQ",
     "loading": "Chargement…",
@@ -18,12 +17,10 @@
     "dismiss": "Fermer",
     "retry": "Réessayer"
   },
-
   "language": {
     "selectorLabel": "Langue",
     "switchedTo": "Langue changée pour {{language}}."
   },
-
   "nav": {
     "home": "Accueil",
     "calendar": "Calendrier",
@@ -31,28 +28,32 @@
     "chores": "Tâches",
     "tasks": "Listes"
   },
-
   "login": {
     "tagline": {
       "signin": "Votre point de rencontre familial.",
       "signup": "Créez votre point de rencontre familial.",
-      "forgot": "Réinitialisez votre mot de passe."
+      "forgot": "Réinitialisez votre mot de passe.",
+      "kidsignin": "Connexion avec le code de votre famille."
     },
     "field": {
       "familyName": "Nom de famille",
       "name": "Votre nom",
       "email": "Courriel",
-      "password": "Mot de passe"
+      "password": "Mot de passe",
+      "familyCode": "Code de famille",
+      "username": "Nom d’utilisateur"
     },
     "submit": {
       "signin": "Se connecter",
       "signup": "Créer la famille",
-      "forgot": "Envoyer le lien de réinitialisation"
+      "forgot": "Envoyer le lien de réinitialisation",
+      "kidsignin": "Se connecter"
     },
     "switch": {
       "toSignup": "Nouveau ici ? Créer une famille",
       "toForgot": "Mot de passe oublié ?",
-      "toSignin": "Retour à la connexion"
+      "toSignin": "Retour à la connexion",
+      "toKid": "Un enfant se connecte ?"
     },
     "toast": {
       "signedIn": "Connecté.",
@@ -66,7 +67,6 @@
       "terms": "Conditions d’utilisation"
     }
   },
-
   "account": {
     "title": "Compte",
     "done": "← Terminé",
@@ -80,7 +80,6 @@
     "resourcesLabel": "Ressources du site",
     "accessibilityLink": "Déclaration d’accessibilité et commentaires"
   },
-
   "dashboard": {
     "welcome": "Bienvenue, {{name}}",
     "refresh": "Actualiser le tableau de bord",
@@ -173,7 +172,6 @@
       "noPerformer": "—"
     }
   },
-
   "board": {
     "title": "Babillard",
     "refresh": "Actualiser le babillard",
@@ -188,7 +186,6 @@
       "generic": "Une erreur est survenue. Veuillez réessayer."
     }
   },
-
   "calendar": {
     "title": "Calendrier",
     "loading": "Chargement du calendrier…",
@@ -246,7 +243,6 @@
       "generic": "Une erreur est survenue. Veuillez réessayer."
     }
   },
-
   "shopping": {
     "title": "Liste d’épicerie",
     "loading": "Chargement de la liste…",
@@ -300,7 +296,6 @@
       "countLabel_other": "{{count}} articles à acheter"
     }
   },
-
   "wishlist": {
     "title": "Liste de souhaits",
     "loading": "Chargement de la liste de souhaits…",
@@ -386,7 +381,6 @@
       "generic": "Une erreur est survenue. Veuillez réessayer."
     }
   },
-
   "birthdays": {
     "title": "Anniversaires",
     "loading": "Chargement des anniversaires…",
@@ -449,7 +443,6 @@
       "anniversary": "Anniversaire de mariage"
     }
   },
-
   "savings": {
     "title": "Objectifs d’épargne",
     "loading": "Chargement des objectifs…",
@@ -523,7 +516,6 @@
       }
     }
   },
-
   "tasks": {
     "title": "Tâches",
     "unknownMember": "Un membre de la famille",
@@ -649,7 +641,6 @@
       }
     }
   },
-
   "allowance": {
     "title": "Allocation",
     "loading": "Chargement de l’historique d’allocation…",
@@ -664,7 +655,6 @@
     "earnedOn": "Gagné",
     "spentOn": "Dépensé"
   },
-
   "family": {
     "title": "Famille",
     "loading": "Chargement de la famille…",
@@ -729,7 +719,6 @@
       }
     }
   },
-
   "chores": {
     "title": "Tâches",
     "yourBalance": "Votre solde",
@@ -831,7 +820,6 @@
       }
     }
   },
-
   "accessibility": {
     "title": "Accessibilité chez Family HQ",
     "lastReviewed": "Dernière révision : <1>{{date}}</1>",
@@ -858,7 +846,6 @@
       "body2": "Nous visons à accuser réception de chaque rapport dans les deux jours ouvrables et à fournir une réponse substantielle dans les dix jours ouvrables. Veuillez inclure la page ou le parcours où l’obstacle est apparu, la technologie d’assistance que vous utilisiez, et une description de ce qui n’a pas fonctionné."
     }
   },
-
   "join": {
     "title": "Rejoindre la famille",
     "loading": "Recherche de l’invitation…",
@@ -883,7 +870,6 @@
       "signIn": "Se connecter à la place →"
     }
   },
-
   "joinAuthed": {
     "title": "Vous êtes déjà connecté",
     "body": "Pour accepter cette invitation, déconnectez-vous et rouvrez le lien.",
@@ -892,7 +878,6 @@
     "stay": "Rester connecté",
     "error": "Impossible de se déconnecter. Veuillez réessayer."
   },
-
   "familyInvite": {
     "invite": "Inviter quelqu’un",
     "modalTitle": "Envoyer une invitation",
@@ -916,7 +901,6 @@
     "expiresIn_other": "Expire dans {{count}} jours",
     "expired": "Expirée"
   },
-
   "notifications": {
     "title": "Notifications",
     "notConfigured": "Les notifications push ne sont pas configurées pour ce déploiement. Contactez votre administrateur.",
@@ -950,7 +934,6 @@
       "signOut": "Déconnecter cet appareil"
     }
   },
-
   "errorBoundary": {
     "title": "Une erreur est survenue.",
     "body": "Nous avons rencontré une erreur inattendue. Vos données sont en sécurité — rien n’a été perdu. Réessayez ou rechargez la page.",
@@ -958,7 +941,6 @@
     "reload": "Recharger",
     "contactPrefix": "Toujours bloqué ? Dites-nous ce qui s’est passé : "
   },
-
   "onboarding": {
     "stepCounter": "Étape {{current}} sur {{total}}",
     "back": "Retour",
@@ -997,7 +979,6 @@
       }
     }
   },
-
   "legal": {
     "back": "← Retour à la connexion",
     "draftBadge": "Brouillon — révision juridique en attente",
@@ -1013,7 +994,6 @@
     },
     "relatedNav": "Politiques associées"
   },
-
   "privacy": {
     "title": "Politique de confidentialité",
     "sections": {
@@ -1043,7 +1023,6 @@
       }
     }
   },
-
   "terms": {
     "title": "Conditions d’utilisation",
     "sections": {
