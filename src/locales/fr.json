@@ -1051,5 +1051,20 @@
         "body": "Ces conditions sont régies par les lois de l’Ontario, Canada, et les lois fédérales du Canada qui s’y appliquent. Lorsque nous apportons une modification importante à ces conditions, nous mettrons à jour la date « Dernière révision » ci-dessus et, pour les changements qui affectent matériellement vos droits ou obligations, nous publierons un avis dans l’application ou enverrons un message à l’adresse courriel inscrite à votre compte."
       }
     }
+  },
+  "familyChild": {
+    "add": "Ajouter un enfant",
+    "modalTitle": "Ajouter un compte enfant",
+    "nameLabel": "Nom de l’enfant",
+    "usernameLabel": "Nom d’utilisateur",
+    "usernameHint": "2 à 20 lettres minuscules ou chiffres",
+    "passwordLabel": "Mot de passe",
+    "passwordHint": "Au moins 8 caractères",
+    "create": "Créer le compte",
+    "cancel": "Annuler",
+    "createdTitle": "Compte créé",
+    "createdInstructions": "Expliquez à {{name}} comment se connecter — utilisez l’option « Connexion enfant » de l’écran de connexion avec :",
+    "codeLabel": "Code de famille",
+    "done": "Terminé"
   }
 }

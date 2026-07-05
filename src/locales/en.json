@@ -1051,5 +1051,20 @@
         "body": "These terms are governed by the laws of Ontario, Canada, and the federal laws of Canada applicable in Ontario. When we make a material change to these terms, we will update the 'Last reviewed' date above and, for changes that materially affect your rights or obligations, post a notice in the application or send a message to the email address on your account."
       }
     }
+  },
+  "familyChild": {
+    "add": "Add a child",
+    "modalTitle": "Add a child account",
+    "nameLabel": "Child's name",
+    "usernameLabel": "Username",
+    "usernameHint": "2–20 lowercase letters or numbers",
+    "passwordLabel": "Password",
+    "passwordHint": "At least 8 characters",
+    "create": "Create account",
+    "cancel": "Cancel",
+    "createdTitle": "Account created",
+    "createdInstructions": "Tell {{name}} how to sign in — use the “Kid sign-in” option on the login screen with:",
+    "codeLabel": "Family code",
+    "done": "Done"
   }
 }
