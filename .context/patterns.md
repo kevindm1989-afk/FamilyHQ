@@ -25,6 +25,25 @@ short code example
 
 ## Entries
 
+## Mint another user's account server-side with a parent-only Admin-SDK callable (never the client SDK)
+
+**When to use:** a parent/admin must create ANOTHER user's account (invited member, managed child) without being signed out and without opening a client-side bootstrap write path. The Firebase client SDK `createUser*` signs the CALLER in as the new user, and any client-written bootstrap doc needs a permissive create rule — this pattern avoids both.
+**How:** a parent-only HTTPS callable (`enforceAppCheck: true`) verifies the caller is an active parent, then uses the Admin SDK to (1) `createUser` and (2) write the new member's `users/{uid}` + `userPrivate/{uid}` in ONE atomic batch, with a compensating `deleteUser` if the batch throws (no orphan sign-in-able account). Because the Admin SDK BYPASSES Firestore rules, no new client bootstrap rule is added — the rules blast radius stays at zero. Model the new account as an EXISTING role + metadata (`accountType`/`loginHandle`), not a NEW role, so the rule/threat surface does not grow. For an EMAIL-LESS account, mint a synthetic sign-in address on the RFC 2606 reserved `.invalid` TLD (`${handle}@${loginCode}.familyhq.invalid`): it can never resolve in DNS, so "no email to this user" is a STRUCTURAL guarantee needing no owned domain and invoking no email subprocessor. The client composes the SAME string at sign-in and takes the ordinary `signIn` path — no new auth primitive. Keep the composer pure and Firebase-free so the cold-load LoginScreen bundle stays lean; pin server + client composers to identical output with a test.
+**Example:**
+```ts
+// server: functions/src/createManagedChild.ts (parent-only, Admin SDK bypasses rules)
+const created = await getAuth().createUser({ email: composeChildEmail(loginCode, handle), password, displayName });
+const batch = db.batch();
+batch.set(db.doc(`users/${created.uid}`), { name, role: 'member', familyId, isActive: true, accountType: 'managed', loginHandle: handle /* ... */ });
+batch.set(db.doc(`userPrivate/${created.uid}`), { email: composeChildEmail(loginCode, handle), familyId });
+await batch.commit(); // on throw → getAuth().deleteUser(created.uid): no orphan account
+
+// client: src/features/family/childLoginEmail.ts (pure, no Firebase import)
+export const composeChildLoginEmail = (loginCode, handle) =>
+  `${handle.trim().toLowerCase()}@${loginCode.trim().toLowerCase()}.familyhq.invalid`;
+```
+**When not to use:** the founding parent's OWN account at signup — that is the one legitimate client-SDK self-create (ADR-0006), because there is no caller to sign out. Also skip the `.invalid` synthetic address when the account has a real deliverable email (invited adults) — there the real address IS the identifier.
+
 ## Money / unit fixtures use the STORAGE convention, never the display convention
 
 **When to use:** any new or modified test that constructs a fixture for a field whose storage representation differs from its rendered form. In this repo the canonical case is money (storage = integer cents per ADR-0009; display = "$X.XX"). The same shape applies to durations (storage = ms; display = "Xm Ys"), bytes, percentages stored as basis points, etc.

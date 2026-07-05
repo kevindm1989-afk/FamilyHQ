@@ -21,6 +21,25 @@ Append newest on top. Be specific — vague lessons don't prevent anything.
 
 ## Entries
 
+## 2026-07-05 — A red security-scan gate on code you didn't touch is usually scanner DRIFT (full-history scan or live-fetched ruleset), not a regression — triage as tooling, suppress the specific reviewed finding, keep the rule live
+
+**Symptom:** Two scheduled security-scan failures on PRs that changed nothing relevant to the finding.
+  1. The scheduled secret-scan job red-failed with 4 gitleaks findings while push-triggered runs on the SAME code passed. `gitleaks detect --all` scans the FULL git history, so two dummy e2e passwords (already replaced in the working tree by a runtime `ephemeralCredential()` helper) plus an npm-script string flagged as `generic-api-key` still surfaced from OLD commits. Push runs scan only the delta, so they were clean; the full-history scheduled run was not.
+  2. The `semgrep --config auto` gate pulled a NEWER registry ruleset that had added `github-actions-mutable-action-tag`, which flagged every `uses: <action>@vN` mutable tag across three workflow files nobody had edited — 24 findings, red-failing every open PR and `main` at once.
+
+**Root cause:** Scanners that (a) scan the full git history or (b) fetch their ruleset live at run time are TIME- and HISTORY-sensitive. A finding can appear with zero change to the reviewed diff — an old commit re-surfaces (history scan) or the upstream ruleset gained a rule (live fetch). The signal is real for the tool but is NOT a regression in the PR under test.
+
+**Fix:**
+  - Secret scan — added a documented `.gitleaksignore` keyed by `<sha>:<file>:<rule-id>:<line>` FINGERPRINTS for the four reviewed-and-confirmed-benign findings. Anything not fingerprinted still fails the gate on the full default ruleset. No source change.
+  - SAST — added a bare `# nosemgrep <reason>` inline on each reviewed line, keeping the rule ACTIVE so a future NEW mutable tag still flags, split by rationale (`GitHub-owned first-party action; mutable tag accepted` vs `TODO(pin-sha): pin to a 40-char commit SHA`). No source change.
+
+**Prevention:**
+  - When a scan gate red-fails a PR whose diff doesn't touch the flagged code, FIRST suspect tooling drift: is the scan full-history (gitleaks `--all`) or live-ruleset (`semgrep --config auto`)? A split verdict between a push-triggered and a scheduled run on identical code is the tell.
+  - Suppress the SPECIFIC reviewed finding via the tool's documented narrow mechanism (`.gitleaksignore` fingerprints; inline `# nosemgrep`), never by disabling the rule globally or loosening the gate — that keeps the `constraints.md` "static analysis on every PR" floor intact and keeps the rule live for the next real hit.
+  - Prefer a BARE `# nosemgrep <reason>` over the `:`-scoped `# nosemgrep: <rule-id>` form when you cannot verify the exact registry rule-id offline (the sandbox egress proxy blocks the registry). The scoped form silently no-ops if the id is wrong.
+  - For CI determinism, consider pinning the ruleset version (and third-party action SHAs) so an upstream change can't red-fail unrelated PRs. SANDBOX CAVEAT: the egress proxy blocks third-party GitHub repos, so third-party action SHAs could not be verified and were left as `TODO(pin-sha)` markers — do NOT hardcode an unverified SHA into a deploy pipeline; defer with a tracked TODO.
+  - Sibling: the 2026-05-27 "vendored/reference code excluded from quality gates" lesson is the SCOPE version of this; this one is the TEMPORAL version. Both are "the scanner flagged non-shipping / non-regressed code."
+
 ## 2026-06-22 — When a screen has its own copy of a converter (formatMoney, parseDate, etc.), tests written with display-typed fixtures cannot catch a unit-mismatch bug — both halves agree and the wrong value renders
 
 **Symptom:** An allowance value persisted as the integer 800 (eight dollars in cents, per ADR-0009) rendered as "$800.00" on the kid-side chore list and the kid-side allowance balance chip. The parent-side equivalent rendered "$8.00" correctly. The component-level test suite for the kid screen was green.
