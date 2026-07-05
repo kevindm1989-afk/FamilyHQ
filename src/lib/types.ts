@@ -12,6 +12,16 @@
  */
 
 export type Role = 'parent' | 'member';
+/**
+ * How a member account is provisioned. A CHILD is a `member` with
+ * `accountType: 'managed'` — NOT a separate role — so every member permission
+ * in firestore.rules applies to it unchanged (see
+ * docs/specs/managed-child-accounts.md). 'standard' = self-serve account with
+ * its own email/credentials; 'managed' = parent-provisioned child with no
+ * email and a parent-set/parent-reset password. Absent ⇒ 'standard' (every
+ * pre-existing account). Immutable from the client.
+ */
+export type AccountType = 'standard' | 'managed';
 export type Theme = 'light' | 'dark';
 
 export type ChoreStatus = 'pending' | 'complete' | 'approved' | 'rejected';
@@ -37,6 +47,18 @@ export interface Family {
    * chars. F13 will surface this in a settings UI.
    */
   timezone?: string;
+  /**
+   * Short, DNS-label-safe per-family slug (`^[a-z0-9]{6}$`) that scopes managed
+   * child sign-in: a child signs in with this code + their `loginHandle` +
+   * password, which the client composes into the synthetic address
+   * `${loginHandle}@${loginCode}.familyhq.invalid` (see
+   * docs/specs/managed-child-accounts.md). Created lazily by the
+   * createManagedChild callable the first time a parent adds a child (Admin SDK
+   * write) and globally de-duplicated via the server-only `familyLoginCodes`
+   * ledger. Absent until the family's first managed child. NOT a secret — it is
+   * a family handle; sign-in still requires the password.
+   */
+  loginCode?: string;
 }
 
 /**
@@ -70,6 +92,22 @@ export interface User {
    * Absent for founding parents.
    */
   inviteId?: string;
+  /**
+   * Account provisioning type (docs/specs/managed-child-accounts.md).
+   * 'managed' ⇒ a parent-provisioned CHILD: no email, parent-set password,
+   * signs in via family loginCode + loginHandle. Absent ⇒ 'standard' (every
+   * pre-existing account reads as standard). Written ONLY by the
+   * createManagedChild callable (Admin SDK, which bypasses rules); immutable
+   * from the client — selfUpdateAllowed asserts immutable('accountType').
+   */
+  accountType?: AccountType;
+  /**
+   * The child's parent-chosen username, unique within the family, matching
+   * `^[a-z0-9]{2,20}$`. Combined with `families.loginCode` it forms the child's
+   * synthetic sign-in address `${loginHandle}@${loginCode}.familyhq.invalid`.
+   * Present ONLY on managed (child) accounts; immutable from the client.
+   */
+  loginHandle?: string;
 }
 
 /**
