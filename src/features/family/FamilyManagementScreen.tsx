@@ -49,6 +49,19 @@ export interface FamilyManagementScreenProps {
    * wraps in a shareable `<origin>/join/<id>` URL for the parent to send.
    */
   onCreateInvite?: (input: { email: string; role: Role }) => Promise<string>;
+  /**
+   * Parent-only: create a managed (email-less) child account. Returns the
+   * family login code + username the parent relays to the child. Wired only
+   * when the managed-child feature flag is on (the route gates it), so the
+   * "Add a child" affordance follows the same presence-gate as onCreateInvite.
+   */
+  onCreateChild?:
+    | ((input: {
+        displayName: string;
+        handle: string;
+        password: string;
+      }) => Promise<{ childUid: string; loginCode: string; handle: string }>)
+    | undefined;
   /** Live list of PENDING invites (parent-only). Empty when no outstanding invites. */
   pendingInvites?: ReadonlyArray<{
     id: string;
@@ -117,6 +130,7 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
     onRename,
     onSetActive,
     onCreateInvite,
+    onCreateChild,
     pendingInvites,
     onRevokeInvite,
     timezone,
@@ -137,6 +151,19 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
     busy: boolean;
   }>({ open: false, email: '', role: 'member', busy: false });
   const [inviteLink, setInviteLink] = useState<{ url: string; email: string } | null>(null);
+  // Managed-child creation form + the one-time hand-off card shown on success.
+  const [childForm, setChildForm] = useState<{
+    open: boolean;
+    displayName: string;
+    handle: string;
+    password: string;
+    busy: boolean;
+  }>({ open: false, displayName: '', handle: '', password: '', busy: false });
+  const [childCreated, setChildCreated] = useState<{
+    displayName: string;
+    loginCode: string;
+    handle: string;
+  } | null>(null);
 
   // F3 — per-uid (or per-action) in-flight set. A double-tap of any action
   // must call the underlying callback ONCE while the first promise is in
@@ -377,6 +404,156 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
                 {t('familyInvite.cancel')}
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Managed (email-less) child accounts — parent-only. Mirrors the
+            invite affordance: a button opens an inline form; on success it
+            swaps to a one-time hand-off card with the family code + username
+            the parent relays to the child (never the password — the parent
+            just set it). Gated by the presence of onCreateChild (the route
+            wires it only when the managed-child flag is on). */}
+        {onCreateChild && (
+          <button
+            type="button"
+            onClick={() =>
+              setChildForm({
+                open: true,
+                displayName: '',
+                handle: '',
+                password: '',
+                busy: false,
+              })
+            }
+            className="self-start inline-flex min-h-tap items-center justify-center rounded-control border border-brand px-16 text-body font-semibold text-brand focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+          >
+            {t('familyChild.add')}
+          </button>
+        )}
+
+        {childForm.open && onCreateChild && (
+          <form
+            className="flex flex-col gap-12 rounded-card border border-surface-line bg-surface-card p-16"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (childForm.busy) return;
+              setChildForm((s) => ({ ...s, busy: true }));
+              void onCreateChild({
+                displayName: childForm.displayName,
+                handle: childForm.handle,
+                password: childForm.password,
+              })
+                .then((res) => {
+                  setChildCreated({
+                    displayName: childForm.displayName.trim(),
+                    loginCode: res.loginCode,
+                    handle: res.handle,
+                  });
+                  setChildForm({
+                    open: false,
+                    displayName: '',
+                    handle: '',
+                    password: '',
+                    busy: false,
+                  });
+                })
+                .catch((err: unknown) => {
+                  showToast(err instanceof Error ? err.message : t('familyChild.create'));
+                  setChildForm((s) => ({ ...s, busy: false }));
+                });
+            }}
+          >
+            <h2 className="text-title font-semibold text-ink">{t('familyChild.modalTitle')}</h2>
+            <label className="flex flex-col gap-4 text-label font-semibold text-ink-2">
+              {t('familyChild.nameLabel')}
+              <input
+                type="text"
+                required
+                value={childForm.displayName}
+                onChange={(e) => setChildForm((s) => ({ ...s, displayName: e.target.value }))}
+                className="rounded-control border border-surface-line bg-surface-card px-12 py-8 text-body text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+              />
+            </label>
+            <label className="flex flex-col gap-4 text-label font-semibold text-ink-2">
+              {t('familyChild.usernameLabel')}
+              <input
+                type="text"
+                required
+                autoCapitalize="none"
+                autoCorrect="off"
+                value={childForm.handle}
+                onChange={(e) => setChildForm((s) => ({ ...s, handle: e.target.value }))}
+                className="rounded-control border border-surface-line bg-surface-card px-12 py-8 text-body text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+              />
+              <span className="text-meta font-normal text-ink-mute">
+                {t('familyChild.usernameHint')}
+              </span>
+            </label>
+            <label className="flex flex-col gap-4 text-label font-semibold text-ink-2">
+              {t('familyChild.passwordLabel')}
+              <input
+                type="password"
+                required
+                value={childForm.password}
+                onChange={(e) => setChildForm((s) => ({ ...s, password: e.target.value }))}
+                className="rounded-control border border-surface-line bg-surface-card px-12 py-8 text-body text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+              />
+              <span className="text-meta font-normal text-ink-mute">
+                {t('familyChild.passwordHint')}
+              </span>
+            </label>
+            <div className="flex flex-wrap gap-8">
+              <button
+                type="submit"
+                disabled={childForm.busy}
+                className="inline-flex min-h-tap items-center justify-center rounded-control bg-brand px-16 text-body font-semibold text-brand-on disabled:opacity-50 focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+              >
+                {t('familyChild.create')}
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setChildForm({
+                    open: false,
+                    displayName: '',
+                    handle: '',
+                    password: '',
+                    busy: false,
+                  })
+                }
+                className="inline-flex min-h-tap items-center justify-center rounded-control border border-surface-line bg-surface-card px-16 text-body font-semibold text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+              >
+                {t('familyChild.cancel')}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {childCreated && (
+          <div className="flex flex-col gap-8 rounded-card border border-status-success-line bg-status-success-bg p-16">
+            <h2 className="text-title font-semibold text-status-success-text">
+              {t('familyChild.createdTitle')}
+            </h2>
+            <p className="text-body text-ink">
+              {t('familyChild.createdInstructions', { name: childCreated.displayName })}
+            </p>
+            <dl className="flex flex-col gap-8">
+              <div className="flex flex-col gap-4 rounded-control bg-surface-card px-12 py-8">
+                <dt className="text-meta text-ink-mute">{t('familyChild.codeLabel')}</dt>
+                <dd className="text-body font-semibold text-ink">{childCreated.loginCode}</dd>
+              </div>
+              <div className="flex flex-col gap-4 rounded-control bg-surface-card px-12 py-8">
+                <dt className="text-meta text-ink-mute">{t('familyChild.usernameLabel')}</dt>
+                <dd className="text-body font-semibold text-ink">{childCreated.handle}</dd>
+              </div>
+            </dl>
+            <button
+              type="button"
+              onClick={() => setChildCreated(null)}
+              className="self-start inline-flex min-h-tap items-center justify-center rounded-control bg-brand px-16 text-body font-semibold text-brand-on focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+            >
+              {t('familyChild.done')}
+            </button>
           </div>
         )}
 

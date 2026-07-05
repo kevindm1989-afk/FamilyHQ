@@ -24,6 +24,7 @@ import {
 import { createInvite, InviteActionError, inviteExpiresAt, revokeInvite } from './inviteService';
 import { usePendingFamilyInvites } from './usePendingFamilyInvites';
 import { useFamilyDoc } from './useFamilyDoc';
+import { isManagedChildEnabled } from './managedChildFeatureFlag';
 import type { Role } from '../../lib/types';
 
 export default function FamilyManagementRoute(): ReactElement {
@@ -93,6 +94,22 @@ export default function FamilyManagementRoute(): ReactElement {
     await revokeInvite({ db }, inviteId);
   };
 
+  // Managed (email-less) child creation — parent-only, flag-gated. The service
+  // invokes the createManagedChild callable directly (no Firestore handle
+  // needed); it's lazy-imported so this route chunk doesn't statically pull
+  // firebase/functions. Wired only when the flag is on, so the screen's
+  // "Add a child" affordance stays hidden otherwise.
+  const handleCreateChild = isManagedChildEnabled()
+    ? async (input: {
+        displayName: string;
+        handle: string;
+        password: string;
+      }): Promise<{ childUid: string; loginCode: string; handle: string }> => {
+        const { createManagedChild } = await import('./managedChildService');
+        return createManagedChild(input);
+      }
+    : undefined;
+
   // F13 — parent-only timezone update. Mirror the resolveDb null guard so a
   // missing firebase config in a test harness short-circuits with the
   // generic PII-free FamilyManagementError (no `db as Firestore` null lie).
@@ -119,6 +136,7 @@ export default function FamilyManagementRoute(): ReactElement {
       onSetActive={handleSetActive}
       onRefresh={() => void feed.refresh()}
       onCreateInvite={handleCreateInvite}
+      onCreateChild={handleCreateChild}
       pendingInvites={invitesFeed.invites.map((inv) => ({
         id: inv.id,
         email: inv.email,

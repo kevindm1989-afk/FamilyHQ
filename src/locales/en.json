@@ -4,7 +4,6 @@
     "key_convention": "dotted paths that mirror the source file's purpose (login.*, account.*, accessibility.*, etc.). Keep keys stable; values may evolve.",
     "interpolation": "{{name}} for variables, $t(key) for nested references. See i18next docs."
   },
-
   "common": {
     "appName": "Family HQ",
     "loading": "Loading…",
@@ -18,12 +17,10 @@
     "dismiss": "Dismiss",
     "retry": "Try again"
   },
-
   "language": {
     "selectorLabel": "Language",
     "switchedTo": "Switched to {{language}}."
   },
-
   "nav": {
     "home": "Home",
     "calendar": "Calendar",
@@ -31,28 +28,32 @@
     "chores": "Chores",
     "tasks": "Tasks"
   },
-
   "login": {
     "tagline": {
       "signin": "Your shared family home base.",
       "signup": "Create your family home base.",
-      "forgot": "Reset your password."
+      "forgot": "Reset your password.",
+      "kidsignin": "Sign in with your family code."
     },
     "field": {
       "familyName": "Family name",
       "name": "Your name",
       "email": "Email",
-      "password": "Password"
+      "password": "Password",
+      "familyCode": "Family code",
+      "username": "Username"
     },
     "submit": {
       "signin": "Sign in",
       "signup": "Create family",
-      "forgot": "Send reset link"
+      "forgot": "Send reset link",
+      "kidsignin": "Sign in"
     },
     "switch": {
       "toSignup": "New here? Create a family",
       "toForgot": "Forgot password?",
-      "toSignin": "Back to sign in"
+      "toSignin": "Back to sign in",
+      "toKid": "Kid signing in?"
     },
     "toast": {
       "signedIn": "Signed in.",
@@ -66,7 +67,6 @@
       "terms": "Terms of service"
     }
   },
-
   "account": {
     "title": "Account",
     "done": "← Done",
@@ -80,7 +80,6 @@
     "resourcesLabel": "Site resources",
     "accessibilityLink": "Accessibility statement & feedback"
   },
-
   "dashboard": {
     "welcome": "Welcome, {{name}}",
     "refresh": "Refresh dashboard",
@@ -173,7 +172,6 @@
       "noPerformer": "—"
     }
   },
-
   "board": {
     "title": "Board",
     "refresh": "Refresh the board",
@@ -188,7 +186,6 @@
       "generic": "Something went wrong. Please try again."
     }
   },
-
   "calendar": {
     "title": "Calendar",
     "loading": "Loading the calendar…",
@@ -246,7 +243,6 @@
       "generic": "Something went wrong. Please try again."
     }
   },
-
   "shopping": {
     "title": "Shopping list",
     "loading": "Loading the shopping list…",
@@ -300,7 +296,6 @@
       "countLabel_other": "{{count}} items open"
     }
   },
-
   "wishlist": {
     "title": "Wishlist",
     "loading": "Loading the wishlist…",
@@ -386,7 +381,6 @@
       "generic": "Something went wrong. Please try again."
     }
   },
-
   "birthdays": {
     "title": "Birthdays",
     "loading": "Loading birthdays…",
@@ -449,7 +443,6 @@
       "anniversary": "Anniversary"
     }
   },
-
   "savings": {
     "title": "Savings goals",
     "loading": "Loading goals…",
@@ -523,7 +516,6 @@
       }
     }
   },
-
   "tasks": {
     "title": "Tasks",
     "unknownMember": "A family member",
@@ -649,7 +641,6 @@
       }
     }
   },
-
   "allowance": {
     "title": "Allowance",
     "loading": "Loading allowance history…",
@@ -664,7 +655,6 @@
     "earnedOn": "Earned",
     "spentOn": "Spent"
   },
-
   "family": {
     "title": "Family",
     "loading": "Loading family…",
@@ -729,7 +719,6 @@
       }
     }
   },
-
   "chores": {
     "title": "Chores",
     "yourBalance": "Your balance",
@@ -831,7 +820,6 @@
       }
     }
   },
-
   "accessibility": {
     "title": "Accessibility at Family HQ",
     "lastReviewed": "Last reviewed: <1>{{date}}</1>",
@@ -858,7 +846,6 @@
       "body2": "We aim to acknowledge every report within two business days and to provide a substantive response within ten business days. Please include the page or flow where the barrier appeared, the assistive technology you were using, and a description of what went wrong."
     }
   },
-
   "join": {
     "title": "Join the family",
     "loading": "Looking up the invitation…",
@@ -883,7 +870,6 @@
       "signIn": "Sign in instead →"
     }
   },
-
   "joinAuthed": {
     "title": "You're already signed in",
     "body": "To accept this invitation, sign out and reopen the link.",
@@ -892,7 +878,6 @@
     "stay": "Stay signed in",
     "error": "Could not sign out. Please try again."
   },
-
   "familyInvite": {
     "invite": "Invite someone",
     "modalTitle": "Send an invitation",
@@ -916,7 +901,6 @@
     "expiresIn_other": "Expires in {{count}} days",
     "expired": "Expired"
   },
-
   "notifications": {
     "title": "Notifications",
     "notConfigured": "Push notifications are not configured for this deployment. Contact your administrator.",
@@ -950,7 +934,6 @@
       "signOut": "Sign out this device"
     }
   },
-
   "errorBoundary": {
     "title": "Something went wrong.",
     "body": "We hit an unexpected error. Your data is safe — nothing was lost. Try again, or reload the page.",
@@ -958,7 +941,6 @@
     "reload": "Reload",
     "contactPrefix": "Still stuck? Tell us what happened: "
   },
-
   "onboarding": {
     "stepCounter": "Step {{current}} of {{total}}",
     "back": "Back",
@@ -997,7 +979,6 @@
       }
     }
   },
-
   "legal": {
     "back": "← Back to sign in",
     "draftBadge": "Draft — pending legal review",
@@ -1013,7 +994,6 @@
     },
     "relatedNav": "Related policies"
   },
-
   "privacy": {
     "title": "Privacy Policy",
     "sections": {
@@ -1043,7 +1023,6 @@
       }
     }
   },
-
   "terms": {
     "title": "Terms of Service",
     "sections": {
@@ -1072,5 +1051,20 @@
         "body": "These terms are governed by the laws of Ontario, Canada, and the federal laws of Canada applicable in Ontario. When we make a material change to these terms, we will update the 'Last reviewed' date above and, for changes that materially affect your rights or obligations, post a notice in the application or send a message to the email address on your account."
       }
     }
+  },
+  "familyChild": {
+    "add": "Add a child",
+    "modalTitle": "Add a child account",
+    "nameLabel": "Child's name",
+    "usernameLabel": "Username",
+    "usernameHint": "2–20 lowercase letters or numbers",
+    "passwordLabel": "Password",
+    "passwordHint": "At least 8 characters",
+    "create": "Create account",
+    "cancel": "Cancel",
+    "createdTitle": "Account created",
+    "createdInstructions": "Tell {{name}} how to sign in — use the “Kid sign-in” option on the login screen with:",
+    "codeLabel": "Family code",
+    "done": "Done"
   }
 }
