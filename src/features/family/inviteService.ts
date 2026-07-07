@@ -38,6 +38,7 @@ import {
 } from 'firebase/firestore';
 import { inviteConverter, userConverter } from '../../lib/converters';
 import type { Invite, Role } from '../../lib/types';
+import { trackUsage } from '../../lib/telemetry';
 
 const INVITES_COLLECTION = 'invites';
 const USERS_COLLECTION = 'users';
@@ -253,6 +254,7 @@ export async function acceptInvite(
   } catch {
     throw new InviteActionError();
   }
+  trackUsage('invite_accepted');
 }
 
 /**

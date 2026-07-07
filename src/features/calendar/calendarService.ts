@@ -36,6 +36,7 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import type { EventTag, FamilyEvent, RecurrenceFrequency, Role } from '../../lib/types';
+import { trackUsage } from '../../lib/telemetry';
 
 /** An event enriched with its document id for list rendering + edit/delete. */
 export interface EventWithId extends FamilyEvent {
@@ -129,6 +130,7 @@ export async function createEvent(deps: { db: Firestore }, input: CreateEventInp
     } catch {
       throw new EventActionError();
     }
+    trackUsage('calendar_event_created');
     return;
   }
 
@@ -171,6 +173,7 @@ export async function createEvent(deps: { db: Firestore }, input: CreateEventInp
   } catch {
     throw new EventActionError();
   }
+  trackUsage('calendar_event_created');
 }
 
 /**

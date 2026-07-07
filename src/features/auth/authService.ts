@@ -25,6 +25,7 @@ import {
   writeBatch,
   type Firestore,
 } from 'firebase/firestore';
+import { trackUsage } from '../../lib/telemetry';
 
 export interface SignUpInput {
   familyName: string;
@@ -124,6 +125,7 @@ export async function signUpFoundingParent(
     throw new AuthActionError(GENERIC_SIGNUP_ERROR);
   }
 
+  trackUsage('family_created');
   return { uid, familyId };
 }
 

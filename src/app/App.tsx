@@ -13,6 +13,7 @@ import { LoginScreen } from '../features/auth/LoginScreen';
 import { AuthProvider, useAuth } from '../hooks/useAuth';
 import { ToastProvider } from '../hooks/useToast';
 import { ErrorBoundary } from './ErrorBoundary';
+import { reportClientError } from '../lib/telemetry';
 import { PwaUpdatePrompt } from './PwaUpdatePrompt';
 import { ROUTES } from './routes';
 import { ToastViewport } from './ToastViewport';
@@ -152,7 +153,15 @@ export default function App(): ReactElement {
           react-router hooks if needed, and INSIDE ToastProvider/AuthProvider
           would be wrong because an error in those providers themselves
           must still be caught. So: Router > Boundary > Providers > Gate. */}
-      <ErrorBoundary>
+      <ErrorBoundary
+        // First-party, PI-scrubbed error reporting (telemetry.ts) — the
+        // "Sentry-ready seam" is now load-bearing without any third-party
+        // SDK (constraints.md: third-party error tracking is review-gated;
+        // this stays on our own Firestore, scrubbed + capped).
+        reportError={({ error, componentStack }) =>
+          reportClientError({ error, componentStack, pathname: window.location.pathname })
+        }
+      >
         <ToastProvider>
           <AuthProvider>
             <Gate />

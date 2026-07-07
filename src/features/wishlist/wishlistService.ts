@@ -35,6 +35,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { FUNCTIONS_REGION } from '../../firebase/functions-region';
 import { wishlistItemConverter } from '../../lib/converters';
 import { MONEY_MAX_CENTS, type WishlistItem, type WishlistStatus } from '../../lib/types';
+import { trackUsage } from '../../lib/telemetry';
 
 /**
  * Fire-and-forget invocation of a server-side notification callable (PR D).
@@ -309,6 +310,7 @@ export async function approveRedemption(deps: { db: Firestore }, itemId: string)
     throw new WishlistActionError();
   }
   await fireAndForgetNotify('notifyWishlistResolved', itemId);
+  trackUsage('wishlist_redeemed');
 }
 
 /** Pure helper for the screen — sum of pending request amounts. */

@@ -1259,6 +1259,52 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // --- usageEvents (first-party anonymous usage counters) -----------------
+    //
+    // Anonymous, aggregate-only telemetry (constraints.md forbids behavioural
+    // tracking while children are users; a third-party analytics SDK is
+    // human-review-gated — this first-party design avoids both). Each doc is
+    // EXACTLY {event, day}: no uid, no familyId, no device/session id, so
+    // nothing links a tick to a person or family. CREATE-ONLY for active
+    // users; never readable/mutable from a client (review in the console).
+    // The event allowlist mirrors UsageEventName in src/lib/telemetry.ts.
+    match /usageEvents/{id} {
+      allow create: if isActive()
+        && request.resource.data.keys().hasOnly(['event', 'day'])
+        && request.resource.data.event in
+             ['family_created', 'invite_accepted', 'child_created',
+              'chore_created', 'chore_approved', 'wishlist_redeemed',
+              'calendar_event_created']
+        && request.resource.data.day is string
+        && request.resource.data.day.matches('^\\d{4}-\\d{2}-\\d{2}$');
+      allow read, update, delete: if false;
+    }
+
+    // --- clientErrors (first-party PI-scrubbed error reports) ---------------
+    //
+    // The ErrorBoundary's reportError seam writes here (src/lib/telemetry.ts
+    // scrubs emails/digit-runs and collapses route params client-side; these
+    // size caps re-enforce the bound server-side so a bypassing client still
+    // cannot stuff PI-sized payloads). CREATE-ONLY for active users; never
+    // readable/mutable from a client. No uid/familyId fields — a report is
+    // not linkable to a person from the doc contents.
+    match /clientErrors/{id} {
+      allow create: if isActive()
+        && request.resource.data.keys().hasOnly(
+             ['name', 'message', 'stackHead', 'route', 'day'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 60
+        && request.resource.data.message is string
+        && request.resource.data.message.size() <= 300
+        && request.resource.data.stackHead is string
+        && request.resource.data.stackHead.size() <= 200
+        && request.resource.data.route is string
+        && request.resource.data.route.size() <= 100
+        && request.resource.data.day is string
+        && request.resource.data.day.matches('^\\d{4}-\\d{2}-\\d{2}$');
+      allow read, update, delete: if false;
+    }
+
     // --- default deny ------------------------------------------------------
     match /{document=**} {
       allow read, write: if false;
