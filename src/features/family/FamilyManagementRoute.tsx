@@ -110,6 +110,16 @@ export default function FamilyManagementRoute(): ReactElement {
       }
     : undefined;
 
+  // Managed-child password reset — same flag gate + lazy-import discipline.
+  // The screen renders the row action only on accountType==='managed' rows;
+  // the callable re-verifies the target server-side regardless.
+  const handleResetChildPassword = isManagedChildEnabled()
+    ? async (childUid: string, newPassword: string): Promise<void> => {
+        const { resetManagedChildPassword } = await import('./managedChildService');
+        await resetManagedChildPassword({ childUid, newPassword });
+      }
+    : undefined;
+
   // F13 — parent-only timezone update. Mirror the resolveDb null guard so a
   // missing firebase config in a test harness short-circuits with the
   // generic PII-free FamilyManagementError (no `db as Firestore` null lie).
@@ -137,6 +147,7 @@ export default function FamilyManagementRoute(): ReactElement {
       onRefresh={() => void feed.refresh()}
       onCreateInvite={handleCreateInvite}
       onCreateChild={handleCreateChild}
+      onResetChildPassword={handleResetChildPassword}
       pendingInvites={invitesFeed.invites.map((inv) => ({
         id: inv.id,
         email: inv.email,

@@ -16,19 +16,18 @@
  */
 import { getFunctions, httpsCallable, type FunctionsError } from 'firebase/functions';
 import { FUNCTIONS_REGION } from '../../firebase/functions-region';
-import { CHILD_HANDLE_RE } from './childLoginEmail';
+import { CHILD_HANDLE_RE, CHILD_MIN_PASSWORD_LENGTH } from './childLoginEmail';
 
 // The synthetic-email composer + its constants live in the dependency-free
-// `childLoginEmail` module so the cold-load LoginScreen can import them without
-// pulling in firebase/functions. Re-exported here for a stable service surface.
+// `childLoginEmail` module so UI (the cold-load LoginScreen, the reset sheet)
+// can import them without pulling in firebase/functions. Re-exported here for
+// a stable service surface.
 export {
   CHILD_LOGIN_EMAIL_DOMAIN,
   CHILD_HANDLE_RE,
+  CHILD_MIN_PASSWORD_LENGTH,
   composeChildLoginEmail,
 } from './childLoginEmail';
-
-/** Minimum password length (matches the server-side check). */
-export const CHILD_MIN_PASSWORD_LENGTH = 8;
 
 /** A generic, user-safe error — never leaks a raw Firebase code or PI. */
 export class ManagedChildActionError extends Error {

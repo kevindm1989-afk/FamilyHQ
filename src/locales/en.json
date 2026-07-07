@@ -1065,6 +1065,14 @@
     "createdTitle": "Account created",
     "createdInstructions": "Tell {{name}} how to sign in — use the “Kid sign-in” option on the login screen with:",
     "codeLabel": "Family code",
-    "done": "Done"
+    "done": "Done",
+    "resetAction": "Reset password",
+    "resetActionLabel": "Reset password for {{name}}",
+    "resetSheetTitle": "Reset password for {{name}}",
+    "resetPasswordLabel": "New password",
+    "resetPasswordHint": "At least 8 characters. Tell {{name}} the new password in person.",
+    "resetSave": "Save password",
+    "resetErrorTooShort": "Passwords need at least 8 characters.",
+    "resetToastDone": "Password updated."
   }
 }

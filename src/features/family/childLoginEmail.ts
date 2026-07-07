@@ -19,6 +19,15 @@ export const CHILD_LOGIN_EMAIL_DOMAIN = 'familyhq.invalid';
 export const CHILD_HANDLE_RE = /^[a-z0-9]{2,20}$/;
 
 /**
+ * Minimum child password length (matches the server-side check in
+ * functions/src/createManagedChild.ts + resetManagedChildPassword.ts). Lives
+ * here (not managedChildService) so UI that only VALIDATES — the reset sheet,
+ * the login screen — can import it without pulling firebase/functions into
+ * its chunk.
+ */
+export const CHILD_MIN_PASSWORD_LENGTH = 8;
+
+/**
  * Compose the managed child's synthetic sign-in address from the family login
  * code + the child's handle. Inputs are normalised (trimmed, lower-cased) so a
  * child can type "OTTER42 / Maya" and still reproduce the exact address the

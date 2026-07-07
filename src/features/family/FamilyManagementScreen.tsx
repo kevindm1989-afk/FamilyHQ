@@ -28,6 +28,9 @@ import { ToastViewport } from '../../app/ToastViewport';
 import { useToast } from '../../hooks/useToast';
 import type { Role, UserWithId } from '../../lib/types';
 import { NAME_MAX_LENGTH, TIMEZONE_OPTIONS } from './familyManagementService';
+// Dependency-free constant (childLoginEmail, NOT managedChildService) so this
+// screen never statically pulls firebase/functions into the route chunk.
+import { CHILD_MIN_PASSWORD_LENGTH } from './childLoginEmail';
 import {
   MONEY_INVALID_INDICATOR,
   formatMoney,
@@ -62,6 +65,13 @@ export interface FamilyManagementScreenProps {
         password: string;
       }) => Promise<{ childUid: string; loginCode: string; handle: string }>)
     | undefined;
+  /**
+   * Parent-only: reset a MANAGED child's password (a managed child has no
+   * email, so the self-serve reset flow can't reach them). Wired only when the
+   * managed-child flag is on; the row action renders only on rows whose
+   * `accountType === 'managed'`, mirroring the server-side target guard.
+   */
+  onResetChildPassword?: ((childUid: string, newPassword: string) => Promise<void>) | undefined;
   /** Live list of PENDING invites (parent-only). Empty when no outstanding invites. */
   pendingInvites?: ReadonlyArray<{
     id: string;
@@ -131,6 +141,7 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
     onSetActive,
     onCreateInvite,
     onCreateChild,
+    onResetChildPassword,
     pendingInvites,
     onRevokeInvite,
     timezone,
@@ -164,6 +175,8 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
     loginCode: string;
     handle: string;
   } | null>(null);
+  // Managed-child password reset — same {uid, name} target shape as rename.
+  const [resetTarget, setResetTarget] = useState<RenameTarget | null>(null);
 
   // F3 — per-uid (or per-action) in-flight set. A double-tap of any action
   // must call the underlying callback ONCE while the first promise is in
@@ -251,6 +264,30 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
         // F4 — sheet closes on REJECTION too. Staying open compounds the
         // double-tap risk and confuses retry semantics.
         setRenameTarget(null);
+      })
+      .finally(() => endPending(key));
+  };
+
+  const handleOpenResetPassword = (member: UserWithId, btn: HTMLButtonElement | null): void => {
+    btn?.focus();
+    setResetTarget({ uid: member.id, name: member.name });
+  };
+
+  const handleResetPasswordSubmit = (newPassword: string): void => {
+    if (!resetTarget || !onResetChildPassword) return;
+    const target = resetTarget;
+    const key = `resetpw:${target.uid}`;
+    if (!beginPending(key)) return;
+    void onResetChildPassword(target.uid, newPassword)
+      .then(() => {
+        showToast(t('familyChild.resetToastDone'));
+        setResetTarget(null);
+      })
+      .catch((err: unknown) => {
+        // The service's messages are already user-safe (PI-free); anything
+        // else collapses to the generic copy. Sheet closes either way (F4).
+        showToast(err instanceof Error ? err.message : t('family.toast.generic'));
+        setResetTarget(null);
       })
       .finally(() => endPending(key));
   };
@@ -659,6 +696,7 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
               onOpenRename={handleOpenRename}
               onOpenConfirm={handleOpenConfirm}
               onReactivate={handleReactivate}
+              onOpenResetPassword={onResetChildPassword ? handleOpenResetPassword : undefined}
             />
             <MemberSection
               heading={t('family.section.inactive')}
@@ -668,6 +706,7 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
               onOpenRename={handleOpenRename}
               onOpenConfirm={handleOpenConfirm}
               onReactivate={handleReactivate}
+              onOpenResetPassword={onResetChildPassword ? handleOpenResetPassword : undefined}
             />
           </>
         )}
@@ -700,6 +739,15 @@ export function FamilyManagementScreen(props: FamilyManagementScreenProps): Reac
         />
       )}
 
+      {resetTarget && (
+        <ResetPasswordSheet
+          target={resetTarget}
+          pending={pending.has(`resetpw:${resetTarget.uid}`)}
+          onCancel={() => setResetTarget(null)}
+          onSubmit={handleResetPasswordSubmit}
+        />
+      )}
+
       <ToastViewport />
     </>
   );
@@ -713,11 +761,22 @@ interface MemberSectionProps {
   onOpenRename: (member: UserWithId, btn: HTMLButtonElement | null) => void;
   onOpenConfirm: (member: UserWithId, btn: HTMLButtonElement | null) => void;
   onReactivate: (member: UserWithId) => void;
+  /** Present only when the managed-child flag wired a reset handler. */
+  onOpenResetPassword?: ((member: UserWithId, btn: HTMLButtonElement | null) => void) | undefined;
 }
 
 function MemberSection(props: MemberSectionProps): ReactElement {
   const { t } = useTranslation();
-  const { heading, members, viewer, pending, onOpenRename, onOpenConfirm, onReactivate } = props;
+  const {
+    heading,
+    members,
+    viewer,
+    pending,
+    onOpenRename,
+    onOpenConfirm,
+    onReactivate,
+    onOpenResetPassword,
+  } = props;
   return (
     <section className="flex flex-col gap-12">
       <h2 className="text-title font-bold text-ink">{heading}</h2>
@@ -737,6 +796,7 @@ function MemberSection(props: MemberSectionProps): ReactElement {
                 onOpenRename={onOpenRename}
                 onOpenConfirm={onOpenConfirm}
                 onReactivate={onReactivate}
+                onOpenResetPassword={onOpenResetPassword}
               />
             </li>
           ))}
@@ -753,11 +813,20 @@ interface MemberRowProps {
   onOpenRename: (member: UserWithId, btn: HTMLButtonElement | null) => void;
   onOpenConfirm: (member: UserWithId, btn: HTMLButtonElement | null) => void;
   onReactivate: (member: UserWithId) => void;
+  onOpenResetPassword?: ((member: UserWithId, btn: HTMLButtonElement | null) => void) | undefined;
 }
 
 function MemberRow(props: MemberRowProps): ReactElement {
   const { t } = useTranslation();
-  const { member, viewer, pending, onOpenRename, onOpenConfirm, onReactivate } = props;
+  const {
+    member,
+    viewer,
+    pending,
+    onOpenRename,
+    onOpenConfirm,
+    onReactivate,
+    onOpenResetPassword,
+  } = props;
   const isSelf = member.id === viewer.id;
   // Deactivate is OFFERED ONLY on role==='member' active rows (never any parent,
   // never on the viewer self). Parent-on-parent deactivation is deferred (v1).
@@ -766,6 +835,11 @@ function MemberRow(props: MemberRowProps): ReactElement {
   // defensive against an isActive race; rules deny self-edits of isActive too).
   const canReactivate = !member.isActive && !isSelf;
   const reactivatePending = pending.has(`reactivate:${member.id}`);
+  // Reset password is OFFERED only on MANAGED-child rows (accountType is
+  // written once by the createManagedChild callable and immutable from the
+  // client) and only when the flag-gated handler is wired. Mirrors the
+  // server-side target guard (resetManagedChildPassword rejects non-managed).
+  const canResetPassword = member.accountType === 'managed' && onOpenResetPassword !== undefined;
 
   return (
     <div className="flex items-center gap-12 rounded-control border border-surface-line bg-surface-card px-14 py-12">
@@ -808,6 +882,16 @@ function MemberRow(props: MemberRowProps): ReactElement {
             className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control bg-status-danger px-14 text-body font-semibold text-onAccent transition-colors duration-cardPress ease-out hover:bg-status-danger-text focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none"
           >
             {t('family.action.deactivate')}
+          </button>
+        )}
+        {canResetPassword && (
+          <button
+            type="button"
+            aria-label={t('familyChild.resetActionLabel', { name: member.name })}
+            onClick={(e) => onOpenResetPassword?.(member, e.currentTarget)}
+            className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control border border-surface-line bg-surface-card px-14 text-body font-semibold text-ink transition-colors duration-cardPress ease-out hover:bg-surface-line2 focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none"
+          >
+            {t('familyChild.resetAction')}
           </button>
         )}
         {canReactivate && (
@@ -959,6 +1043,108 @@ function RenameSheet(props: RenameSheetProps): ReactElement {
             className="inline-flex min-h-tap min-w-tap items-center justify-center rounded-control border border-surface-line px-20 text-body font-semibold text-ink transition-colors duration-cardPress ease-out hover:bg-surface-line2 focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus motion-reduce:transition-none"
           >
             {t('family.rename.cancel')}
+          </button>
+        </div>
+      </div>
+    </BottomSheet>
+  );
+}
+
+interface ResetPasswordSheetProps {
+  target: RenameTarget;
+  pending: boolean;
+  onCancel: () => void;
+  onSubmit: (newPassword: string) => void;
+}
+
+/**
+ * Managed-child password reset sheet — mirrors RenameSheet's geometry:
+ * autofocused input, client-side validation surfaced as an aria-live alert,
+ * Save disabled while the reset is in flight. The input is `type="password"`
+ * (never echoed to the screen or the toast) and starts EMPTY — there is no
+ * existing value to prefill; the parent chooses a fresh password and relays
+ * it to the child in person.
+ */
+function ResetPasswordSheet(props: ResetPasswordSheetProps): ReactElement {
+  const { t } = useTranslation();
+  const { target, pending, onCancel, onSubmit } = props;
+  const [value, setValue] = useState<string>('');
+  const [touchedInvalid, setTouchedInvalid] = useState(false);
+  const inputId = useId();
+  const errorId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  // Match the server-side minimum exactly (createManagedChild /
+  // resetManagedChildPassword both enforce >= 8). No trim: leading/trailing
+  // spaces are legal password characters and silently stripping them would
+  // desync what the parent typed from what the child must type.
+  const canSave = value.length >= CHILD_MIN_PASSWORD_LENGTH;
+
+  const handleSave = (): void => {
+    if (!canSave) {
+      setTouchedInvalid(true);
+      return;
+    }
+    onSubmit(value);
+  };
+
+  const errorMessage = touchedInvalid && !canSave ? t('familyChild.resetErrorTooShort') : null;
+
+  return (
+    <BottomSheet
+      open
+      title={t('familyChild.resetSheetTitle', { name: target.name })}
+      onClose={onCancel}
+    >
+      <div className="flex flex-col gap-16">
+        <div className="flex flex-col gap-6">
+          <label htmlFor={inputId} className="text-label font-semibold text-ink-2">
+            {t('familyChild.resetPasswordLabel')}
+          </label>
+          <div className="flex h-field items-center rounded-control border border-surface-line bg-surface-card px-14 focus-within:border-brand focus-within:ring-focus focus-within:ring-brand focus-within:ring-offset-focus">
+            <input
+              id={inputId}
+              ref={inputRef}
+              type="password"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              aria-invalid={errorMessage !== null}
+              aria-describedby={errorMessage !== null ? errorId : undefined}
+              className="w-full bg-transparent text-body text-ink outline-none"
+            />
+          </div>
+          <span className="text-meta text-ink-mute">
+            {t('familyChild.resetPasswordHint', { name: target.name })}
+          </span>
+          {errorMessage !== null && (
+            <p
+              id={errorId}
+              role="alert"
+              className="text-meta font-semibold text-status-danger-text"
+            >
+              {errorMessage}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-8">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={handleSave}
+            className="inline-flex min-h-tap items-center justify-center rounded-control bg-brand px-16 text-body font-semibold text-brand-on disabled:opacity-50 focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+          >
+            {t('familyChild.resetSave')}
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex min-h-tap items-center justify-center rounded-control border border-surface-line bg-surface-card px-16 text-body font-semibold text-ink focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+          >
+            {t('familyChild.cancel')}
           </button>
         </div>
       </div>

@@ -1065,6 +1065,14 @@
     "createdTitle": "Compte créé",
     "createdInstructions": "Expliquez à {{name}} comment se connecter — utilisez l’option « Connexion enfant » de l’écran de connexion avec :",
     "codeLabel": "Code de famille",
-    "done": "Terminé"
+    "done": "Terminé",
+    "resetAction": "Réinitialiser le mot de passe",
+    "resetActionLabel": "Réinitialiser le mot de passe de {{name}}",
+    "resetSheetTitle": "Réinitialiser le mot de passe de {{name}}",
+    "resetPasswordLabel": "Nouveau mot de passe",
+    "resetPasswordHint": "Au moins 8 caractères. Communiquez le nouveau mot de passe à {{name}} en personne.",
+    "resetSave": "Enregistrer le mot de passe",
+    "resetErrorTooShort": "Le mot de passe doit compter au moins 8 caractères.",
+    "resetToastDone": "Mot de passe mis à jour."
   }
 }
