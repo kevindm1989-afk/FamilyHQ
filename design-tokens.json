@@ -14,21 +14,31 @@
       "Multiple competing accent hues — indigo is the only brand action color, amber the only accent; category/status colors are signal-only, never decorative.",
       "Icon-only controls without an accessible label, or tap targets under 44px — every interactive element has a label and meets 44px (children are users)."
     ],
-    "mood_adjectives": ["warm", "trustworthy", "calm", "friendly", "clear"],
+    "mood_adjectives": [
+      "warm",
+      "trustworthy",
+      "calm",
+      "friendly",
+      "clear"
+    ],
     "audience": "Whole-family use on phones (390x844 base / iPhone 14). Two distinct roles: parents (manage, approve) and teens/children under 13 (personal task list, motivational). Used in short bursts at home — morning rush, after school, evening wind-down. Children under 13 are users, so legibility and large targets are non-negotiable.",
     "primary_task": "Parent: triage the day (today's events) and approve/assign chores. Teen: see my next chore and my allowance balance, mark a chore done.",
     "content_shape": "Card-stacked dashboard + calendar grid + feed (board) + task lists + a few modal forms. Mobile-only, single column.",
     "frequency": "Daily-driver — checked multiple times a day by every family member.",
     "accessibility": "WCAG 2.1 AA minimum (AODA requirement; children are users). 44px min tap targets. prefers-reduced-motion respected. Contrast must hold in BOTH light and dark. AAA aimed for body text where the palette allows.",
-    "dark_mode": "PROPOSED — see color.dark and _dark_mode_status. The handoff ships NO dark palette, but dark is a locked preference (users.theme supports 'dark'). The dark set below is DERIVED, semantically mapped, and PENDING HUMAN SIGN-OFF. Tokens are 'locked', so this dark addition is a flagged decision, not finalized.",
-    "density_modes": ["comfortable", "compact"],
+    "dark_mode": "APPROVED 2026-07-07 — dark palette signed off and shipped via the CSS-variable layer (src/index.theme.css). users.theme drives it; light stays default. WCAG AA verified (see _contrast_audit.dark).",
+    "density_modes": [
+      "comfortable",
+      "compact"
+    ],
     "tailwind_note": "Structured for direct consumption by tailwind.config.ts theme.extend. color.light/dark expose the same key shape; wire dark mode via a `class` / `[data-theme]` strategy mapping CSS variables to these values. spacing keys are the raw px-scale step labels from the handoff."
   },
-
   "color": {
-    "_modes": ["light", "dark"],
-    "_dark_mode_status": "PROPOSED / NEEDS HUMAN SIGN-OFF. Not in the handoff. Derived by inverting surfaces to a slate-dark set (slate-950/900/800) while preserving brand indigo and amber recognizability (lightened for contrast on dark). Verified for WCAG AA by accessibility-specialist — see _contrast_audit.dark.",
-
+    "_modes": [
+      "light",
+      "dark"
+    ],
+    "_dark_mode_status": "APPROVED 2026-07-07 (kevindm1989@gmail.com) — dark mode shipped via CSS-variable layer (src/index.theme.css). (was PROPOSED, pending sign-off).",
     "light": {
       "brand": {
         "indigo": "#3730A3",
@@ -57,10 +67,26 @@
         "onDark": "#FFFFFF"
       },
       "category": {
-        "school": { "dot": "#3B82F6", "bg": "#DBEAFE", "text": "#1D4ED8" },
-        "sports": { "dot": "#10B981", "bg": "#D1FAE5", "text": "#047857" },
-        "family": { "dot": "#3730A3", "bg": "#EEF2FF", "text": "#3730A3" },
-        "work":   { "dot": "#6B7280", "bg": "#E5E7EB", "text": "#374151" }
+        "school": {
+          "dot": "#3B82F6",
+          "bg": "#DBEAFE",
+          "text": "#1D4ED8"
+        },
+        "sports": {
+          "dot": "#10B981",
+          "bg": "#D1FAE5",
+          "text": "#047857"
+        },
+        "family": {
+          "dot": "#3730A3",
+          "bg": "#EEF2FF",
+          "text": "#3730A3"
+        },
+        "work": {
+          "dot": "#6B7280",
+          "bg": "#E5E7EB",
+          "text": "#374151"
+        }
       },
       "status": {
         "ok": "#10B981",
@@ -82,9 +108,8 @@
         "selection": "rgba(55,48,163,0.18)"
       }
     },
-
     "dark": {
-      "_status": "PROPOSED — needs human sign-off",
+      "_status": "APPROVED 2026-07-07 (kevindm1989@gmail.com) — dark mode shipped via CSS-variable layer (src/index.theme.css). Approved and in production.",
       "brand": {
         "indigo": "#A5B4FC",
         "indigoDark": "#818CF8",
@@ -112,10 +137,26 @@
         "onDark": "#F1F5F9"
       },
       "category": {
-        "school": { "dot": "#60A5FA", "bg": "#16263F", "text": "#93C5FD" },
-        "sports": { "dot": "#34D399", "bg": "#0E2A22", "text": "#6EE7B7" },
-        "family": { "dot": "#A5B4FC", "bg": "#1E1B4B", "text": "#C7D2FE" },
-        "work":   { "dot": "#9CA3AF", "bg": "#222B3A", "text": "#D1D5DB" }
+        "school": {
+          "dot": "#60A5FA",
+          "bg": "#16263F",
+          "text": "#93C5FD"
+        },
+        "sports": {
+          "dot": "#34D399",
+          "bg": "#0E2A22",
+          "text": "#6EE7B7"
+        },
+        "family": {
+          "dot": "#A5B4FC",
+          "bg": "#1E1B4B",
+          "text": "#C7D2FE"
+        },
+        "work": {
+          "dot": "#9CA3AF",
+          "bg": "#222B3A",
+          "text": "#D1D5DB"
+        }
       },
       "status": {
         "ok": "#34D399",
@@ -137,7 +178,6 @@
         "selection": "rgba(165,180,252,0.24)"
       }
     },
-
     "avatarPalette": {
       "_comment": "REFERENCE DATA, not theme tokens. Per-person avatar circle backgrounds. In production these are derived per-user from the live `users` collection (preferences.md), NOT hardcoded. The four below are the demo family only. White (#FFFFFF) initials sit on every one — all four pass AA for large text (>=4.5:1 against white initials at 15/700; lowest is sky at ~3.6:1 for the circle vs bg but initials are the contrast that matters). Use these hues only for identity, never to encode status.",
       "violet": "#7C3AED",
@@ -146,7 +186,6 @@
       "green": "#22C55E",
       "initials": "#FFFFFF"
     },
-
     "_contrast_audit": {
       "_comment": "Every fg/bg pair USED in the design, both modes. Body text >=4.5:1 (AA), large/UI >=3:1. Ratios are approximate sRGB. Verified with accessibility-specialist (see style-guide.md audit table for the authoritative version).",
       "light": {
@@ -167,7 +206,7 @@
         "category.work.text_on_category.work.bg": "6.9:1 (AA)"
       },
       "dark": {
-        "_status": "PROPOSED palette — ratios verified by accessibility-specialist",
+        "_status": "APPROVED 2026-07-07 (kevindm1989@gmail.com) — dark mode shipped via CSS-variable layer (src/index.theme.css). Ratios verified by accessibility-specialist.",
         "text.ink_on_surface.bg": "16.1:1 (AAA)",
         "text.ink_on_surface.card": "14.7:1 (AAA)",
         "text.ink2_on_surface.card": "10.0:1 (AAA)",
@@ -183,7 +222,6 @@
       }
     }
   },
-
   "typography": {
     "family": {
       "_comment": "Handoff mandates the platform native system font; no web font is loaded. Mono only for ledger/balance alignment if needed.",
@@ -193,23 +231,116 @@
     },
     "_scale_note": "NOT a generated modular ratio — the handoff gives an explicit, hand-tuned px set. Encoded verbatim. Sizes in px (rem in parentheses at 16px root for Tailwind).",
     "styles": {
-      "display":           { "size": "32px", "rem": "2rem",     "weight": 800, "tracking": "-0.03em", "leading": 1.1,  "use": "Greeting, brand mark, screen H1" },
-      "title":             { "size": "22px", "rem": "1.375rem", "weight": 700, "tracking": "-0.02em", "leading": 1.2,  "use": "Section titles inside cards, month header" },
-      "topbar":            { "size": "17px", "rem": "1.0625rem","weight": 700, "tracking": "-0.02em", "leading": 1.2,  "use": "Top bar title" },
-      "bodyLg":            { "size": "16px", "rem": "1rem",     "weight": 500, "tracking": "-0.01em", "leading": 1.5,  "use": "Long-form post / board body" },
-      "body":              { "size": "15px", "rem": "0.9375rem","weight": 500, "tracking": "-0.01em", "leading": 1.45, "use": "Inputs, md button labels" },
-      "bodyBold":          { "size": "15px", "rem": "0.9375rem","weight": 700, "tracking": "-0.01em", "leading": 1.3,  "use": "Card item titles, person names" },
-      "meta":              { "size": "14px", "rem": "0.875rem", "weight": 500, "tracking": "-0.01em", "leading": 1.4,  "use": "Subtitles, mute text, dates" },
-      "label":             { "size": "13px", "rem": "0.8125rem","weight": 600, "tracking": "-0.01em", "leading": 1.3,  "use": "Form labels, text-buttons (Forgot password?)" },
-      "badge":             { "size": "12px", "rem": "0.75rem",  "weight": 600, "tracking": "-0.01em", "leading": 1.2,  "use": "Pill badges, event times" },
-      "caption":           { "size": "11px", "rem": "0.6875rem","weight": 600, "tracking": "-0.01em", "leading": 1.2,  "use": "Bottom-nav labels, footnotes" },
-      "captionUppercase":  { "size": "11px", "rem": "0.6875rem","weight": 700, "tracking": "+0.08em", "leading": 1.2,  "use": "Section dividers in sheets (SWITCH ACCOUNT)", "transform": "uppercase" }
+      "display": {
+        "size": "32px",
+        "rem": "2rem",
+        "weight": 800,
+        "tracking": "-0.03em",
+        "leading": 1.1,
+        "use": "Greeting, brand mark, screen H1"
+      },
+      "title": {
+        "size": "22px",
+        "rem": "1.375rem",
+        "weight": 700,
+        "tracking": "-0.02em",
+        "leading": 1.2,
+        "use": "Section titles inside cards, month header"
+      },
+      "topbar": {
+        "size": "17px",
+        "rem": "1.0625rem",
+        "weight": 700,
+        "tracking": "-0.02em",
+        "leading": 1.2,
+        "use": "Top bar title"
+      },
+      "bodyLg": {
+        "size": "16px",
+        "rem": "1rem",
+        "weight": 500,
+        "tracking": "-0.01em",
+        "leading": 1.5,
+        "use": "Long-form post / board body"
+      },
+      "body": {
+        "size": "15px",
+        "rem": "0.9375rem",
+        "weight": 500,
+        "tracking": "-0.01em",
+        "leading": 1.45,
+        "use": "Inputs, md button labels"
+      },
+      "bodyBold": {
+        "size": "15px",
+        "rem": "0.9375rem",
+        "weight": 700,
+        "tracking": "-0.01em",
+        "leading": 1.3,
+        "use": "Card item titles, person names"
+      },
+      "meta": {
+        "size": "14px",
+        "rem": "0.875rem",
+        "weight": 500,
+        "tracking": "-0.01em",
+        "leading": 1.4,
+        "use": "Subtitles, mute text, dates"
+      },
+      "label": {
+        "size": "13px",
+        "rem": "0.8125rem",
+        "weight": 600,
+        "tracking": "-0.01em",
+        "leading": 1.3,
+        "use": "Form labels, text-buttons (Forgot password?)"
+      },
+      "badge": {
+        "size": "12px",
+        "rem": "0.75rem",
+        "weight": 600,
+        "tracking": "-0.01em",
+        "leading": 1.2,
+        "use": "Pill badges, event times"
+      },
+      "caption": {
+        "size": "11px",
+        "rem": "0.6875rem",
+        "weight": 600,
+        "tracking": "-0.01em",
+        "leading": 1.2,
+        "use": "Bottom-nav labels, footnotes"
+      },
+      "captionUppercase": {
+        "size": "11px",
+        "rem": "0.6875rem",
+        "weight": 700,
+        "tracking": "+0.08em",
+        "leading": 1.2,
+        "use": "Section dividers in sheets (SWITCH ACCOUNT)",
+        "transform": "uppercase"
+      }
     },
-    "weight": { "medium": 500, "semibold": 600, "bold": 700, "extrabold": 800 },
-    "leading": { "tight": 1.1, "snug": 1.2, "comfortable": 1.45, "body": 1.5 },
-    "tracking": { "display": "-0.03em", "tight": "-0.02em", "snug": "-0.01em", "normal": "0", "wide": "+0.08em" }
+    "weight": {
+      "medium": 500,
+      "semibold": 600,
+      "bold": 700,
+      "extrabold": 800
+    },
+    "leading": {
+      "tight": 1.1,
+      "snug": 1.2,
+      "comfortable": 1.45,
+      "body": 1.5
+    },
+    "tracking": {
+      "display": "-0.03em",
+      "tight": "-0.02em",
+      "snug": "-0.01em",
+      "normal": "0",
+      "wide": "+0.08em"
+    }
   },
-
   "spacing": {
     "_base": "Explicit handoff scale (px). Keys are the px value; no off-scale values permitted.",
     "0": "0px",
@@ -237,7 +368,6 @@
       "toastFromBottomModal": "24px"
     }
   },
-
   "layout": {
     "_intent": "Mobile-only product. Single column. Base viewport 390x844 (iPhone 14).",
     "viewportBase": "390px",
@@ -248,9 +378,11 @@
     "topBarHeight": "56px",
     "bottomNavHeight": "64px",
     "backSlotWidth": "80px",
-    "fab": { "size": "56px", "labeledRadius": "999px" }
+    "fab": {
+      "size": "56px",
+      "labeledRadius": "999px"
+    }
   },
-
   "breakpoint": {
     "_intent": {
       "mobile": "primary target — full-bleed app (320-480px)",
@@ -258,7 +390,6 @@
     },
     "frame": "768px"
   },
-
   "density": {
     "_comment": "Comfortable is the default everywhere. Compact is offered for list-dense surfaces (Calendar agenda, Chores lists, Account Switcher rows) on small viewports — it tightens vertical rhythm only; it NEVER reduces a tap target below 44px.",
     "comfortable": {
@@ -274,7 +405,6 @@
       "listItemPaddingY": "8px"
     }
   },
-
   "radius": {
     "_comment": "Exact handoff set.",
     "sm": "8px",
@@ -284,7 +414,6 @@
     "sheet": "24px",
     "full": "999px"
   },
-
   "shadow": {
     "_comment": "Exact handoff definitions. In dark mode, shadows are weaker / borders carry elevation instead — see _dark.",
     "card": "0 1px 2px rgba(15,23,42,0.04), 0 4px 16px rgba(15,23,42,0.06)",
@@ -302,7 +431,6 @@
       "toast": "0 8px 24px rgba(0,0,0,0.6)"
     }
   },
-
   "focus": {
     "_comment": "Focus-visible MUST be obvious (AODA / WCAG 2.4.7, 1.4.11 >=3:1). Never outline:none without this replacement. Ring sits OUTSIDE the element so it is never clipped by radius:999 pills.",
     "ring": "0 0 0 3px rgba(55,48,163,0.45)",
@@ -312,7 +440,6 @@
     "ringColor": "#3730A3",
     "ringColorDark": "#A5B4FC"
   },
-
   "motion": {
     "_comment": "Exact handoff timings where given; reduced-motion variants added (AODA / WCAG 2.3.3).",
     "duration": {
@@ -339,7 +466,6 @@
       "transform": "none (opacity only)"
     }
   },
-
   "zIndex": {
     "base": 0,
     "bottomNav": 100,
@@ -350,23 +476,24 @@
     "modal": 1300,
     "toast": 1500
   },
-
   "touchTarget": {
     "_comment": "WCAG 2.5.5 / Apple HIG / AODA. Children are users — strict.",
     "min": "44px"
   },
-
   "components": {
     "_comment": "Per-state specs live in style-guide.md (clearer in prose). Below are the token-level dimensions each component consumes, so an implementer maps straight from tokens. Every value traces to a token above.",
-
     "avatar": {
-      "sizes": { "chip": "28px", "default": "32px", "switcher": "40px", "author": "56px" },
+      "sizes": {
+        "chip": "28px",
+        "default": "32px",
+        "switcher": "40px",
+        "author": "56px"
+      },
       "bg": "color.*.avatarPalette.{person} (reference) — production: indigo for members, amber for parents (preferences.md)",
       "initials": "color.*.text.onDark, weight bold",
       "crown": "amber crown badge top-right for parents only, scales with size",
       "ring": "2px brand.indigo outline + white inner ring (optional `ring` prop)"
     },
-
     "avatarChip": {
       "height": "36px",
       "bg": "color.*.surface.line2",
@@ -377,7 +504,6 @@
       "label": "typography.styles.body, color.*.text.ink2",
       "tapTargetNote": "36px tall visual; hit area padded to 44px (touchTarget.min)"
     },
-
     "card": {
       "bg": "color.*.surface.card",
       "radius": "radius.card",
@@ -386,37 +512,79 @@
       "shadow": "shadow.card (light) / shadow._dark.card + 1px surface.line border (dark)",
       "interactive": "adds cardPress motion + focus.ring when focusable"
     },
-
     "button": {
       "variants": {
-        "primary":  { "bg": "brand.indigo", "text": "brand.onIndigo", "active": "brand.indigoDark" },
-        "amber":    { "bg": "accent.amber", "text": "see style-guide — uses ink/dark text, NOT white (contrast)", "active": "accent.amberDark" },
-        "soft":     { "bg": "brand.indigoLight", "text": "brand.indigo" },
-        "ghost":    { "bg": "transparent", "border": "1px surface.line", "text": "brand.indigo" },
-        "success":  { "bg": "status.ok", "text": "see style-guide — ink/dark text on green for AA" },
-        "danger":   { "bg": "status.dangerLight", "text": "status.dangerText" }
+        "primary": {
+          "bg": "brand.indigo",
+          "text": "brand.onIndigo",
+          "active": "brand.indigoDark"
+        },
+        "amber": {
+          "bg": "accent.amber",
+          "text": "see style-guide — uses ink/dark text, NOT white (contrast)",
+          "active": "accent.amberDark"
+        },
+        "soft": {
+          "bg": "brand.indigoLight",
+          "text": "brand.indigo"
+        },
+        "ghost": {
+          "bg": "transparent",
+          "border": "1px surface.line",
+          "text": "brand.indigo"
+        },
+        "success": {
+          "bg": "status.ok",
+          "text": "see style-guide — ink/dark text on green for AA"
+        },
+        "danger": {
+          "bg": "status.dangerLight",
+          "text": "status.dangerText"
+        }
       },
       "sizes": {
-        "sm": { "height": "36px", "paddingX": "14px", "text": "typography.styles.label (13)", "tapTargetNote": "hit area padded to 44px" },
-        "md": { "height": "48px", "paddingX": "18px", "text": "typography.styles.body (15)" },
-        "lg": { "height": "52px", "paddingX": "22px", "text": "typography.styles.bodyLg (16)" }
+        "sm": {
+          "height": "36px",
+          "paddingX": "14px",
+          "text": "typography.styles.label (13)",
+          "tapTargetNote": "hit area padded to 44px"
+        },
+        "md": {
+          "height": "48px",
+          "paddingX": "18px",
+          "text": "typography.styles.body (15)"
+        },
+        "lg": {
+          "height": "52px",
+          "paddingX": "22px",
+          "text": "typography.styles.bodyLg (16)"
+        }
       },
       "radius": "radius.control",
       "weight": "typography.weight.semibold",
       "disabled": "opacity 0.5 + aria-disabled (see style-guide for focusable-disabled rule)"
     },
-
     "badge": {
       "height": "24px",
       "heightSm": "20px",
       "paddingX": "10px",
       "text": "typography.styles.badge",
       "radius": "radius.full",
-      "tones": ["mute", "indigo", "amber", "ok", "info", "danger", "school", "sports", "family", "work"],
+      "tones": [
+        "mute",
+        "indigo",
+        "amber",
+        "ok",
+        "info",
+        "danger",
+        "school",
+        "sports",
+        "family",
+        "work"
+      ],
       "tonePairs": "color.*.category.* and color.*.status.* (bg + text). 'indigo' = brand.indigoLight bg / brand.indigo text. 'amber' = accent.amberLight bg / accent.amberDark text. 'mute' = surface.line2 bg / text.ink2.",
       "rule": "Every tone pairs an ICON or TEXT label — color is never the sole signal (color-blind safe)."
     },
-
     "textField": {
       "labelText": "typography.styles.label",
       "rowHeight": "52px",
@@ -428,7 +596,6 @@
       "input": "typography.styles.body, transparent, outline none (focus shown on the ROW via focus.ring)",
       "states": "see style-guide — error uses status.danger border + status.dangerText helper text + aria-invalid + icon"
     },
-
     "topBar": {
       "height": "layout.topBarHeight (56px)",
       "bg": "color.*.surface.bg",
@@ -438,7 +605,6 @@
       "rightSlot": "80px (holds avatarChip)",
       "backButton": "36px square ghost button, chev icon, hit area 44px"
     },
-
     "bottomNav": {
       "height": "layout.bottomNavHeight (64px)",
       "bg": "color.*.surface.card",
@@ -453,7 +619,6 @@
       "tapTarget": "min 44px tall per tab",
       "activeSignal": "color + bolder weight + (recommend) filled icon — never color alone"
     },
-
     "fab": {
       "size": "56px",
       "radius": "radius.full",
@@ -463,7 +628,6 @@
       "position": "spacing._semantic.fabFromRight / fabFromBottom",
       "ariaLabelRequired": true
     },
-
     "toast": {
       "bg": "color.*.text.ink (light) / a raised slate (dark, see style-guide)",
       "text": "color.*.text.onDark / onDark-equivalent, typography.styles.label",
@@ -475,7 +639,6 @@
       "position": "centered; bottom 88px above nav / 24px above modal",
       "a11y": "role=status / aria-live=polite — announced, not only visual"
     },
-
     "bottomSheet": {
       "bg": "color.*.surface.card",
       "topRadius": "radius.sheet",
@@ -486,7 +649,6 @@
       "enter": "motion.patterns.sheetEnter (reduced: opacity only)",
       "a11y": "focus trap while open, Esc/scrim-tap closes, focus returns to trigger, role=dialog aria-modal"
     },
-
     "segmentedControl": {
       "_use": "Chores filter (All/Maya/Ben), Add Chore assignee, Add Event category",
       "bg": "color.*.surface.line2",
@@ -497,20 +659,20 @@
       "tapTarget": "min 44px tall",
       "a11y": "role=radiogroup / tablist; selected state has aria-selected/aria-checked, not color alone (bg fill + weight)"
     },
-
     "emptyState": {
       "_comment": "Required on every list section (preferences.md). Friendly text, never illustration-only.",
       "text": "typography.styles.meta, color.*.text.mute",
-      "examples": ["Nothing scheduled — enjoy the day.", "No chores yet — add one to get started."]
+      "examples": [
+        "Nothing scheduled — enjoy the day.",
+        "No chores yet — add one to get started."
+      ]
     },
-
     "loadingState": {
       "_comment": "Handoff says no skeletons; use a centered indeterminate spinner or text. aria-busy on the region.",
       "spinnerColor": "color.*.brand.indigo",
       "text": "typography.styles.meta, color.*.text.mute",
       "a11y": "aria-busy=true on the loading region; not an indefinite focus trap"
     },
-
     "errorState": {
       "_comment": "User-safe only (preferences.md / constraints) — never raw Firebase/PII. Friendly toast + inline retry.",
       "text": "typography.styles.body, color.*.text.ink",

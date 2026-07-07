@@ -78,7 +78,13 @@
     "wishlist": "Liste de souhaits",
     "notifications": "Notifications",
     "resourcesLabel": "Ressources du site",
-    "accessibilityLink": "Déclaration d’accessibilité et commentaires"
+    "accessibilityLink": "Déclaration d’accessibilité et commentaires",
+    "theme": {
+      "label": "Apparence",
+      "light": "Clair",
+      "dark": "Sombre"
+    },
+    "themeError": "Nous n’avons pas pu mettre à jour votre thème. Veuillez réessayer."
   },
   "dashboard": {
     "welcome": "Bienvenue, {{name}}",
