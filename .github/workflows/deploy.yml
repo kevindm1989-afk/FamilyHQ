@@ -421,7 +421,7 @@ jobs:
       - name: Audit functions workspace for high-severity CVEs (M40)
         run: npm --prefix functions audit --omit=dev --audit-level=high
 
-      - name: Deploy functions (billingKillSwitch + notify-callables)
+      - name: Deploy functions (billingKillSwitch + notify-callables + managed-child callables)
         # EXACT --only list — billingKillSwitch is listed FIRST as
         # documentation-of-precedence, but firebase-tools deploys all
         # functions in this --only list in PARALLEL; the comma order is
@@ -455,11 +455,19 @@ jobs:
           SA_PATH="$(mktemp /tmp/sa-XXXXXX.json)"
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$SA_PATH"
           chmod 600 "$SA_PATH"
+          # --force: firebase-tools' Artifact Registry cleanup-policy setup
+          # PROMPTS on the first functions deploy in a region; under
+          # --non-interactive alone that prompt is an exit-1 ("Functions
+          # successfully deployed but could not set up cleanup policy" —
+          # deploy run 28842184211, 2026-07-07). With an EXPLICIT --only
+          # list, --force does NOT delete unlisted functions; it only
+          # auto-accepts prompts like the cleanup-policy setup.
           GOOGLE_APPLICATION_CREDENTIALS="$SA_PATH" \
             npx firebase deploy \
-              --only functions:billingKillSwitch,functions:notifyChoreApproved,functions:notifyChoreSubmitted,functions:notifyWishlistRequested,functions:notifyWishlistResolved,functions:notifyBoardPost,functions:notifyTodoCreated,functions:notifyTodoCompleted,functions:notifyEventReminders,functions:notifyBirthdays \
+              --only functions:billingKillSwitch,functions:notifyChoreApproved,functions:notifyChoreSubmitted,functions:notifyWishlistRequested,functions:notifyWishlistResolved,functions:notifyBoardPost,functions:notifyTodoCreated,functions:notifyTodoCompleted,functions:notifyEventReminders,functions:notifyBirthdays,functions:createManagedChild,functions:resetManagedChildPassword \
               --project "$PROJECT_ID" \
-              --non-interactive
+              --non-interactive \
+              --force
           rm -f "$SA_PATH"
 
   # ---------------------------------------------------------------------------
