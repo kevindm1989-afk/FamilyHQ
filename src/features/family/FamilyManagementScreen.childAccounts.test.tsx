@@ -26,6 +26,28 @@ const PARENT: UserWithId = {
   allowanceBalance: 0,
   theme: 'light',
 };
+// A MANAGED child (created by the createManagedChild callable) and a STANDARD
+// member — distinct balances per the fixture-collision lesson (2026-05-27).
+const MANAGED_CHILD: UserWithId = {
+  id: 'uid-managed-child',
+  name: 'Maya Kim',
+  role: 'member',
+  familyId: 'fam-A',
+  isActive: true,
+  allowanceBalance: 3850,
+  theme: 'light',
+  accountType: 'managed',
+  loginHandle: 'maya',
+};
+const STANDARD_MEMBER: UserWithId = {
+  id: 'uid-standard-member',
+  name: 'Ben Kim',
+  role: 'member',
+  familyId: 'fam-A',
+  isActive: true,
+  allowanceBalance: 1275,
+  theme: 'light',
+};
 
 function renderScreen(overrides: Partial<FamilyManagementScreenProps> = {}): void {
   const props: FamilyManagementScreenProps = {
@@ -98,5 +120,62 @@ describe('FamilyManagementScreen — add a child (managed account)', () => {
     // Form stays open (Create account CTA still present); no hand-off card.
     expect(screen.getByRole('button', { name: /create account/i })).toBeInTheDocument();
     expect(screen.queryByText(/account created/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('FamilyManagementScreen — reset a managed child password', () => {
+  const FAMILY = [PARENT, MANAGED_CHILD, STANDARD_MEMBER];
+
+  it('shows NO reset action anywhere when onResetChildPassword is absent', () => {
+    renderScreen({ members: FAMILY });
+    expect(screen.queryByRole('button', { name: /reset password/i })).not.toBeInTheDocument();
+  });
+
+  it('offers the reset action ONLY on the managed-child row when the handler is wired', () => {
+    renderScreen({ members: FAMILY, onResetChildPassword: vi.fn().mockResolvedValue(undefined) });
+    const resetButtons = screen.getAllByRole('button', { name: /reset password/i });
+    // Exactly one: Maya (managed). Ben (standard member) and the parent get none.
+    expect(resetButtons).toHaveLength(1);
+    expect(resetButtons[0]).toHaveAccessibleName('Reset password for Maya Kim');
+  });
+
+  it('validates the minimum length, then submits and toasts on success (password never echoed)', async () => {
+    const onResetChildPassword = vi.fn().mockResolvedValue(undefined);
+    renderScreen({ members: FAMILY, onResetChildPassword });
+
+    fireEvent.click(screen.getByRole('button', { name: /reset password for maya/i }));
+
+    // Too-short password → inline alert; the handler is NOT called.
+    const input = screen.getByLabelText(/new password/i);
+    fireEvent.change(input, { target: { value: 'short' } });
+    fireEvent.click(screen.getByRole('button', { name: /save password/i }));
+    expect(screen.getByRole('alert')).toHaveTextContent(/at least 8 characters/i);
+    expect(onResetChildPassword).not.toHaveBeenCalled();
+
+    // Valid password → handler called with (uid, password); success toast.
+    fireEvent.change(input, { target: { value: 'a-new-good-password' } });
+    fireEvent.click(screen.getByRole('button', { name: /save password/i }));
+    await waitFor(() => expect(onResetChildPassword).toHaveBeenCalledTimes(1));
+    expect(onResetChildPassword).toHaveBeenCalledWith('uid-managed-child', 'a-new-good-password');
+    await waitFor(() => expect(screen.getByText(/password updated/i)).toBeInTheDocument());
+    // Sheet closed; the password value appears nowhere in the document.
+    expect(screen.queryByLabelText(/new password/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('a-new-good-password')).not.toBeInTheDocument();
+  });
+
+  it('surfaces the service message and closes the sheet when the reset rejects', async () => {
+    const onResetChildPassword = vi
+      .fn()
+      .mockRejectedValue(new Error('Too many attempts. Please wait a minute and try again.'));
+    renderScreen({ members: FAMILY, onResetChildPassword });
+
+    fireEvent.click(screen.getByRole('button', { name: /reset password for maya/i }));
+    fireEvent.change(screen.getByLabelText(/new password/i), {
+      target: { value: 'a-new-good-password' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /save password/i }));
+
+    await waitFor(() => expect(screen.getByText(/too many attempts/i)).toBeInTheDocument());
+    expect(screen.queryByLabelText(/new password/i)).not.toBeInTheDocument();
   });
 });
