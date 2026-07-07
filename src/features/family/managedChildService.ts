@@ -17,6 +17,7 @@
 import { getFunctions, httpsCallable, type FunctionsError } from 'firebase/functions';
 import { FUNCTIONS_REGION } from '../../firebase/functions-region';
 import { CHILD_HANDLE_RE, CHILD_MIN_PASSWORD_LENGTH } from './childLoginEmail';
+import { trackUsage } from '../../lib/telemetry';
 
 // The synthetic-email composer + its constants live in the dependency-free
 // `childLoginEmail` module so UI (the cold-load LoginScreen, the reset sheet)
@@ -103,6 +104,7 @@ export async function createManagedChild(
       'createManagedChild',
     );
     const res = await fn({ displayName, handle, password: input.password });
+    trackUsage('child_created');
     return res.data;
   } catch (err) {
     throw new ManagedChildActionError(toUserSafeMessage(err));

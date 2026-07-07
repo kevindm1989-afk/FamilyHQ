@@ -43,6 +43,7 @@ import {
   type UserWithId,
 } from '../../lib/types';
 import { ChoreActionError, type ChoreWithId } from './choresMemberService';
+import { trackUsage } from '../../lib/telemetry';
 
 export { ChoreActionError, type ChoreWithId } from './choresMemberService';
 export { MONEY_MAX_CENTS } from '../../lib/types';
@@ -246,6 +247,7 @@ export async function approveChore(
   } catch {
     // Intentionally swallowed — see comment above. No re-throw, no toast.
   }
+  trackUsage('chore_approved');
 }
 
 /**
@@ -327,6 +329,7 @@ export async function addChore(deps: { db: Firestore }, input: CreateChoreInput)
   } catch {
     throw new ChoreActionError(CHORE_PARENT_GENERIC_ERROR);
   }
+  trackUsage('chore_created');
 }
 
 /**
