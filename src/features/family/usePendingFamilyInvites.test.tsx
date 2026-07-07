@@ -9,7 +9,7 @@
  *   4. Tears down the listener on unmount + on familyId change (no leak
  *      into another family on switch-account).
  */
-import { render } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const collectionMock = vi.fn();
@@ -78,11 +78,13 @@ describe('usePendingFamilyInvites', () => {
   it('subscribes with familyId + status pending filters', async () => {
     queryMock.mockImplementation((...args) => ({ __q: args }));
     render(<Harness familyId="fam-A" />);
-    // Wait a microtask for the dynamic import('firebase/config') to resolve.
-    await new Promise((r) => setTimeout(r, 0));
+    // FLAKE FIX (Verify run 28843173871): a single setTimeout(0) raced the
+    // hook's effect + dynamic import('firebase/config') chain — on a loaded
+    // CI runner the subscribe occasionally hadn't happened yet. waitFor
+    // polls the REAL condition instead of hoping one macrotask is enough.
+    await waitFor(() => expect(onSnapshotMock).toHaveBeenCalledTimes(1));
     expect(whereMock).toHaveBeenCalledWith('familyId', '==', 'fam-A');
     expect(whereMock).toHaveBeenCalledWith('status', '==', 'pending');
-    expect(onSnapshotMock).toHaveBeenCalledTimes(1);
   });
 
   it('sorts the resulting invites newest-first by createdAt', async () => {
@@ -92,21 +94,30 @@ describe('usePendingFamilyInvites', () => {
     onSnapshotMock.mockImplementation((_q, onNext) => {
       cap.snapHandler = onNext as SnapHandler;
     });
-    const { findByTestId } = render(<Harness familyId="fam-A" />);
-    await new Promise((r) => setTimeout(r, 0));
+    const { getByTestId } = render(<Harness familyId="fam-A" />);
+    // FLAKE FIX (Verify run 28843173871): the old `setTimeout(0)` +
+    // `cap.snapHandler?.(...)` pair silently NO-OPed when the handler had
+    // not been captured yet (optional chaining swallowed it), rendering []
+    // and failing the order assertion. Wait for the capture, then feed
+    // NON-optionally inside act() so a regression throws instead of no-oping.
+    await waitFor(() => expect(cap.snapHandler).not.toBeNull());
 
     // Feed three docs with createdAt out of order; assert the rendered DOM
     // order is newest-first.
-    cap.snapHandler?.({
-      docs: [
-        { id: 'a', data: () => ({ email: 'a@x', createdAt: 100 }) },
-        { id: 'b', data: () => ({ email: 'b@x', createdAt: 300 }) },
-        { id: 'c', data: () => ({ email: 'c@x', createdAt: 200 }) },
-      ],
+    act(() => {
+      cap.snapHandler!({
+        docs: [
+          { id: 'a', data: () => ({ email: 'a@x', createdAt: 100 }) },
+          { id: 'b', data: () => ({ email: 'b@x', createdAt: 300 }) },
+          { id: 'c', data: () => ({ email: 'c@x', createdAt: 200 }) },
+        ],
+      });
     });
-    const ul = await findByTestId('root');
-    const order = Array.from(ul.children).map((li) => (li as HTMLElement).dataset.id);
-    expect(order).toEqual(['b', 'c', 'a']);
+    await waitFor(() => {
+      const ul = getByTestId('root');
+      const order = Array.from(ul.children).map((li) => (li as HTMLElement).dataset.id);
+      expect(order).toEqual(['b', 'c', 'a']);
+    });
   });
 
   it('surfaces a generic error string when the snapshot listener errors', async () => {
@@ -116,19 +127,26 @@ describe('usePendingFamilyInvites', () => {
     onSnapshotMock.mockImplementation((_q, _ok, onErr) => {
       cap.errHandler = onErr as ErrHandler;
     });
-    const { findByTestId } = render(<Harness familyId="fam-A" />);
-    await new Promise((r) => setTimeout(r, 0));
+    const { getByTestId } = render(<Harness familyId="fam-A" />);
+    // FLAKE FIX: same waitFor-the-capture pattern as the sort test above.
+    await waitFor(() => expect(cap.errHandler).not.toBeNull());
 
-    cap.errHandler?.(new Error('rules denied'));
-    const ul = await findByTestId('root');
-    expect(ul.dataset.error).toBe('We could not load pending invitations.');
-    expect(ul.dataset.loading).toBe('false');
+    act(() => {
+      cap.errHandler!(new Error('rules denied'));
+    });
+    await waitFor(() => {
+      const ul = getByTestId('root');
+      expect(ul.dataset.error).toBe('We could not load pending invitations.');
+      expect(ul.dataset.loading).toBe('false');
+    });
   });
 
   it('tears down the listener on unmount (no leak across switch-account)', async () => {
     queryMock.mockImplementation(() => ({}));
     const { unmount } = render(<Harness familyId="fam-A" />);
-    await new Promise((r) => setTimeout(r, 0));
+    // FLAKE FIX: unmounting before the subscribe landed would mean no unsub
+    // to observe — wait for the listener to actually open first.
+    await waitFor(() => expect(onSnapshotMock).toHaveBeenCalledTimes(1));
     unmount();
     expect(unsubMock).toHaveBeenCalledTimes(1);
   });
