@@ -66,23 +66,24 @@ describe('A-T8 (PR D update): deploy-functions step exists, is flag-gated, and -
     expect(inputBlock![0]).toMatch(/default:\s*false/);
   });
 
-  it('its firebase deploy --only list enumerates kill-switch + all 9 notify-callables (PR A + PR C + PR D + PR F), exactly once each, in the canonical order', () => {
+  it('its firebase deploy --only list enumerates kill-switch + 9 notify-callables + 2 managed-child callables, exactly once each, in the canonical order', () => {
     const yml = readDeployYml();
     // Find every `firebase deploy --only <list>` line and inspect any list
     // that mentions `functions:`. There must be exactly one such line,
     // and its value must enumerate the kill-switch first (documentation-
     // of-precedence — see header comment for the operational reality) plus
-    // every notify-callable shipped to date. New callables shipped in
-    // future PRs append to the END of the list; never prepend (the kill-
-    // switch entry stays first). PR F appended notifyEventReminders +
-    // notifyBirthdays at the tail per design §14 task F11.
+    // every callable shipped to date. New callables shipped in future PRs
+    // append to the END of the list; never prepend (the kill-switch entry
+    // stays first). PR F appended notifyEventReminders + notifyBirthdays;
+    // the managed-child feature (docs/specs/managed-child-accounts.md)
+    // appended createManagedChild + resetManagedChildPassword at the tail.
     const onlyLines = [...yml.matchAll(/firebase\s+deploy[\s\S]*?--only\s+([^\s\\\n]+)/g)].map(
       (m) => m[1]!,
     );
     const functionsLines = onlyLines.filter((l) => l.includes('functions:'));
     expect(functionsLines).toHaveLength(1);
     expect(functionsLines[0]).toBe(
-      'functions:billingKillSwitch,functions:notifyChoreApproved,functions:notifyChoreSubmitted,functions:notifyWishlistRequested,functions:notifyWishlistResolved,functions:notifyBoardPost,functions:notifyTodoCreated,functions:notifyTodoCompleted,functions:notifyEventReminders,functions:notifyBirthdays',
+      'functions:billingKillSwitch,functions:notifyChoreApproved,functions:notifyChoreSubmitted,functions:notifyWishlistRequested,functions:notifyWishlistResolved,functions:notifyBoardPost,functions:notifyTodoCreated,functions:notifyTodoCompleted,functions:notifyEventReminders,functions:notifyBirthdays,functions:createManagedChild,functions:resetManagedChildPassword',
     );
   });
 
