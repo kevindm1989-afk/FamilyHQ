@@ -6,6 +6,12 @@ package-lock.json
 design-tokens.json
 *.md
 
+# Generated CSS-variable theme layer — emitted verbatim by
+# scripts/gen-theme-css.cjs from design-tokens.json. Its formatting is the
+# generator's output, gated by the theme-css-drift test (not prettier); do not
+# reformat or the drift check breaks.
+src/index.theme.css
+
 # Functions workspace build output (tsc emits to functions/lib/; gitignored
 # but a freshly-built local tree leaves the files around for prettier to
 # pick up). The source under functions/src/ IS prettier-checked.

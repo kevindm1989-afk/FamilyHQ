@@ -78,7 +78,13 @@
     "wishlist": "Wishlist",
     "notifications": "Notifications",
     "resourcesLabel": "Site resources",
-    "accessibilityLink": "Accessibility statement & feedback"
+    "accessibilityLink": "Accessibility statement & feedback",
+    "theme": {
+      "label": "Appearance",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "themeError": "We could not update your theme. Please try again."
   },
   "dashboard": {
     "welcome": "Welcome, {{name}}",

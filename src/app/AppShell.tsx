@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo, useState, type ReactElement } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState, type ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AccessibilityStatementScreen } from '../features/accessibility/AccessibilityStatementScreen';
@@ -19,6 +19,7 @@ import { isPushNotificationsEnabled } from '../features/notifications/featureFla
 import { useAuth } from '../hooks/useAuth';
 import { useFamily } from '../hooks/useFamily';
 import { useToast } from '../hooks/useToast';
+import { applyTheme } from '../lib/applyTheme';
 import { ROUTES, canAccess, hidesBottomNav, type RouteMeta, type ScreenId } from './routes';
 
 const MAIN_CONTENT_ID = 'main-content';
@@ -84,6 +85,16 @@ export function AppShell(): ReactElement {
     () => screenForPath(location.pathname),
     [location.pathname],
   );
+
+  // Apply the signed-in user's theme to <html> on load and whenever it changes
+  // (e.g. the Account toggle persists → the users-doc snapshot updates → this
+  // re-stamps data-theme). On sign-out the app hard-reloads (signOutAndClear-
+  // Cache), which drops the attribute and returns the login screen to the OS
+  // prefers-color-scheme default — so no explicit teardown is needed here.
+  const currentTheme = currentUser?.theme;
+  useEffect(() => {
+    applyTheme(currentTheme ?? null);
+  }, [currentTheme]);
 
   if (loading) {
     return (
@@ -265,10 +276,39 @@ function AccountScreen(): ReactElement {
   const { t } = useTranslation();
   const { signOut } = useAuth();
   const { showToast } = useToast();
-  const { role } = useFamily();
+  const { role, currentUser } = useFamily();
   const navigate = useNavigate();
   const [signingOut, setSigningOut] = useState(false);
   const isParent = role === 'parent';
+
+  // Theme toggle. Applies instantly (optimistic) for zero-lag feedback, then
+  // persists to users/{uid}.theme; on a persist failure we revert the DOM to
+  // the last-known theme and toast. The AppShell effect keeps <html> in sync
+  // with the snapshot, so a successful write is idempotent with the optimistic
+  // apply. Defaults to 'light' when the user doc hasn't loaded yet.
+  const theme = currentUser?.theme ?? 'light';
+  const [themeBusy, setThemeBusy] = useState(false);
+  const handleToggleTheme = (): void => {
+    if (themeBusy || !currentUser) return;
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setThemeBusy(true);
+    void (async () => {
+      const { applyTheme } = await import('../lib/applyTheme');
+      applyTheme(next); // optimistic
+      try {
+        const [{ db }, { setUserTheme }] = await Promise.all([
+          import('../firebase/config'),
+          import('../features/settings/themeService'),
+        ]);
+        await setUserTheme({ db }, currentUser.id, next);
+      } catch {
+        applyTheme(theme); // revert on failure
+        showToast(t('account.themeError'));
+      } finally {
+        setThemeBusy(false);
+      }
+    })();
+  };
 
   const handleSignOut = (): void => {
     setSigningOut(true);
@@ -328,6 +368,21 @@ function AccountScreen(): ReactElement {
       <Button variant="danger" loading={signingOut} onClick={handleSignOut}>
         {t('account.signOut')}
       </Button>
+      {/* Appearance — light/dark theme toggle. `aria-pressed` conveys the
+          on(dark)/off(light) state to AT; the colour swap itself is handled by
+          the CSS-variable layer once data-theme flips on <html>. */}
+      <button
+        type="button"
+        onClick={handleToggleTheme}
+        disabled={themeBusy}
+        aria-pressed={theme === 'dark'}
+        className="inline-flex min-h-tap items-center justify-between gap-8 rounded-control border border-surface-line bg-surface-card px-16 text-body font-semibold text-ink disabled:opacity-60 focus-visible:ring-focus focus-visible:ring-brand focus-visible:ring-offset-focus"
+      >
+        <span>{t('account.theme.label')}</span>
+        <span className="text-ink-mute">
+          {theme === 'dark' ? t('account.theme.dark') : t('account.theme.light')}
+        </span>
+      </button>
       {/* AODA: the accessibility statement + feedback path must be reachable
           from within the app, not only from the signed-out screen. The
           language toggle sits in the same Account surface so a signed-in
