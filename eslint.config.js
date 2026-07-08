@@ -91,4 +91,13 @@ export default tseslint.config(
       '@typescript-eslint/no-require-imports': 'off',
     },
   },
+  {
+    // Operator scripts in the Functions workspace — ESM `.mjs` run via
+    // `node functions/scripts/<x>.mjs` (e.g. the insights readout, run from CI
+    // with the deploy service account). Node globals; ESM (default sourceType).
+    files: ['functions/scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
 );

@@ -1,0 +1,75 @@
+name: Insights
+
+# Operator-only telemetry readout. Manually triggered; reads the first-party
+# usageEvents + clientErrors collections via the Admin SDK (bypasses the client
+# deny-read rules — the data never leaves the operator context) and writes a
+# funnel + top-errors Markdown report to the run's job summary.
+#
+# The data is app-wide and anonymous (no familyId on usageEvents), so this is an
+# owner/operator surface, never an in-app screen. Reuses the deploy secrets:
+#   FIREBASE_SERVICE_ACCOUNT  full service-account JSON (read access to Firestore)
+#   FIREBASE_PROJECT_ID       target project id
+
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Window size in days (usageEvents/clientErrors are date-bucketed)'
+        required: false
+        default: '30'
+        type: string
+
+# Read-only reporting job; never overlap two runs against the same project.
+concurrency:
+  group: insights
+  cancel-in-progress: true
+
+jobs:
+  insights:
+    name: Telemetry readout
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4 # nosemgrep GitHub-owned first-party action; mutable tag accepted (CI policy)
+
+      - name: Pre-flight — check secrets
+        run: |
+          if [ -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
+            echo "::error::FIREBASE_SERVICE_ACCOUNT secret is not set."
+            exit 1
+          fi
+          if [ -z "${{ secrets.FIREBASE_PROJECT_ID }}" ]; then
+            echo "::error::FIREBASE_PROJECT_ID secret is not set."
+            exit 1
+          fi
+          echo "Pre-flight OK."
+
+      - name: Setup Node (functions runtime)
+        uses: actions/setup-node@v4 # nosemgrep GitHub-owned first-party action; mutable tag accepted (CI policy)
+        with:
+          node-version-file: 'functions/.nvmrc'
+          cache: 'npm'
+
+      - name: Install functions workspace dependencies
+        run: npm --prefix functions ci
+
+      - name: Build functions (compiles the pure aggregator to lib/)
+        run: npm --prefix functions run build
+
+      - name: Run insights readout
+        # `env:` block (not inline `${{...}}`) passes secrets as env vars so a
+        # secret can't be textually interpolated into the shell (semgrep
+        # run-shell-injection). Same SA-JSON → temp-file → GOOGLE_APPLICATION_
+        # CREDENTIALS pattern as deploy.yml.
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          INSIGHTS_DAYS: ${{ inputs.days }}
+        run: |
+          SA_PATH="$(mktemp /tmp/sa-XXXXXX.json)"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$SA_PATH"
+          chmod 600 "$SA_PATH"
+          GOOGLE_APPLICATION_CREDENTIALS="$SA_PATH" \
+            node functions/scripts/insights.mjs
+          rm -f "$SA_PATH"
