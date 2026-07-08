@@ -2,8 +2,12 @@
  * Savings Goals route — Feature 1.
  *
  * Wires the screen to live data. Members see only their own goals; parents
- * see every family goal (the hook owns the scope). All actions resolve
- * Firestore lazily — the route chunk stays Firebase-free at the top level.
+ * see every family goal (the hook owns the scope). The Firestore *instance*
+ * is resolved lazily via resolveDb() (defers Firebase app init); the
+ * savingsGoalsService module itself is imported statically because the screen
+ * (SavingsGoalsScreen) already imports it, so a dynamic import here would not
+ * move it into a separate chunk — it would only trip Vite's
+ * INEFFECTIVE_DYNAMIC_IMPORT warning.
  *
  * Default-exported for React.lazy in AppShell.
  */
@@ -14,6 +18,12 @@ import { useToast } from '../../hooks/useToast';
 import { useFamily } from '../../hooks/useFamily';
 import { SavingsGoalsScreen } from './SavingsGoalsScreen';
 import { useFamilySavingsGoals } from './useFamilySavingsGoals';
+import {
+  contributeToSavingsGoal,
+  createSavingsGoal,
+  deleteSavingsGoal,
+  setSavingsGoalStatus,
+} from './savingsGoalsService';
 
 async function resolveDb(): Promise<import('firebase/firestore').Firestore | null> {
   try {
@@ -50,7 +60,6 @@ export default function SavingsGoalsRoute(): ReactElement {
       return;
     }
     try {
-      const { createSavingsGoal } = await import('./savingsGoalsService');
       await createSavingsGoal(
         { db },
         {
@@ -73,7 +82,6 @@ export default function SavingsGoalsRoute(): ReactElement {
       return;
     }
     try {
-      const { contributeToSavingsGoal } = await import('./savingsGoalsService');
       await contributeToSavingsGoal({ db }, goalId, cents);
       showToast(t('savings.toast.contributed'));
     } catch (err) {
@@ -91,7 +99,6 @@ export default function SavingsGoalsRoute(): ReactElement {
       return;
     }
     try {
-      const { setSavingsGoalStatus } = await import('./savingsGoalsService');
       await setSavingsGoalStatus({ db }, goalId, status);
       showToast(
         status === 'completed' ? t('savings.toast.completed') : t('savings.toast.archived'),
@@ -108,7 +115,6 @@ export default function SavingsGoalsRoute(): ReactElement {
       return;
     }
     try {
-      const { deleteSavingsGoal } = await import('./savingsGoalsService');
       await deleteSavingsGoal({ db }, goalId);
       showToast(t('savings.toast.deleted'));
     } catch (err) {
