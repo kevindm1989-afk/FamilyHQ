@@ -14,6 +14,13 @@
     "src/firebase/config.ts"
   ],
   "project": ["src/**/*.{ts,tsx}"],
-  "ignore": ["design/**", "src/features/**", "src/components/**", "src/hooks/**", "src/lib/**"],
+  "ignore": [
+    "design/**",
+    "src/features/**",
+    "src/components/**",
+    "src/hooks/**",
+    "src/lib/**",
+    "functions/scripts/**"
+  ],
   "ignoreDependencies": ["virtual:pwa-register/react"]
 }
