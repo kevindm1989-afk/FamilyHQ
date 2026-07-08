@@ -25,6 +25,42 @@ pointing to the new one. The history is the value.
 
 ---
 
+## ADR-0007 addendum — Dark mode ships as a runtime CSS-variable layer (resolves ADR-0007's open dark-palette item)
+
+**Status:** Proposed (HUMAN GATE — user signs by merging this memory PR)
+**Date:** 2026-07-08
+**Decider(s):** orchestrator (proposed); user (approved the dark palette + shipped it, PR #153)
+
+**Context:** ADR-0007 flagged an open gap — "the handoff has no dark-mode palette… surfaced to the designer as an open item" — even though `preferences.md` requires dark mode and `users.theme` already supports `'dark'`. This addendum records how that gap was closed.
+
+**Decision:** `design-tokens.json` now carries `color.light` + `color.dark` at identical key shape. `scripts/gen-theme-css.cjs` emits `src/index.theme.css`, defining every `--c-<token>` CSS variable under `:root` (light), `:root[data-theme='dark']` (dark), and a `@media (prefers-color-scheme: dark)` fallback for `:root:not([data-theme])`. `tailwind.config.ts` maps every colour utility to `var(--c-*)`, so themes swap with ZERO component changes and NO `dark:` variants. `src/applyTheme.ts` stamps/clears `data-theme` on `<html>` from the signed-in user's choice; `themeService.setUserTheme` persists it (the self-writable `theme` field, ADR-0002). `index.theme.css` is the one file `token-audit.sh` permits to carry committed hex (the `*.theme.*` exclusion), guarded by the drift test `test/theme-css-drift.test.ts` (see patterns.md "drift gate").
+
+**Rationale:** A CSS-variable layer keeps theming a token/config concern, not a per-component one — no `dark:` variant sprawl, no risk of a component missing a variant. Generating the hex from tokens preserves the ADR-0007 single-source-of-truth invariant; the drift gate makes staleness a CI failure, not a runtime bug.
+
+**Reversibility:** Easy — regenerating the variable layer from tokens is mechanical; reverting is a config/token change, not a component rewrite.
+
+**Compliance check:** WCAG 2.1 AA contrast re-audited in BOTH light and dark (the tokens' contrast audit, previously light-only per ADR-0007, now covers dark). No data/privacy impact.
+
+---
+
+## ADR-0017 — First-party telemetry over any third-party analytics / error-reporting SDK
+
+**Status:** Proposed (HUMAN GATE — user signs by merging this memory PR)
+**Date:** 2026-07-08
+**Decider(s):** orchestrator (proposed); user (chose "first-party only", PR #152)
+
+**Context:** v1 was flying blind on usage and client errors. The options were a third-party SDK (GA4, Sentry) or first-party instrumentation written through the existing Firebase project.
+
+**Decision:** First-party only. Anonymous aggregate usage counters + PI-scrubbed client error reports are written to Firestore via the existing project; no GA4/Sentry/third-party SDK. Error reports scrub PI (emails + long digit runs masked, id-like route segments → `:id`, one origin-stripped stack frame, length-capped) and are session-capped so a crash loop can't spam. Firestore rules make the collections create-only for active users and deny read/update/delete (review in the Console).
+
+**Rationale:** A third-party analytics/error SDK is a new subprocessor receiving event/error payloads while children are users — a human-gate under `constraints.md` §Third-parties, and a poor fit for the no-behavioural-tracking children's-data baseline. First-party keeps residency in the Montreal project, adds no DPA, and needs no consent-banner surface. Consistent with prior first-party choices (ADR-0013 rejected OneSignal; ADR-0003 gated the email subprocessor). The reliability lesson found while building it (memoize a single dynamic `import()` of the shared Firebase module) is captured separately once it recurs.
+
+**Reversibility:** Medium — adding a third-party SDK later re-opens the subprocessor human-gate and a consent review; the first-party data model itself is cheap to keep or drop.
+
+**Compliance check:** No new subprocessor; no behavioural tracking; PI scrubbed at the write boundary; residency stays in `northamerica-northeast1`. Aligns with `constraints.md` §Third-parties and §Children's-data (cited, not modified).
+
+---
+
 ## ADR-0016 — Scheduled push trigger: `onSchedule` v2, exempting time-driven sends from ADR-0014
 
 **Status:** Proposed (HUMAN GATE — user signs by merging this memory PR)
@@ -922,8 +958,15 @@ and fully tenant-isolated, so the blast radius is one family's own numbers.
 ## ADR-0010 — Stay on Firebase Spark; tier-gated features ship dormant
 
 **Date:** 2026-06-08
-**Status:** Accepted.
+**Status:** Accepted, then **Superseded**.
 **Decision owner:** the user.
+**Superseded by:** ADR-0013 (Blaze activated for Cloud Functions + FCM). Confirmed
+by reality as of 2026-07-08: Functions deploy (ADR-0013/0016) AND `storage:rules`
+deploy to production (the Chore Photo Verification rules are live). No feature
+ships "dormant" any longer. The surviving discipline — one `--only <service>`
+deploy step per Firebase service, never bundled — is retained in preferences.md
+and the 2026-06-08 lesson; only the "stay on Spark / ship dormant" posture is
+retired.
 
 ### Context
 

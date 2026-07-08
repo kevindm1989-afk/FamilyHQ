@@ -67,12 +67,13 @@ The standing preferences above hold. Project-specific calls:
   for members, amber bg for parents; amber crown badge on parent avatars.
 - **Offline-first PWA:** Firestore offline persistence on; app-shell cached;
   offline fallback page; pull-to-refresh on Dashboard and Board.
-- **Billing-plan posture: stay on Firebase Spark.** Features that require
-  Blaze (Cloud Functions, Cloud Storage, scheduled jobs) ship coded but
-  **dormant** in production — never silently coupled to a deploy step
-  that would force a plan upgrade. Current example: Chore Photo
-  Verification is implemented but its `storage:rules` are excluded from
-  the deploy until Blaze is explicitly approved. See ADR-0010.
+- **Billing-plan posture: Blaze is live** (activated per ADR-0013 for Cloud
+  Functions + FCM; scheduled jobs per ADR-0016; `storage:rules` deploy live as
+  of 2026-07-08). The standing discipline is structural, not tier-based: every
+  Firebase service gets its OWN `--only <service>` deploy step, never bundled,
+  so one service's gate can't block another (2026-06-08 lesson). New chargeable
+  surfaces still ship behind the $5/mo budget kill-switch (ADR-0013). ADR-0010
+  (stay-on-Spark / ship-dormant) is superseded by ADR-0013.
 - **Locale-string collisions across features are forbidden in
   tightly-spaced surfaces** (notably the BottomNav). When a second
   feature reuses a noun already taken by an existing one in a supported
