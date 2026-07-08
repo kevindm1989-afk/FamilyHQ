@@ -31,6 +31,7 @@ import { canManageEvents, eventTagDotClass, type EventWithId } from './calendarS
 import { buildMonthGrid, eventsForDay, type GridDay, type YearMonthDay } from './monthGrid';
 import { bucketUpcomingEvents } from '../dashboard/dashboardSelectors';
 import { AddEvent, type AddEventValue } from './AddEvent';
+import { QuickAddEvent } from './QuickAddEvent';
 
 export interface CalendarScreenProps {
   familyId: string | null;
@@ -297,6 +298,11 @@ export function CalendarScreen(props: CalendarScreenProps): ReactElement {
     <>
       <section className="flex flex-col gap-16 px-16 pt-4 pb-24">
         <h1 className="text-display font-display font-extrabold text-ink">{t('calendar.title')}</h1>
+
+        {/* Natural-language quick-add (differentiator). Wired to the same
+            create path as the AddEvent form; the only way to create an event
+            for an arbitrary day. Shown whenever creation is possible. */}
+        {onCreateEvent && <QuickAddEvent today={today} onCreateEvent={onCreateEvent} />}
 
         {feed.loading ? (
           <Skeleton label={t('calendar.loading')} />

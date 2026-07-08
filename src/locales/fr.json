@@ -240,6 +240,17 @@
       "family": "Famille",
       "work": "Travail"
     },
+    "quickAdd": {
+      "label": "Ajout rapide",
+      "placeholder": "ex. Entraînement de soccer vendredi prochain",
+      "add": "Ajouter",
+      "added": "Événement ajouté",
+      "today": "Aujourd’hui",
+      "tomorrow": "Demain",
+      "assumedToday": "aujourd’hui présumé",
+      "hint": "Ajoutez un jour comme « demain », « vendredi » ou « 5 déc » et je fixerai la date.",
+      "examples": "Essayez « Entraînement de soccer vendredi prochain » ou « Dentiste 5 déc »."
+    },
     "toast": {
       "deleted": "Événement supprimé.",
       "deletedFuture": "Cette occurrence et les suivantes ont été supprimées.",

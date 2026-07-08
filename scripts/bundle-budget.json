@@ -25,6 +25,12 @@
       "note": "Lazy route that wires the preferences screen to the live FCM service: two onSnapshot subscriptions (userPrivate + fcmTokens subcollection), four async handlers (request-permission/register, unregister, category write, device-row delete), iOS-without-PWA detection, and preferences coercion. PR G grew this from a 4 KB stub to ~9 KB once the no-op callbacks became real wiring (registerToken/unregisterToken/Notification.requestPermission/setDoc). Carved out separately from the other Route chunks because the FCM messaging import baseline pulls roughly 4 KB even before any logic — the general per-route budget would have to be loosened for everyone otherwise. Budget raised 9500 -> 9800 in the firebase 10->12 bump (deps/firebase-12-undici-cve): the firebase 12 messaging SDK is marginally larger, pushing this chunk to ~9.31 KB gzip. The headroom keeps a future small change from re-tripping the gate on the SDK size alone."
     },
     {
+      "name": "CalendarRoute (natural-language quick-add)",
+      "pattern": "^CalendarRoute-",
+      "maxGzipBytes": 9500,
+      "note": "Carved out from the general per-route budget (same rationale as NotificationsRoute) when the natural-language quick-add feature landed: a bilingual (EN + FR) DETERMINISTIC event parser (nlEventParser — weekday/month tables + category keyword sets + regexes) plus the QuickAddEvent live-preview component ship in THIS chunk because the quick-add bar renders on calendar load, not behind an interaction, so it can't be deferred. That added ~1 KB gzip, pushing the route from ~7.8 KB to ~8.85 KB — over the shared 8 KB per-route cap. Rather than loosen that cap for every route, this dedicated budget makes the calendar's growth explicit; the headroom keeps a future small change from re-tripping."
+    },
+    {
       "name": "per-route chunks",
       "pattern": "Route-[^.]+\\.js$",
       "maxGzipBytes": 8000,
