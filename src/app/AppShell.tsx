@@ -292,9 +292,12 @@ function AccountScreen(): ReactElement {
     if (themeBusy || !currentUser) return;
     const next = theme === 'dark' ? 'light' : 'dark';
     setThemeBusy(true);
+    // applyTheme is pure DOM and already statically imported — apply the
+    // optimistic flip SYNCHRONOUSLY (instant visual feedback) rather than
+    // behind a redundant dynamic import. Only the Firebase persist path is
+    // deferred (keeps the SDK out of the AppShell chunk until the toggle fires).
+    applyTheme(next); // optimistic
     void (async () => {
-      const { applyTheme } = await import('../lib/applyTheme');
-      applyTheme(next); // optimistic
       try {
         const [{ db }, { setUserTheme }] = await Promise.all([
           import('../firebase/config'),
