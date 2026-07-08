@@ -21,6 +21,26 @@ Append newest on top. Be specific — vague lessons don't prevent anything.
 
 ## Entries
 
+## 2026-07-08 — On a mature codebase, grep+read to confirm a feature does NOT already exist before speccing or building it
+
+**Symptom:** A "make it the best" roadmap proposed building retention mechanics (chore streaks, weekly digest, today-view) and an onboarding tour as new work. All already shipped and were well-built: `dashboardChoreStreaks` / `dashboardWeeklyDigest` / `bucketUpcomingEvents` in `dashboardSelectors.ts` + `DashboardScreen.tsx`, and `OnboardingTour` under `src/features/onboarding/` — none touched by the arc's three PRs. Real building started only after a grep+read confirmed the actual gaps (NL quick-add, telemetry readout, perf polish).
+
+**Root cause:** A roadmap written from product intent, not from a read of the current tree, re-proposes capabilities the codebase already has. On a young project every idea sounds new; on a mature one, many are already done.
+
+**Fix:** Grepped the tree for each proposed capability before speccing; dropped the already-built ones; spent the budget on genuine gaps.
+
+**Prevention:** Before speccing or briefing an agent to BUILD a feature on this codebase, grep + read to confirm it doesn't already exist (selectors, screens, services, storage keys). Cheap check; prevents an agent faithfully rebuilding a shipped feature. Sibling to the 2026-06-11 "cite the spec verbatim" lesson — both are "confirm against the source before acting"; here the source is the existing code, not a design doc.
+
+## 2026-07-08 — A dynamic `import()` for code-splitting is a no-op (Vite INEFFECTIVE_DYNAMIC_IMPORT) when the same module is ALSO statically imported into the same chunk — check before deferring
+
+**Symptom:** Two perf-polish changes (PR #156) meant to keep modules out of a chunk via `await import(...)` produced no code-split — only a Vite `INEFFECTIVE_DYNAMIC_IMPORT` build warning. (1) `applyTheme` was `await import()`-ed in the AppShell theme toggle while ALSO statically imported at the top of `AppShell.tsx`. (2) `savingsGoalsService` was dynamic-imported in `SavingsGoalsRoute` while `SavingsGoalsScreen` (rendered by the same route) imported it statically.
+
+**Root cause:** A dynamic `import()` only yields a separate chunk when the target is not otherwise reachable statically from the same chunk. If any static import already pulls the module into the chunk, the bundler keeps it there and the dynamic import just resolves against the already-loaded module — zero deferral, plus the warning.
+
+**Fix:** For `applyTheme` (pure DOM, no SDK): dropped the dynamic import and call it synchronously (also gives instant optimistic feedback); kept ONLY the Firebase persist path (`config` + `themeService`) behind the dynamic import. For `savingsGoalsService`: kept the static import (the screen needs it anyway) and deferred only the Firestore *instance* via `resolveDb()` (`import('../../firebase/config')`). Both documented in-file.
+
+**Prevention:** Before adding `await import(x)` to defer `x` out of a chunk, grep that chunk's other modules for a STATIC import of `x`. If anything in the same route/chunk imports it statically, the dynamic import is dead weight — either remove the redundant dynamic import (module is cheap/pure) or remove the static import and route everyone through the dynamic path (module is heavy). Defer the smallest heavy thing (the Firestore *instance*), not a whole service module the screen already needs.
+
 ## 2026-07-08 — A gated step that fails LATE in a shared deploy job trips `rollback-on-failure` and reverts the EARLIER successful steps — a first-run-likely-to-fail step must not sit downstream of a real publish
 
 **Symptom:** The first storage-inclusive production deploy failed at `firebase deploy --only storage` with "Firebase Storage has not been set up on project… click 'Get Started'." Because that step runs AFTER `Deploy hosting` in the same `production` job, the failure tripped the `rollback-on-failure` job (`needs: production`, `if: failure()`), which ran `firebase hosting:rollback` and reverted the hosting release — silently un-shipping the dark-mode + telemetry changes that had deployed cleanly seconds earlier. `firestore:rules` (also already deployed) was NOT reverted, leaving rules briefly ahead of the client. A rerun after the one-time Console setup went green end-to-end.
@@ -63,6 +83,7 @@ Append newest on top. Be specific — vague lessons don't prevent anything.
 **Prevention (three rules, one cause):**
   - **Test fixtures use the STORAGE convention, never the display convention.** Per ADR-0009, money is integer cents at the storage and rules layer; every new fixture touching `allowanceBalance` / `dollarValue` / `costCents` / `amount` starts from cents. If your fixture reads naturally (`balance: 38.5`), you are testing the formatter against itself.
   - **One canonical converter per unit boundary; treat local stubs as a code smell.** The duplicate-formatter pattern is how unit conventions drift between screens. When adding a money/date/byte/duration display in a new screen, import the shared helper; if no shared helper exists, extract one in the same PR. Worth occasionally grepping for `function formatMoney|const formatMoney` to catch new stubs early.
+  - **A canonical converter's MODULE LOCATION is a bundle concern, not only a correctness one.** `formatMoney`/`isValidMoneyCents` currently live in `choresParentService.ts`, which imports `firebase/firestore` + `firebase/functions` — so every screen importing the pure formatter (Dashboard, Savings, Family, Allowance, AddChore) transitively drags the whole Firebase SDK into its chunk. Known deferred follow-up (surfaced during #156, not yet fixed): extract the pure money helpers into a firebase-free `src/lib` module. The zero-Firebase-module principle is already established — see the `FUNCTIONS_REGION` and `childLoginEmail` patterns.
   - **Regression-pin a magnitude bug from both directions.** When the symptom is an off-by-100× (or off-by-1000×, off-by-3600×) error, assert both that the correct value IS rendered AND that the wrong value is NOT. The negative assertion is the gate against the same drift re-entering.
 
 **Known follow-up, NOT a rule yet (single observation):** the parent-side formatter uses `en-US`/`USD` while the kid-side uses `en-CA`/`CAD`, so the parent sees "$8.00" and the kid sees "8,00 $". UX inconsistency, not a correctness bug; flagged for a future locale-consolidation PR. Do not generalize to a rule on one occurrence.
