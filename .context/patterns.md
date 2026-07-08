@@ -25,6 +25,19 @@ short code example
 
 ## Entries
 
+## Commit a derived artifact, then gate it with a `--check` re-run (drift gate)
+
+**When to use:** a file that must trace 1:1 to a source-of-truth file but is committed to the repo for build/runtime reasons — a generated CSS/JSON/code file, or a hand-authored file that must mirror another's shape. In this repo: `src/index.theme.css` (generated from `design-tokens.json`) and `src/locales/fr.json` (must mirror `en.json`'s key shape).
+**How:** ship the artifact AND a `--check` mode on its generator/validator that re-derives from the source and exits non-zero on any difference; wire that as a `verify.sh` / vitest gate. `node <gen>` writes the file; CI runs `node <gen> --check`. The committed file stays reviewable in diffs; drift (source edited, artifact not regenerated) fails the gate in CI, never at user runtime. Name a generated file `*.theme.*` (or the project's audit-exempt suffix) if it must legitimately carry content a source-lint would otherwise reject (e.g. raw hex under token-audit).
+**Example:**
+```
+node scripts/gen-theme-css.cjs          # writes src/index.theme.css
+node scripts/gen-theme-css.cjs --check  # exit 1 if the committed file drifted
+// test/theme-css-drift.test.ts asserts --check does not throw
+// scripts/locale-drift.cjs is the sibling gate (fr.json key-shape vs en.json)
+```
+**When not to use:** an artifact regenerated fresh in the build and never committed (no drift possible — don't add a gate for a file nobody commits), or where the source→artifact transform is lossy and cannot be `--check`ed exactly.
+
 ## Mint another user's account server-side with a parent-only Admin-SDK callable (never the client SDK)
 
 **When to use:** a parent/admin must create ANOTHER user's account (invited member, managed child) without being signed out and without opening a client-side bootstrap write path. The Firebase client SDK `createUser*` signs the CALLER in as the new user, and any client-written bootstrap doc needs a permissive create rule — this pattern avoids both.

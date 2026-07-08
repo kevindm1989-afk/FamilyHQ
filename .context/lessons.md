@@ -21,6 +21,16 @@ Append newest on top. Be specific — vague lessons don't prevent anything.
 
 ## Entries
 
+## 2026-07-08 — A gated step that fails LATE in a shared deploy job trips `rollback-on-failure` and reverts the EARLIER successful steps — a first-run-likely-to-fail step must not sit downstream of a real publish
+
+**Symptom:** The first storage-inclusive production deploy failed at `firebase deploy --only storage` with "Firebase Storage has not been set up on project… click 'Get Started'." Because that step runs AFTER `Deploy hosting` in the same `production` job, the failure tripped the `rollback-on-failure` job (`needs: production`, `if: failure()`), which ran `firebase hosting:rollback` and reverted the hosting release — silently un-shipping the dark-mode + telemetry changes that had deployed cleanly seconds earlier. `firestore:rules` (also already deployed) was NOT reverted, leaving rules briefly ahead of the client. A rerun after the one-time Console setup went green end-to-end.
+
+**Root cause:** Two coupled facts. (1) `firebase deploy --only storage` fails until Firebase Storage is initialized once in the Console (Console → Storage → Get Started) — the same new-GCP-product operator gate as the 2026-06-16 lesson (which already names Cloud Storage), just never hit before because storage rules had never deployed (ADR-0010 dormancy). (2) `rollback-on-failure` is scoped to the WHOLE `production` job, so ANY step failing after the hosting publish reverts hosting — a late-added, first-run-fragile step makes the earlier successful steps collateral damage.
+
+**Fix:** Initialize Storage in the Console, then rerun the same deploy. Bucket placed in `northamerica-northeast1` to match Functions/Firestore (children's chore-proof photos stay in Canada — constraints §residency). No workflow change was needed once the operator gate was cleared.
+
+**Prevention:** Before adding a step to the shared `production` job, check what auto-rollback reverts on failure: if it rolls back an already-published artifact (hosting) on ANY later-step failure, either (a) put the new / first-run-likely-to-fail step in its OWN job that rollback does not depend on, or (b) clear the one-time operator bootstrap (2026-06-16 "Operator prerequisites") BEFORE the first run. Treat "first deploy of a newly-enabled GCP product" as expected-to-fail-once and sequence it so it cannot drag a green release back down.
+
 ## 2026-07-05 — A red security-scan gate on code you didn't touch is usually scanner DRIFT (full-history scan or live-fetched ruleset), not a regression — triage as tooling, suppress the specific reviewed finding, keep the rule live
 
 **Symptom:** Two scheduled security-scan failures on PRs that changed nothing relevant to the finding.
