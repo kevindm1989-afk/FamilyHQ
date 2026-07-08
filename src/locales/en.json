@@ -240,6 +240,17 @@
       "family": "Family",
       "work": "Work"
     },
+    "quickAdd": {
+      "label": "Quick add",
+      "placeholder": "e.g. Soccer practice next Friday",
+      "add": "Add",
+      "added": "Event added",
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "assumedToday": "assumed today",
+      "hint": "Add a day like “tomorrow”, “Friday”, or “Dec 5” and I’ll set the date.",
+      "examples": "Try “Soccer practice next Friday” or “Dentist Dec 5”."
+    },
     "toast": {
       "deleted": "Event deleted.",
       "deletedFuture": "This and future occurrences deleted.",
