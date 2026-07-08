@@ -25,6 +25,26 @@ pointing to the new one. The history is the value.
 
 ---
 
+## ADR-0018 — A "smart" user-facing feature ships as a deterministic client-side implementation before any LLM / NLP subprocessor
+
+**Status:** Proposed (HUMAN GATE — user signs by merging this memory PR)
+**Date:** 2026-07-08
+**Decider(s):** orchestrator (proposed); user (chose the deterministic parser, PR #157)
+
+**Context:** The natural-language quick-add ("Soccer practice next Friday" → {title, day, tag}) is the arc's differentiator. The industry-default shape for an NL / "AI" capture feature is an LLM or hosted NLP API — which would be a new subprocessor receiving user-typed event text while children are users (a human-gate under constraints.md §Third-parties / §Children's-data) and would break offline-first.
+
+**Decision:** Implement the "smart" parse as a 100% client-side, deterministic parser (`src/features/calendar/nlEventParser.ts`): weekday/month tables + category keyword sets + regexes, bilingual EN/FR, injected clock for determinism, no network, no LLM, no third-party processor. Establishes a standing rule: **a smart / NL / AI-flavoured feature is first attempted as a deterministic client-side implementation; reaching for an LLM or NLP subprocessor is a human-gated decision, never a default.**
+
+**Rationale:** No subprocessor → no DPA, no consent surface, no children's-data exposure; works offline (ADR-0005); paired with a mandatory pre-write preview so a mis-parse never silently creates a doc. Consistent with the project's first-party posture — ADR-0017 (first-party telemetry over GA4/Sentry), ADR-0013 (rejected OneSignal), ADR-0003 (email subprocessor human-gated).
+
+**Reversibility:** High — the parser is a self-contained module; adding an LLM/NLP path later re-opens the subprocessor human-gate and needs its own review.
+
+**Consequences:** (+) constraint-clean smart UX, offline, zero new subprocessor; (+) reusable decision precedent for future "smart" features. (-) deterministic coverage is bounded to the encoded grammar (no free-form understanding) — accepted; the preview keeps the boundary honest.
+
+**Compliance check:** No new subprocessor; no behavioural data leaves the device; aligns with constraints.md §Third-parties and §Children's-data (cited, not modified).
+
+---
+
 ## ADR-0007 addendum — Dark mode ships as a runtime CSS-variable layer (resolves ADR-0007's open dark-palette item)
 
 **Status:** Proposed (HUMAN GATE — user signs by merging this memory PR)
